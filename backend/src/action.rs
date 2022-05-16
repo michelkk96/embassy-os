@@ -14,8 +14,9 @@ use tracing::instrument;
 use crate::config::{Config, ConfigSpec};
 use crate::context::RpcContext;
 use crate::id::{Id, ImageId, InvalidId};
-use crate::procedure::PackageProcedure;
+use crate::procedure::{PackageProcedure, ProcedureName};
 use crate::s9pk::manifest::PackageId;
+use crate::status::health_check::HealthCheckId;
 use crate::util::serde::{display_serializable, parse_stdin_deserializable, IoFormat};
 use crate::util::Version;
 use crate::volume::Volumes;
@@ -137,7 +138,7 @@ impl Action {
                 ctx,
                 pkg_id,
                 pkg_version,
-                Some(&format!("{}Action", action_id)),
+                ProcedureName::Action(action_id.clone()),
                 volumes,
                 input,
                 true,

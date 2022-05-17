@@ -13,7 +13,7 @@ use crate::s9pk::reader::S9pkReader;
 use crate::util::display_none;
 use crate::util::serde::IoFormat;
 use crate::volume::Volume;
-use crate::{Error, ResultExt};
+use crate::{Error, ErrorKind, ResultExt};
 
 pub mod builder;
 pub mod header;
@@ -107,8 +107,12 @@ pub fn pack(#[context] ctx: SdkContext, #[arg] path: Option<PathBuf>) -> Result<
         })
         .scripts({
             let script_path = path.join(manifest.assets.scripts_path()).join("embassy.js");
-            if script_path.exists() {
-                Some(File::open(script_path)?)
+            if manifest.package_procedures().any(|a| a.is_script()) {
+                if script_path.exists() {
+                    Some(File::open(script_path)?)
+                } else {
+                    return Err(Error::new(eyre!("Script is declared in manifest, but no such script exists at ./scripts/embassy.js"), ErrorKind::Pack).into())
+                }
             } else {
                 None
             }

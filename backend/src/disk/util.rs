@@ -20,7 +20,7 @@ use super::mount::filesystem::block_dev::BlockDev;
 use super::mount::filesystem::ReadOnly;
 use super::mount::guard::TmpMountGuard;
 use super::quirks::{fetch_quirks, save_quirks, update_quirks};
-use crate::util::io::from_yaml_async_reader;
+use crate::util::io::{from_json_async_reader, from_yaml_async_reader};
 use crate::util::serde::IoFormat;
 use crate::util::{Invoke, Version};
 use crate::{Error, ResultExt as _};
@@ -51,6 +51,7 @@ pub struct PartitionInfo {
     pub capacity: u64,
     pub used: Option<u64>,
     pub embassy_os: Option<EmbassyOsRecoveryInfo>,
+    pub umbrel_version: Option<Version>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -317,6 +318,7 @@ pub async fn list() -> Result<DiskListResponse, Error> {
         } else {
             for part in parts {
                 let mut embassy_os = None;
+                let mut umbrel_version = None;
                 let label = get_label(&part).await?;
                 let capacity = get_capacity(&part)
                     .await
@@ -351,6 +353,23 @@ pub async fn list() -> Result<DiskListResponse, Error> {
                         } {
                             embassy_os = Some(recovery_info)
                         }
+                        let umbrel_info_path = mount_guard.as_ref().join("umbrel/info.json");
+                        if tokio::fs::metadata(&umbrel_info_path).await.is_ok() {
+                            #[derive(Deserialize)]
+                            struct UmbrelInfo {
+                                version: Version,
+                            }
+                            let info: UmbrelInfo = from_json_async_reader(
+                                File::open(&umbrel_info_path).await.with_ctx(|_| {
+                                    (
+                                        crate::ErrorKind::Filesystem,
+                                        umbrel_info_path.display().to_string(),
+                                    )
+                                })?,
+                            )
+                            .await?;
+                            umbrel_version = Some(info.version);
+                        }
                         mount_guard.unmount().await?;
                     }
                 }
@@ -361,6 +380,7 @@ pub async fn list() -> Result<DiskListResponse, Error> {
                     capacity,
                     used,
                     embassy_os,
+                    umbrel_version,
                 });
             }
         }

@@ -1,8 +1,10 @@
 use std::path::Path;
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 
 use futures::future::BoxFuture;
 use futures::{FutureExt, TryStreamExt};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncWrite, AsyncWriteExt, ReadBuf};
 
 use crate::ResultExt;
 
@@ -243,4 +245,105 @@ pub fn response_to_reader(response: reqwest::Response) -> impl AsyncRead + Unpin
             e,
         )
     }))
+}
+
+#[pin_project::pin_project]
+pub struct ProgressTracker<RW> {
+    #[pin]
+    inner: RW,
+    pub progress: Arc<AtomicU64>,
+}
+impl<RW> ProgressTracker<RW> {
+    pub fn new(inner: RW, progress: Arc<AtomicU64>) -> Self {
+        Self { inner, progress }
+    }
+}
+impl<W: AsyncWrite> AsyncWrite for ProgressTracker<W> {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<Result<usize, std::io::Error>> {
+        let this = self.project();
+        match this.inner.poll_write(cx, buf) {
+            std::task::Poll::Ready(Ok(n)) => {
+                this.progress
+                    .fetch_add(n as u64, std::sync::atomic::Ordering::SeqCst);
+                std::task::Poll::Ready(Ok(n))
+            }
+            a => a,
+        }
+    }
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
+        let this = self.project();
+        this.inner.poll_flush(cx)
+    }
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
+        let this = self.project();
+        this.inner.poll_shutdown(cx)
+    }
+    fn poll_write_vectored(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+    ) -> std::task::Poll<Result<usize, std::io::Error>> {
+        let this = self.project();
+        match this.inner.poll_write_vectored(cx, bufs) {
+            std::task::Poll::Ready(Ok(n)) => {
+                this.progress
+                    .fetch_add(n as u64, std::sync::atomic::Ordering::SeqCst);
+                std::task::Poll::Ready(Ok(n))
+            }
+            a => a,
+        }
+    }
+}
+impl<R: AsyncRead> AsyncRead for ProgressTracker<R> {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let this = self.project();
+        let prev = buf.filled().len() as u64;
+        match this.inner.poll_read(cx, buf) {
+            std::task::Poll::Ready(Ok(())) => {
+                this.progress.fetch_add(
+                    buf.filled().len() as u64 - prev,
+                    std::sync::atomic::Ordering::SeqCst,
+                );
+
+                std::task::Poll::Ready(Ok(()))
+            }
+            a => a,
+        }
+    }
+}
+impl<S: AsyncSeek> AsyncSeek for ProgressTracker<S> {
+    fn start_seek(
+        self: std::pin::Pin<&mut Self>,
+        position: std::io::SeekFrom,
+    ) -> std::io::Result<()> {
+        let this = self.project();
+        this.inner.start_seek(position)
+    }
+    fn poll_complete(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<u64>> {
+        let this = self.project();
+        match this.inner.poll_complete(cx) {
+            std::task::Poll::Ready(Ok(n)) => {
+                this.progress.store(n, std::sync::atomic::Ordering::SeqCst);
+                std::task::Poll::Ready(Ok(n))
+            }
+            a => a,
+        }
+    }
 }

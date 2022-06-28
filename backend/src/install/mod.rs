@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::io::SeekFrom;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -14,7 +15,7 @@ use futures::{FutureExt, StreamExt, TryStreamExt};
 use http::header::CONTENT_LENGTH;
 use http::{Request, Response, StatusCode};
 use hyper::Body;
-use patch_db::{DbHandle, LockReceipt, LockType};
+use patch_db::{DbHandle, LockReceipt, LockType, Revision};
 use reqwest::Url;
 use rpc_toolkit::yajrc::RpcError;
 use rpc_toolkit::{command, Context};
@@ -128,6 +129,7 @@ pub async fn install(
     >,
     #[arg(long = "version-priority", rename = "version-priority")] version_priority: Option<MinMax>,
 ) -> Result<WithRevision<()>, Error> {
+    let id = id.parse()?;
     let version_str = match &version_spec {
         None => "*",
         Some(v) => &*v,
@@ -136,192 +138,11 @@ pub async fn install(
     let marketplace_url =
         marketplace_url.unwrap_or_else(|| crate::DEFAULT_MARKETPLACE.parse().unwrap());
     let version_priority = version_priority.unwrap_or_default();
-    let man: Manifest = reqwest::get(format!(
-        "{}/package/v0/manifest/{}?spec={}&version-priority={}&eos-version-compat={}&arch={}",
-        marketplace_url,
-        id,
-        version,
-        version_priority,
-        Current::new().compat(),
-        platforms::TARGET_ARCH,
-    ))
-    .await
-    .with_kind(crate::ErrorKind::Registry)?
-    .error_for_status()
-    .with_kind(crate::ErrorKind::Registry)?
-    .json()
-    .await
-    .with_kind(crate::ErrorKind::Registry)?;
-    let s9pk = reqwest::get(format!(
-        "{}/package/v0/{}.s9pk?spec=={}&version-priority={}&eos-version-compat={}&arch={}",
-        marketplace_url,
-        id,
-        man.version,
-        version_priority,
-        Current::new().compat(),
-        platforms::TARGET_ARCH,
-    ))
-    .await
-    .with_kind(crate::ErrorKind::Registry)?
-    .error_for_status()
-    .with_kind(crate::ErrorKind::Registry)?;
-
-    if man.id.as_str() != id || !man.version.satisfies(&version) {
-        return Err(Error::new(
-            eyre!("Fetched package does not match requested id and version"),
-            ErrorKind::Registry,
-        ));
-    }
-
-    let public_dir_path = ctx
-        .datadir
-        .join(PKG_PUBLIC_DIR)
-        .join(&man.id)
-        .join(man.version.as_str());
-    tokio::fs::create_dir_all(&public_dir_path).await?;
-
-    let icon_type = man.assets.icon_type();
-    let (license_res, instructions_res, icon_res) = tokio::join!(
-        async {
-            tokio::io::copy(
-                &mut response_to_reader(
-                    reqwest::get(format!(
-                        "{}/package/v0/license/{}?spec=={}&eos-version-compat={}&arch={}",
-                        marketplace_url,
-                        id,
-                        man.version,
-                        Current::new().compat(),
-                        platforms::TARGET_ARCH,
-                    ))
-                    .await?
-                    .error_for_status()?,
-                ),
-                &mut File::create(public_dir_path.join("LICENSE.md")).await?,
-            )
+    let (fut, res) =
+        download_install_s9pk_from_marketplace(ctx, id, version, marketplace_url, version_priority)
             .await?;
-            Ok::<_, color_eyre::eyre::Report>(())
-        },
-        async {
-            tokio::io::copy(
-                &mut response_to_reader(
-                    reqwest::get(format!(
-                        "{}/package/v0/instructions/{}?spec=={}&eos-version-compat={}&arch={}",
-                        marketplace_url,
-                        id,
-                        man.version,
-                        Current::new().compat(),
-                        platforms::TARGET_ARCH,
-                    ))
-                    .await?
-                    .error_for_status()?,
-                ),
-                &mut File::create(public_dir_path.join("INSTRUCTIONS.md")).await?,
-            )
-            .await?;
-            Ok::<_, color_eyre::eyre::Report>(())
-        },
-        async {
-            tokio::io::copy(
-                &mut response_to_reader(
-                    reqwest::get(format!(
-                        "{}/package/v0/icon/{}?spec=={}&eos-version-compat={}&arch={}",
-                        marketplace_url,
-                        id,
-                        man.version,
-                        Current::new().compat(),
-                        platforms::TARGET_ARCH,
-                    ))
-                    .await?
-                    .error_for_status()?,
-                ),
-                &mut File::create(public_dir_path.join(format!("icon.{}", icon_type))).await?,
-            )
-            .await?;
-            Ok::<_, color_eyre::eyre::Report>(())
-        },
-    );
-    if let Err(e) = license_res {
-        tracing::warn!("Failed to pre-download license: {}", e);
-    }
-    if let Err(e) = instructions_res {
-        tracing::warn!("Failed to pre-download instructions: {}", e);
-    }
-    if let Err(e) = icon_res {
-        tracing::warn!("Failed to pre-download icon: {}", e);
-    }
 
-    let progress = InstallProgress::new(s9pk.content_length());
-    let static_files = StaticFiles::local(&man.id, &man.version, icon_type);
-    let mut db_handle = ctx.db.handle();
-    let mut tx = db_handle.begin().await?;
-    let mut pde = crate::db::DatabaseModel::new()
-        .package_data()
-        .idx_model(&man.id)
-        .get_mut(&mut tx)
-        .await?;
-    match pde.take() {
-        Some(PackageDataEntry::Installed {
-            installed,
-            static_files,
-            ..
-        }) => {
-            *pde = Some(PackageDataEntry::Updating {
-                install_progress: progress.clone(),
-                static_files,
-                installed,
-                manifest: man.clone(),
-            })
-        }
-        None => {
-            *pde = Some(PackageDataEntry::Installing {
-                install_progress: progress.clone(),
-                static_files,
-                manifest: man.clone(),
-            })
-        }
-        _ => {
-            return Err(Error::new(
-                eyre!("Cannot install over a package in a transient state"),
-                crate::ErrorKind::InvalidRequest,
-            ))
-        }
-    }
-    pde.save(&mut tx).await?;
-    let res = tx.commit(None).await?;
-    drop(db_handle);
-
-    tokio::spawn(async move {
-        let mut db_handle = ctx.db.handle();
-        if let Err(e) = download_install_s9pk(
-            &ctx,
-            &man,
-            Some(marketplace_url),
-            InstallProgress::new(s9pk.content_length()),
-            response_to_reader(s9pk),
-        )
-        .await
-        {
-            let err_str = format!("Install of {}@{} Failed: {}", man.id, man.version, e);
-            tracing::error!("{}", err_str);
-            tracing::debug!("{:?}", e);
-            if let Err(e) = ctx
-                .notification_manager
-                .notify(
-                    &mut db_handle,
-                    Some(man.id),
-                    NotificationLevel::Error,
-                    String::from("Install Failed"),
-                    err_str,
-                    (),
-                    None,
-                )
-                .await
-            {
-                tracing::error!("Failed to issue Notification: {}", e);
-                tracing::debug!("{:?}", e);
-            }
-        }
-    });
+    tokio::spawn(fut);
 
     Ok(WithRevision {
         revision: res,
@@ -717,6 +538,203 @@ impl DownloadInstallReceipts {
             })
         }
     }
+}
+
+pub async fn download_install_s9pk_from_marketplace(
+    ctx: RpcContext,
+    id: PackageId,
+    version: VersionRange,
+    marketplace_url: Url,
+    version_priority: MinMax,
+) -> Result<(impl Future<Output = ()>, Option<Arc<Revision>>), Error> {
+    let man: Manifest = reqwest::get(format!(
+        "{}/package/v0/manifest/{}?spec={}&version-priority={}&eos-version-compat={}&arch={}",
+        marketplace_url,
+        id,
+        version,
+        version_priority,
+        Current::new().compat(),
+        platforms::TARGET_ARCH,
+    ))
+    .await
+    .with_kind(crate::ErrorKind::Registry)?
+    .error_for_status()
+    .with_kind(crate::ErrorKind::Registry)?
+    .json()
+    .await
+    .with_kind(crate::ErrorKind::Registry)?;
+    let s9pk = reqwest::get(format!(
+        "{}/package/v0/{}.s9pk?spec=={}&version-priority={}&eos-version-compat={}&arch={}",
+        marketplace_url,
+        id,
+        man.version,
+        version_priority,
+        Current::new().compat(),
+        platforms::TARGET_ARCH,
+    ))
+    .await
+    .with_kind(crate::ErrorKind::Registry)?
+    .error_for_status()
+    .with_kind(crate::ErrorKind::Registry)?;
+
+    if man.id != id || !man.version.satisfies(&version) {
+        return Err(Error::new(
+            eyre!("Fetched package does not match requested id and version"),
+            ErrorKind::Registry,
+        ));
+    }
+
+    let public_dir_path = ctx
+        .datadir
+        .join(PKG_PUBLIC_DIR)
+        .join(&man.id)
+        .join(man.version.as_str());
+    tokio::fs::create_dir_all(&public_dir_path).await?;
+
+    let icon_type = man.assets.icon_type();
+    let (license_res, instructions_res, icon_res) = tokio::join!(
+        async {
+            tokio::io::copy(
+                &mut response_to_reader(
+                    reqwest::get(format!(
+                        "{}/package/v0/license/{}?spec=={}&eos-version-compat={}&arch={}",
+                        marketplace_url,
+                        id,
+                        man.version,
+                        Current::new().compat(),
+                        platforms::TARGET_ARCH,
+                    ))
+                    .await?
+                    .error_for_status()?,
+                ),
+                &mut File::create(public_dir_path.join("LICENSE.md")).await?,
+            )
+            .await?;
+            Ok::<_, color_eyre::eyre::Report>(())
+        },
+        async {
+            tokio::io::copy(
+                &mut response_to_reader(
+                    reqwest::get(format!(
+                        "{}/package/v0/instructions/{}?spec=={}&eos-version-compat={}&arch={}",
+                        marketplace_url,
+                        id,
+                        man.version,
+                        Current::new().compat(),
+                        platforms::TARGET_ARCH,
+                    ))
+                    .await?
+                    .error_for_status()?,
+                ),
+                &mut File::create(public_dir_path.join("INSTRUCTIONS.md")).await?,
+            )
+            .await?;
+            Ok::<_, color_eyre::eyre::Report>(())
+        },
+        async {
+            tokio::io::copy(
+                &mut response_to_reader(
+                    reqwest::get(format!(
+                        "{}/package/v0/icon/{}?spec=={}&eos-version-compat={}&arch={}",
+                        marketplace_url,
+                        id,
+                        man.version,
+                        Current::new().compat(),
+                        platforms::TARGET_ARCH,
+                    ))
+                    .await?
+                    .error_for_status()?,
+                ),
+                &mut File::create(public_dir_path.join(format!("icon.{}", icon_type))).await?,
+            )
+            .await?;
+            Ok::<_, color_eyre::eyre::Report>(())
+        },
+    );
+    if let Err(e) = license_res {
+        tracing::warn!("Failed to pre-download license: {}", e);
+    }
+    if let Err(e) = instructions_res {
+        tracing::warn!("Failed to pre-download instructions: {}", e);
+    }
+    if let Err(e) = icon_res {
+        tracing::warn!("Failed to pre-download icon: {}", e);
+    }
+
+    let progress = InstallProgress::new(s9pk.content_length());
+    let static_files = StaticFiles::local(&man.id, &man.version, icon_type);
+    let mut db_handle = ctx.db.handle();
+    let mut tx = db_handle.begin().await?;
+    let mut pde = crate::db::DatabaseModel::new()
+        .package_data()
+        .idx_model(&man.id)
+        .get_mut(&mut tx)
+        .await?;
+    match pde.take() {
+        Some(PackageDataEntry::Installed {
+            installed,
+            static_files,
+            ..
+        }) => {
+            *pde = Some(PackageDataEntry::Updating {
+                install_progress: progress.clone(),
+                static_files,
+                installed,
+                manifest: man.clone(),
+            })
+        }
+        None => {
+            *pde = Some(PackageDataEntry::Installing {
+                install_progress: progress.clone(),
+                static_files,
+                manifest: man.clone(),
+            })
+        }
+        _ => {
+            return Err(Error::new(
+                eyre!("Cannot install over a package in a transient state"),
+                crate::ErrorKind::InvalidRequest,
+            ))
+        }
+    }
+    pde.save(&mut tx).await?;
+    let res = tx.commit(None).await?;
+    drop(db_handle);
+
+    let fut = async move {
+        let mut db_handle = ctx.db.handle();
+        if let Err(e) = download_install_s9pk(
+            &ctx,
+            &man,
+            Some(marketplace_url),
+            InstallProgress::new(s9pk.content_length()),
+            response_to_reader(s9pk),
+        )
+        .await
+        {
+            let err_str = format!("Install of {}@{} Failed: {}", man.id, man.version, e);
+            tracing::error!("{}", err_str);
+            tracing::debug!("{:?}", e);
+            if let Err(e) = ctx
+                .notification_manager
+                .notify(
+                    &mut db_handle,
+                    Some(man.id),
+                    NotificationLevel::Error,
+                    String::from("Install Failed"),
+                    err_str,
+                    (),
+                    None,
+                )
+                .await
+            {
+                tracing::error!("Failed to issue Notification: {}", e);
+                tracing::debug!("{:?}", e);
+            }
+        }
+    };
+
+    Ok((fut, res))
 }
 
 #[instrument(skip(ctx, temp_manifest, s9pk))]

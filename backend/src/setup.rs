@@ -1,58 +1,41 @@
-use std::collections::BTreeMap;
-use std::os::unix::prelude::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
-use async_compression::tokio::bufread::GzipDecoder;
-use async_compression::tokio::write::GzipEncoder;
 use color_eyre::eyre::eyre;
-use digest::generic_array::GenericArray;
-use digest::OutputSizeUser;
 use futures::future::BoxFuture;
-use futures::{FutureExt, TryFutureExt, TryStreamExt};
-use nix::unistd::{Gid, Uid};
+use futures::TryFutureExt;
 use openssl::x509::X509;
-use patch_db::{DbHandle, LockType};
+use patch_db::DbHandle;
 use rpc_toolkit::command;
 use rpc_toolkit::yajrc::RpcError;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use sqlx::{Connection, Executor, Sqlite};
 use tokio::fs::File;
-use tokio::io::{AsyncWriteExt, BufReader};
+use tokio::io::AsyncWriteExt;
 use torut::onion::{OnionAddressV3, TorSecretKeyV3};
 use tracing::instrument;
 
 use crate::backup::restore::legacy::recover_v2;
 use crate::backup::restore::recover_full_embassy;
-use crate::backup::restore::umbrel::recover_umbrel;
+use crate::backup::restore::umbrel::{prep_umbrel_migration, recover_umbrel};
 use crate::backup::target::BackupTargetFS;
 use crate::context::rpc::RpcContextConfig;
 use crate::context::setup::SetupResult;
 use crate::context::SetupContext;
-use crate::db::model::RecoveredPackageInfo;
 use crate::disk::fsck::RepairStrategy;
 use crate::disk::main::DEFAULT_PASSWORD;
 use crate::disk::mount::filesystem::block_dev::BlockDev;
 use crate::disk::mount::filesystem::cifs::Cifs;
-use crate::disk::mount::filesystem::{ReadOnly, ReadWrite};
+use crate::disk::mount::filesystem::ReadOnly;
 use crate::disk::mount::guard::TmpMountGuard;
 use crate::disk::util::{pvscan, recovery_info, DiskListResponse, EmbassyOsRecoveryInfo};
 use crate::disk::REPAIR_DISK_PATH;
 use crate::hostname::PRODUCT_KEY_PATH;
-use crate::id::Id;
 use crate::init::init;
-use crate::install::PKG_PUBLIC_DIR;
 use crate::net::ssl::SslManager;
-use crate::s9pk::manifest::PackageId;
 use crate::sound::BEETHOVEN;
-use crate::update::query_mounted_label;
-use crate::util::io::{dir_size, from_yaml_async_reader, ProgressTracker};
 use crate::util::Version;
-use crate::volume::{data_dir, VolumeId};
-use crate::{ensure_code, Error, ErrorKind, ResultExt};
+use crate::{Error, ErrorKind, ResultExt};
 
 #[instrument(skip(secrets))]
 pub async fn password_hash<Ex>(secrets: &mut Ex) -> Result<String, Error>
@@ -358,23 +341,7 @@ pub async fn execute_inner(
     }
     if let (Some(version), Some(source)) = (&umbrel_version, &recovery_source) {
         if version.minor() == 4 {
-            let umbrel_guard = TmpMountGuard::mount(source, ReadOnly).await?;
-            let (target_fs, _) = query_mounted_label().await?;
-            let target_guard = TmpMountGuard::mount(&target_fs.0.as_fs(), ReadWrite).await?;
-            let target_path = target_guard.as_ref().join("lnd.tar.gz");
-            let mut target_archive = tokio_tar::Builder::new(GzipEncoder::new(
-                File::create(&target_path).await.with_ctx(|_| {
-                    (
-                        crate::ErrorKind::Filesystem,
-                        target_path.display().to_string(),
-                    )
-                })?,
-            ));
-            target_archive
-                .append_dir_all("lnd", umbrel_guard.as_ref().join("umbrel/lnd"))
-                .await?;
-            target_guard.unmount().await?;
-            umbrel_guard.unmount().await?;
+            prep_umbrel_migration(source).await?;
         } else {
             return Err(Error::new(
                 eyre!("Unsupported Umbrel Version: {}", version),

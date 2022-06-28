@@ -1,14 +1,24 @@
+use std::str::FromStr;
 use std::{borrow::Borrow, path::Path};
 
-use serde::{Deserialize, Serialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::{Id, IdUnchecked};
-
+use crate::{Id, IdUnchecked, InvalidId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum VolumeId<S: AsRef<str> = String> {
     Backup,
     Custom(Id<S>),
+}
+impl FromStr for VolumeId {
+    type Err = InvalidId;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(if s == "BACKUP" {
+            VolumeId::Backup
+        } else {
+            VolumeId::Custom(Id::try_from(s.to_owned())?)
+        })
+    }
 }
 impl<S: AsRef<str>> std::fmt::Display for VolumeId<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

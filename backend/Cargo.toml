@@ -38,9 +38,12 @@ path = "src/bin/embassy-cli.rs"
 
 [features]
 avahi = ["avahi-sys"]
-default = ["avahi", "sound", "metal", "js_engine"]
+default = ["avahi", "sound", "metal", "js_engine", "pureos"]
 dev = []
 metal = []
+os-variant = []
+pureos = ["os-variant"]
+raspios = ["os-variant"]
 sound = []
 unstable = ["patch-db/unstable"]
 
@@ -59,6 +62,7 @@ bollard = "0.13.0"
 chrono = { version = "0.4.19", features = ["serde"] }
 clap = "3.2.8"
 color-eyre = "0.6.1"
+const_format = "0.2.26"
 cookie_store = "0.16.1"
 current_platform = "0.2.0"
 digest = "0.10.3"

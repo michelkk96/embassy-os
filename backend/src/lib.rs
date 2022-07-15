@@ -9,6 +9,34 @@ lazy_static::lazy_static! {
     };
 }
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub enum BaseOS {
+    RaspberryPiOS,
+    PureOS,
+}
+impl BaseOS {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::RaspberryPiOS => "Raspberry Pi OS",
+            Self::PureOS => "PureOS",
+        }
+    }
+}
+
+#[cfg(feature = "raspios")]
+pub const BASE_OS: BaseOS = BaseOS::RaspberryPiOS;
+#[cfg(feature = "pureos")]
+pub const BASE_OS: BaseOS = BaseOS::PureOS;
+
+#[cfg(not(feature = "os-variant"))]
+compile_error!(
+    "Must enable a feature flag for which OS Variant you are targeting (raspios, pureos)"
+);
+
+pub const OS_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const OS_VARIANT: &str =
+    const_format::formatcp!("EmbassyOS v{} ({})", OS_VERSION, BASE_OS.as_str());
+
 pub mod action;
 pub mod auth;
 pub mod backup;

@@ -23,7 +23,7 @@ use super::quirks::{fetch_quirks, save_quirks, update_quirks};
 use crate::util::io::from_yaml_async_reader;
 use crate::util::serde::IoFormat;
 use crate::util::{Invoke, Version};
-use crate::{Error, ResultExt as _};
+use crate::{BaseOS, Error, ResultExt as _};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -241,9 +241,14 @@ pub async fn recovery_info(
 
 #[instrument]
 pub async fn list() -> Result<DiskListResponse, Error> {
-    let mut quirks = fetch_quirks().await?;
-    let reconnect = update_quirks(&mut quirks).await?;
-    save_quirks(&mut quirks).await?;
+    let reconnect = if crate::BASE_OS == BaseOS::RaspberryPiOS {
+        let mut quirks = fetch_quirks().await?;
+        let reconnect = update_quirks(&mut quirks).await?;
+        save_quirks(&mut quirks).await?;
+        reconnect
+    } else {
+        Vec::new()
+    };
     let disk_guids = pvscan().await?;
     let disks = tokio_stream::wrappers::ReadDirStream::new(
         tokio::fs::read_dir(DISK_PATH)
@@ -273,7 +278,12 @@ pub async fn list() -> Result<DiskListResponse, Error> {
                     disk_path.display().to_string(),
                 )
             })?;
-            if &*disk == Path::new("/dev/mmcblk0") {
+            if &*disk
+                == match crate::BASE_OS {
+                    BaseOS::RaspberryPiOS => Path::new("/dev/mmcblk0"),
+                    BaseOS::PureOS => Path::new("/dev/nvme0n1"),
+                }
+            {
                 return Ok(disks);
             }
             if !disks.contains_key(&disk) {
@@ -371,6 +381,23 @@ pub async fn list() -> Result<DiskListResponse, Error> {
             partitions,
             capacity,
             guid,
+        })
+    }
+
+    if crate::BASE_OS == BaseOS::PureOS {
+        let disk = Path::new("/dev/nvme0n1p5");
+        res.push(DiskInfo {
+            logicalname: disk.into(),
+            vendor: None,
+            model: Some("Embassy Pro Internal NVMe".into()),
+            partitions: Vec::new(),
+            capacity: get_capacity(disk)
+                .await
+                .map_err(|e| {
+                    tracing::warn!("Could not get capacity of {}: {}", disk.display(), e.source)
+                })
+                .unwrap_or_default(),
+            guid: disk_guids.get(disk).cloned().flatten(),
         })
     }
 

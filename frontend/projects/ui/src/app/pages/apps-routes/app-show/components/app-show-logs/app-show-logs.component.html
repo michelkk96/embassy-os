@@ -1,0 +1,13 @@
+<div class="ion-padding logs-content">
+  <ion-content #logsContent class="ion-padding" color="light">
+    <p *ngIf="loading" style="margin-top: 0">Loading logs...</p>
+
+    <div id="app-logs-container">
+      <div id="app-logs-template"></div>
+    </div>
+
+    <div *ngIf="!loading && logsError">
+      <ion-text color="warning">{{ logsError }}</ion-text>
+    </div>
+  </ion-content>
+</div>

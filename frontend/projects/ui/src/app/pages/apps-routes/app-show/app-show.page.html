@@ -11,6 +11,8 @@
       ></app-show-status>
       <!-- ** installed && !backing-up ** -->
       <ng-container *ngIf="isInstalled(pkg) && !isBackingUp(status)">
+        <!-- ** logs ** -->
+        <app-show-logs></app-show-logs>
         <!-- ** health checks ** -->
         <app-show-health-checks
           *ngIf="isRunning(status)"

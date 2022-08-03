@@ -1,0 +1,12 @@
+.logs-content {
+  height: 160px;
+
+  ion-content::part(scroll) {
+    --overflow: hidden;
+  }
+}
+
+#container {
+  font-family: monospace;
+  white-space: pre-line;
+}

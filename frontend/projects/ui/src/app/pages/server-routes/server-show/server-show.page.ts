@@ -131,7 +131,7 @@ export class ServerShowPage {
     await alert.present()
   }
 
-  async presentAlertShutdown() {
+  private async presentAlertShutdown() {
     const alert = await this.alertCtrl.create({
       header: 'Warning',
       message:
@@ -154,7 +154,7 @@ export class ServerShowPage {
     await alert.present()
   }
 
-  async presentAlertSystemRebuild() {
+  private async presentAlertSystemRebuild() {
     const localPkgs = await getAllPackages(this.patch)
     const minutes = Object.keys(localPkgs).length * 2
     const alert = await this.alertCtrl.create({
@@ -178,7 +178,7 @@ export class ServerShowPage {
     await alert.present()
   }
 
-  async presentAlertRepairDisk() {
+  private async presentAlertRepairDisk() {
     const alert = await this.alertCtrl.create({
       header: 'Warning',
       message: `<p>This action should only be executed if directed by a Start9 support specialist. We recommend backing up your device before preforming this action.</p><p>If anything happens to the device during the reboot, such as losing power or unplugging the drive, the filesystem <i>will</i> be in an unrecoverable state. Please proceed with caution.</p>`,

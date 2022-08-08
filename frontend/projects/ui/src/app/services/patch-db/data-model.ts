@@ -98,9 +98,11 @@ export interface ServerStatusInfo {
 }
 
 export interface EmailSettings {
-  'embassy-enabled': boolean
-  'services-enabled': boolean
   address: string | null
+  notifications: {
+    os: boolean
+    services: boolean
+  }
 }
 
 export enum ServerStatus {

@@ -11,7 +11,10 @@ import {
   LoadingController,
   ModalController,
 } from '@ionic/angular'
-import { GenericFormPage } from 'src/app/modals/generic-form/generic-form.page'
+import {
+  GenericFormOptions,
+  GenericFormPage,
+} from 'src/app/modals/generic-form/generic-form.page'
 import { ConfigSpec } from 'src/app/pkg-config/config-types'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { ErrorToastService } from '@start9labs/shared'
@@ -180,26 +183,28 @@ export class BackupDrivesComponent {
   ): Promise<void> {
     const { hostname, path, username } = entry
 
+    const options: GenericFormOptions = {
+      title: 'Update Shared Folder',
+      spec: CifsSpec,
+      buttons: [
+        {
+          text: 'Save',
+          handler: (value: RR.AddBackupTargetReq) => {
+            return this.editCifs({ id, ...value }, index)
+          },
+          isSubmit: true,
+        },
+      ],
+      initialValue: {
+        hostname,
+        path,
+        username,
+      },
+    }
+
     const modal = await this.modalCtrl.create({
       component: GenericFormPage,
-      componentProps: {
-        title: 'Update Shared Folder',
-        spec: CifsSpec,
-        buttons: [
-          {
-            text: 'Save',
-            handler: (value: RR.AddBackupTargetReq) => {
-              return this.editCifs({ id, ...value }, index)
-            },
-            isSubmit: true,
-          },
-        ],
-        initialValue: {
-          hostname,
-          path,
-          username,
-        },
-      },
+      componentProps: options,
     })
     await modal.present()
   }
@@ -207,7 +212,7 @@ export class BackupDrivesComponent {
   private async editCifs(
     value: RR.UpdateBackupTargetReq,
     index: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const loader = await this.loadingCtrl.create({
       message: 'Testing connectivity to shared folder...',
     })
@@ -216,8 +221,10 @@ export class BackupDrivesComponent {
     try {
       const res = await this.embassyApi.updateBackupTarget(value)
       this.backupService.cifs[index].entry = Object.values(res)[0]
+      return true
     } catch (e: any) {
       this.errToast.present(e)
+      return false
     } finally {
       loader.dismiss()
     }

@@ -14,7 +14,10 @@ import {
   PackageDataEntry,
   PackageMainStatus,
 } from 'src/app/services/patch-db/data-model'
-import { GenericFormPage } from 'src/app/modals/generic-form/generic-form.page'
+import {
+  GenericFormOptions,
+  GenericFormPage,
+} from 'src/app/modals/generic-form/generic-form.page'
 import { isEmptyObject, ErrorToastService, getPkgId } from '@start9labs/shared'
 import { ActionSuccessPage } from 'src/app/modals/action-success/action-success.page'
 import { hasCurrentDeps } from 'src/app/util/has-deps'
@@ -51,22 +54,27 @@ export class AppActionsPage {
         status.main.status,
       )
     ) {
-      if (!isEmptyObject(action.value['input-spec'] || {})) {
+      if (
+        action.value['input-spec'] &&
+        !isEmptyObject(action.value['input-spec'])
+      ) {
+        const options: GenericFormOptions = {
+          title: action.value.name,
+          spec: action.value['input-spec'],
+          buttons: [
+            {
+              text: 'Execute',
+              handler: (value: any) => {
+                return this.executeAction(action.key, value)
+              },
+              isSubmit: true,
+            },
+          ],
+        }
+
         const modal = await this.modalCtrl.create({
           component: GenericFormPage,
-          componentProps: {
-            title: action.value.name,
-            spec: action.value['input-spec'],
-            buttons: [
-              {
-                text: 'Execute',
-                handler: (value: any) => {
-                  return this.executeAction(action.key, value)
-                },
-                isSubmit: true,
-              },
-            ],
-          },
+          componentProps: options,
         })
         await modal.present()
       } else {

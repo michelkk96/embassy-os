@@ -126,7 +126,7 @@ export module RR {
   // email
 
   export type ConfigureEmailReq = {
-    address?: string
+    smtp?: SMTP
     notifications?: {
       os?: boolean
       services?: boolean
@@ -281,6 +281,15 @@ export module RR {
 
   export type GetReleaseNotesReq = { id: string }
   export type GetReleaseNotesRes = { [version: string]: string }
+}
+
+export interface SMTP {
+  host: string
+  port: number
+  from: string
+  username: string
+  password: string
+  tls: boolean
 }
 
 export interface MarketplaceEOS {

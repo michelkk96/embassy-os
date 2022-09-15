@@ -9,7 +9,7 @@ use color_eyre::eyre::eyre;
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use futures::{FutureExt, StreamExt};
-use http::header::{ACCEPT_RANGES, CONTENT_LENGTH, RANGE};
+use http::header::{ACCEPT_ENCODING, ACCEPT_RANGES, CONTENT_LENGTH, RANGE};
 use hyper::body::Bytes;
 use pin_project::pin_project;
 use reqwest::{Client, Url};
@@ -68,6 +68,7 @@ impl HttpReader {
         // Make a head request so that we can get the file size and check for http range support.
         let head_request = http_client
             .head(http_url.clone())
+            .header(ACCEPT_ENCODING, "identity")
             .send()
             .await
             .with_kind(crate::ErrorKind::InvalidRequest)?;

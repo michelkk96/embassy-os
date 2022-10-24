@@ -1,18 +1,18 @@
 use super::v0_3_0::V0_3_0_COMPAT;
 use super::*;
 
-const V0_3_2_1: emver::Version = emver::Version::new(0, 3, 2, 1);
+const V0_3_2_2: emver::Version = emver::Version::new(0, 3, 2, 2);
 
 #[derive(Clone, Debug)]
 pub struct Version;
 #[async_trait]
 impl VersionT for Version {
-    type Previous = v0_3_2::Version;
+    type Previous = v0_3_2_1::Version;
     fn new() -> Self {
         Version
     }
     fn semver(&self) -> emver::Version {
-        V0_3_2_1
+        V0_3_2_2
     }
     fn compat(&self) -> &'static emver::VersionRange {
         &*V0_3_0_COMPAT

@@ -361,9 +361,9 @@ impl TorControllerInner {
 
 pub async fn tor_health_check(client: &Client, tor_controller: &TorController) {
     tracing::debug!("Attempting to self-check tor address");
-    let onion_addr = tor_controller.embassyd_onion().await;
+    let onion_addr_addr = tor_controller.embassyd_onion().await;
     let result = client
-        .post(format!("http://{}/rpc/v1", onion_addr))
+        .post(format!("http://{}/rpc/v1", onion_addr_addr))
         .body(
             json!({
                 "jsonrpc": "2.0",
@@ -387,7 +387,7 @@ pub async fn tor_health_check(client: &Client, tor_controller: &TorController) {
             match tor_controller.replace().await {
                 Ok(restarted) => {
                     if restarted {
-                        tracing::error!("Tor has been recently restarted, we are ready again...");
+                        tracing::error!("Tor has been recently restarted, refusing to restart again right now...");
                     }
                     break;
                 }

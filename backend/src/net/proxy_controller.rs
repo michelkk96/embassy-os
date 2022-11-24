@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use color_eyre::eyre::eyre;
 use futures::FutureExt;
-use http::{Method, Request, Response};
+use http::header::{CONNECTION, UPGRADE};
+use http::{HeaderValue, Method, Request, Response, StatusCode, Uri};
 use hyper::upgrade::Upgraded;
 use hyper::{Body, Error as HyperError};
 use models::{InterfaceId, PackageId};
@@ -15,7 +16,7 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tracing::{error, info, instrument};
 
-use crate::net::net_utils::ResourceFqdn;
+use crate::net::net_utils::{create_custom_req, is_ws_upgrade_request, ResourceFqdn};
 use crate::net::ssl::SslManager;
 use crate::net::vhost_controller::VHOSTController;
 use crate::net::{HttpClient, HttpHandler, InterfaceMetadata, PackageNetInfo};
@@ -87,29 +88,33 @@ impl ProxyController {
 
     pub async fn proxy(
         client: HttpClient,
-        req: Request<Body>,
+        internal_ip: String,
+        port: u16,
+        mut req: Request<Body>,
     ) -> Result<Response<Body>, HyperError> {
-        if Method::CONNECT == req.method() {
-            // Received an HTTP request like:
-            // ```
-            // CONNECT www.domain.com:443 HTTP/1.1s
-            // Host: www.domain.com:443
-            // Proxy-Connection: Keep-Alive
-            // ```
-            //
-            // When HTTP method is CONNECT we should return an empty body
-            // then we can eventually upgrade the connection and talk a new protocol.
-            //
-            // Note: only after client received an empty body with STATUS_OK can the
-            // connection be upgraded, so we can't return a response inside
-            // `on_upgrade` future.
+        let proxy_addr = internal_ip.clone();
+        if is_ws_upgrade_request(&req) {
+            dbg!("Upgrading connection...");
+            let mut res = Response::new(Body::empty());
+
+            // Connection: upgrade must be set whenever Upgrade is sent.
+            // Send a 400 to any request that doesn't have
+            // an `Upgrade` header.
+            // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Upgrade
+
+            if !req.headers().contains_key(UPGRADE) {
+                *res.status_mut() = StatusCode::BAD_REQUEST;
+                return Ok(res);
+            }
 
             tokio::task::spawn(async move {
+                create_custom_req(proxy_addr, port, "ws".to_string(), &mut req);
+
                 let addr = req.uri().clone();
 
                 match hyper::upgrade::on(req).await {
                     Ok(upgraded) => {
-                        if let Err(e) = Self::tunnel(upgraded, addr.to_string()).await {
+                        if let Err(e) = Self::tunnel(upgraded, addr).await {
                             error!("server io error: {}", e);
                         }
                     }
@@ -117,16 +122,39 @@ impl ProxyController {
                 }
             });
 
-            Ok(Response::new(Body::empty()))
+            // Now return a 101 Response saying we agree to the upgrade to some
+            // User protocol.
+
+            // If the server decides to upgrade the connection, it must:
+            //
+            // 1. Send back a 101 Switching Protocols response status with an
+            // Upgrade header that specifies the protocol(s) being switched to.
+            //
+            // 2. Send a response to the original request using the new protocol
+            // (the server may only switch to a protocol with which it can
+            // complete the original request).
+            *res.status_mut() = StatusCode::SWITCHING_PROTOCOLS;
+            res.headers_mut()
+                .insert(UPGRADE, HeaderValue::from_static("websocket"));
+            Ok(res)
         } else {
+            create_custom_req(proxy_addr, port, "http".to_string(), &mut req);
+
             client.request(req).await
         }
     }
 
     // Create a TCP connection to host:port, build a tunnel between the connection and
     // the upgraded connection
-    async fn tunnel(mut upgraded: Upgraded, addr: String) -> std::io::Result<()> {
-        let mut server = TcpStream::connect(addr).await?;
+    async fn tunnel(mut upgraded: Upgraded, addr: Uri) -> std::io::Result<()> {
+        dbg!(addr.clone());
+
+        let host = addr.host().unwrap();
+        let port = addr.port_u16().unwrap();
+
+        let actual_addr = format!("{}:{}", host, port);
+        dbg!("REDRAGONX:", actual_addr.clone());
+        let mut server = TcpStream::connect(actual_addr).await?;
 
         let (from_client, from_server) =
             tokio::io::copy_bidirectional(&mut upgraded, &mut server).await?;
@@ -283,25 +311,19 @@ impl ProxyControllerInner {
     }
 
     async fn create_docker_handle(internal_ip: String, port: u16) -> HttpHandler {
-        let svc_handler: HttpHandler = Arc::new(move |mut req| {
+        let svc_handler: HttpHandler = Arc::new(move |req| {
             let proxy_addr = internal_ip.clone();
             async move {
                 let client = HttpClient::new();
 
-                let uri_string = format!(
-                    "http://{}:{}{}",
-                    proxy_addr,
-                    port,
-                    req.uri()
-                        .path_and_query()
-                        .map(|x| x.as_str())
-                        .unwrap_or("/")
-                );
+                // create_custom_req(proxy_addr, port, "http".to_string(), &mut req);
 
-                let uri = uri_string.parse().unwrap();
-                *req.uri_mut() = uri;
+                // dbg!("REDRAGONX: {} uri", req.uri());
 
-                ProxyController::proxy(client, req).await
+                // dbg!("REDRAGONX: {} method", req.method());
+                // dbg!("REDRAGONX: {} headers", req.headers());
+
+                ProxyController::proxy(client, proxy_addr, port, req).await
             }
             .boxed()
         });

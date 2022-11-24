@@ -97,7 +97,6 @@ impl EmbassyServiceHTTPServer {
                                 rx.await.ok();
                             }
                         });
-
                     if let Err(e) = server.await {
                         error!("Spawning hyper server errorr: {}", e);
                     }

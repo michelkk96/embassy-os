@@ -108,13 +108,11 @@ impl ProxyController {
             }
 
             tokio::task::spawn(async move {
-                create_custom_req(proxy_addr, port, "ws".to_string(), &mut req);
-
-                let addr = req.uri().clone();
+                //   create_custom_req(proxy_addr, port, "https".to_string(), &mut req);
 
                 match hyper::upgrade::on(req).await {
                     Ok(upgraded) => {
-                        if let Err(e) = Self::tunnel(upgraded, addr).await {
+                        if let Err(e) = Self::tunnel(upgraded, internal_ip.clone(), port).await {
                             error!("server io error: {}", e);
                         }
                     }
@@ -146,13 +144,8 @@ impl ProxyController {
 
     // Create a TCP connection to host:port, build a tunnel between the connection and
     // the upgraded connection
-    async fn tunnel(mut upgraded: Upgraded, addr: Uri) -> std::io::Result<()> {
-        dbg!(addr.clone());
-
-        let host = addr.host().unwrap();
-        let port = addr.port_u16().unwrap();
-
-        let actual_addr = format!("{}:{}", host, port);
+    async fn tunnel(mut upgraded: Upgraded, internal_ip: String, port: u16) -> std::io::Result<()> {
+        let actual_addr = format!("{}:{}", internal_ip, port);
         dbg!("REDRAGONX:", actual_addr.clone());
         let mut server = TcpStream::connect(actual_addr).await?;
 

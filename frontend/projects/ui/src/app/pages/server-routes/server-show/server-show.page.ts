@@ -426,7 +426,7 @@ export class ServerShowPage {
         disabled$: of(false),
       },
       {
-        title: 'Emails',
+        title: 'Email Notifications',
         description: 'Configure an SMTP server',
         icon: 'mail-outline',
         action: () =>

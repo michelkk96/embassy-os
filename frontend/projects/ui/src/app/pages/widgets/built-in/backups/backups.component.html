@@ -21,13 +21,13 @@
         "
       >
         <p>
-          Last backup was
-          <span class="backup-detail_days">{{ backupDetail }}</span>
+          Last backup:
+          <span class="backup-detail_highlight">{{ backupDetail }}</span>
         </p>
       </div>
       <span
         *ngIf="!!server['status-info']['backup-progress']"
-        class="backup-detail_active loading-dots"
+        class="backup-detail_highlight loading-dots"
         >Backing up</span
       >
     </ng-container>

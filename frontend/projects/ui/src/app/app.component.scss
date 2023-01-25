@@ -20,7 +20,7 @@ tui-root {
 }
 
 .right-menu {
-  --side-min-width: 300px;
+  --side-min-width: 350px;
   --side-max-width: min(calc(100vw - 700px), 800px);
 
   // For some reason *ngIf is broken upon first login
@@ -31,7 +31,7 @@ tui-root {
 
 .divider {
   height: 100%;
-  width: 10px;
+  width: 7px;
 
   position: absolute;
   left: 0;

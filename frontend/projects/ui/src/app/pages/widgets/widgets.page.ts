@@ -46,9 +46,16 @@ export class WidgetsPage {
 
   pending = true
 
-  readonly isMobile$ = this.resize$.pipe(
+  readonly isResized$ = this.resize$.pipe(
     startWith(null),
-    map(() => this.elementRef.nativeElement.clientWidth < 600),
+    map(() => {
+      return {
+        isMobile: this.elementRef.nativeElement.clientWidth < 600,
+        isMedium:
+          this.elementRef.nativeElement.clientWidth < 740 &&
+          this.elementRef.nativeElement.clientWidth > 600,
+      }
+    }),
     distinctUntilChanged(),
   )
 

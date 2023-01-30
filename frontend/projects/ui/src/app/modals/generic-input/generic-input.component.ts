@@ -66,7 +66,7 @@ export class GenericInputComponent {
     this.maskedValue = this.mask.transform(this.value)
   }
 
-  async submit<T>() {
+  async submit() {
     const value = this.value.trim()
 
     if (!value && !this.options.nullable) return

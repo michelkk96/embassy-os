@@ -412,7 +412,7 @@ async fn manager_thread_loop(mut recv: Receiver<OnStop>, thread_shared: &Arc<Man
                         .idx_model(&thread_shared.seed.manifest.id)
                         .and_then(|pde| pde.installed())
                         .map::<_, MainStatus>(|i| i.status().main())
-                        .get(&mut db, false)
+                        .get(&mut db)
                         .await;
                     match started.as_deref() {
                         Ok(Some(MainStatus::Running { .. })) => {

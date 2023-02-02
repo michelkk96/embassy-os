@@ -9,6 +9,7 @@ export type ValueType =
   | 'object'
   | 'pointer'
   | 'union'
+  | 'file'
 export type ValueSpec = ValueSpecOf<ValueType>
 
 // core spec types. These types provide the metadata for performing validations
@@ -28,6 +29,8 @@ export type ValueSpecOf<T extends ValueType> = T extends 'string'
   ? ValueSpecPointer
   : T extends 'union'
   ? ValueSpecUnion
+  : T extends 'file'
+  ? ValueSpecFile
   : never
 
 export interface ValueSpecString extends ListValueSpecString, WithStandalone {
@@ -79,6 +82,13 @@ export interface WithStandalone {
   name: string
   description?: string
   warning?: string
+}
+
+export interface ValueSpecFile extends WithStandalone {
+  type: 'file'
+  placeholder: string
+  validation: (file: Blob) => boolean
+  nullable: boolean
 }
 
 // no lists of booleans, lists, pointers

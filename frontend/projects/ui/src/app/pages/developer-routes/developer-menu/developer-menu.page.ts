@@ -5,7 +5,6 @@ import { GenericFormPage } from 'src/app/modals/generic-form/generic-form.page'
 import { BasicInfo, getBasicInfoSpec } from './form-info'
 import { PatchDB } from 'patch-db-client'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
-import { ErrorToastService } from '@start9labs/shared'
 import { getProjectId } from 'src/app/util/get-project-id'
 import { DataModel, DevProjectData } from 'src/app/services/patch-db/data-model'
 
@@ -24,7 +23,6 @@ export class DeveloperMenuPage {
     private readonly modalCtrl: ModalController,
     private readonly loadingCtrl: LoadingController,
     private readonly api: ApiService,
-    private readonly errToast: ErrorToastService,
     private readonly patch: PatchDB<DataModel>,
   ) {}
 
@@ -38,7 +36,7 @@ export class DeveloperMenuPage {
           {
             text: 'Save',
             handler: (basicInfo: BasicInfo) => {
-              this.saveBasicInfo(basicInfo)
+              return this.saveBasicInfo(basicInfo)
             },
             isSubmit: true,
           },
@@ -59,8 +57,6 @@ export class DeveloperMenuPage {
         ['dev', this.projectId, 'basic-info'],
         basicInfo,
       )
-    } catch (e: any) {
-      this.errToast.present(e)
     } finally {
       loader.dismiss()
     }

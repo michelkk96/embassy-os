@@ -6,12 +6,7 @@ import {
   ModalController,
 } from '@ionic/angular'
 import { ActionSheetButton } from '@ionic/core'
-import {
-  ErrorToastService,
-  isValidHttpUrl,
-  sameUrl,
-  toUrl,
-} from '@start9labs/shared'
+import { ErrorToastService, sameUrl, toUrl } from '@start9labs/shared'
 import { AbstractMarketplaceService } from '@start9labs/marketplace'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { ValueSpecObject } from 'src/app/pkg-config/config-types'
@@ -74,13 +69,13 @@ export class MarketplaceSettingsPage {
           {
             text: 'Save for Later',
             handler: (value: { url: string }) => {
-              this.saveOnly(value.url)
+              return this.saveOnly(value.url)
             },
           },
           {
             text: 'Save and Connect',
             handler: (value: { url: string }) => {
-              this.saveAndConnect(value.url)
+              return this.saveAndConnect(value.url)
             },
             isSubmit: true,
           },
@@ -171,8 +166,6 @@ export class MarketplaceSettingsPage {
     try {
       const url = new URL(rawUrl).toString()
       await this.validateAndSave(url, loader)
-    } catch (e: any) {
-      this.errToast.present(e)
     } finally {
       loader.dismiss()
     }
@@ -185,8 +178,6 @@ export class MarketplaceSettingsPage {
       const url = new URL(rawUrl).toString()
       await this.validateAndSave(url, loader)
       await this.connect(url, loader)
-    } catch (e: any) {
-      this.errToast.present(e)
     } finally {
       loader.dismiss()
     }

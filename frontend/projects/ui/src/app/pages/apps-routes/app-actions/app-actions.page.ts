@@ -171,10 +171,7 @@ export class AppActionsPage {
     }
   }
 
-  private async executeAction(
-    actionId: string,
-    input?: object,
-  ): Promise<boolean> {
+  private async executeAction(actionId: string, input?: object): Promise<void> {
     const loader = await this.loadingCtrl.create({
       message: 'Executing action...',
     })
@@ -195,10 +192,6 @@ export class AppActionsPage {
       })
 
       setTimeout(() => successModal.present(), 500)
-      return true // needed to dismiss original modal/alert
-    } catch (e: any) {
-      this.errToast.present(e)
-      return false // don't dismiss original modal/alert
     } finally {
       loader.dismiss()
     }

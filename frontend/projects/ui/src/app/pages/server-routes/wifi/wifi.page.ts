@@ -118,14 +118,14 @@ export class WifiPage {
         buttons: [
           {
             text: 'Save for Later',
-            handler: async (value: { ssid: string; password: string }) => {
-              await this.save(value.ssid, value.password)
+            handler: (value: { ssid: string; password: string }) => {
+              return this.save(value.ssid, value.password)
             },
           },
           {
             text: 'Save and Connect',
-            handler: async (value: { ssid: string; password: string }) => {
-              await this.saveAndConnect(value.ssid, value.password)
+            handler: (value: { ssid: string; password: string }) => {
+              return this.saveAndConnect(value.ssid, value.password)
             },
             isSubmit: true,
           },
@@ -306,8 +306,6 @@ export class WifiPage {
         connect: false,
       })
       await this.getWifi()
-    } catch (e: any) {
-      this.errToast.present(e)
     } finally {
       loader.dismiss()
     }
@@ -328,8 +326,6 @@ export class WifiPage {
       })
 
       await this.confirmWifi(ssid, true)
-    } catch (e: any) {
-      this.errToast.present(e)
     } finally {
       loader.dismiss()
     }

@@ -446,6 +446,7 @@ export class MockApiService extends ApiService {
       // },
       alksdhewbfjwamd: {
         type: 'cloud',
+        name: 'Dropbox 4',
         provider: 'dropbox',
         path: '/',
         mountable: true,

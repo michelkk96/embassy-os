@@ -1046,6 +1046,7 @@ export module Mock {
   export const BackupTargets: RR.GetBackupTargetsRes = {
     hsbdjhasbasda: {
       type: 'cifs',
+      name: 'Embassy Backups Embassy Backups',
       hostname: 'smb://192.169.10.0',
       path: '/Desktop/embassy-backups',
       username: 'TestUser',
@@ -1061,6 +1062,7 @@ export module Mock {
     },
     ftcvewdnkemfksdm: {
       type: 'cloud',
+      name: 'Dropbox 1',
       provider: 'dropbox',
       path: '/Home/backups',
       mountable: true,
@@ -1068,6 +1070,7 @@ export module Mock {
     },
     csgashbdjkasnd: {
       type: 'cifs',
+      name: 'Network Folder 2',
       hostname: 'smb://192.169.10.0',
       path: '/Desktop/embassy-backups-2',
       username: 'TestUser',
@@ -1076,6 +1079,7 @@ export module Mock {
     },
     powjefhjbnwhdva: {
       type: 'disk',
+      name: 'Physical Drive 1',
       logicalname: 'sdba1',
       label: 'Another Drive',
       capacity: 2000000000000,
@@ -1083,6 +1087,7 @@ export module Mock {
       model: null,
       vendor: 'SSK',
       mountable: true,
+      path: '/HomeFolder/Documents',
       'embassy-os': {
         version: '0.3.0',
         full: true,

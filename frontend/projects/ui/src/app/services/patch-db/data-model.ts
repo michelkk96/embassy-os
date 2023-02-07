@@ -2,6 +2,7 @@ import { ConfigSpec } from 'src/app/pkg-config/config-types'
 import { Url } from '@start9labs/shared'
 import { MarketplaceManifest } from '@start9labs/marketplace'
 import { BasicInfo } from 'src/app/pages/developer-routes/developer-menu/form-info'
+import { BackupJob } from '../api/api.types'
 
 export interface DataModel {
   'server-info': ServerInfo
@@ -86,9 +87,12 @@ export interface IpInfo {
 }
 
 export interface ServerStatusInfo {
-  'backup-progress': null | {
-    [packageId: string]: {
-      complete: boolean
+  'current-backup': null | {
+    job: BackupJob
+    'backup-progress': {
+      [packageId: string]: {
+        complete: boolean
+      }
     }
   }
   updated: boolean

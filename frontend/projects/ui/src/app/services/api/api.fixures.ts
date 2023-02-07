@@ -15,7 +15,7 @@ import { Log } from '@start9labs/shared'
 
 export module Mock {
   export const ServerUpdated: ServerStatusInfo = {
-    'backup-progress': null,
+    'current-backup': null,
     'update-progress': null,
     updated: true,
   }

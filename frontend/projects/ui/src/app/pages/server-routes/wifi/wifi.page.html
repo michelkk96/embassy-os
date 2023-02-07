@@ -102,9 +102,9 @@
         ></ion-icon>
         <ion-label>{{ ssid.key }}</ion-label>
         <img
-          *ngIf="ssid.value > 0 && ssid.value < 5"
+          *ngIf="ssid.value >= 0 && ssid.value < 5"
           slot="end"
-          src="assets/img/icons/wifi-1.png"
+          src="assets/img/icons/wifi-0.png"
           style="max-width: 32px"
         />
         <img

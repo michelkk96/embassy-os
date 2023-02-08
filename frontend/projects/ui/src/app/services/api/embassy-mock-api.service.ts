@@ -17,7 +17,7 @@ import {
   PackageState,
   ServerStatus,
 } from 'src/app/services/patch-db/data-model'
-import { CifsBackupTarget, RR } from './api.types'
+import { BackupTargetType, CifsBackupTarget, RR } from './api.types'
 import { parsePropertiesPermissive } from 'src/app/util/properties.util'
 import { Mock } from './api.fixures'
 import markdown from 'raw-loader!../../../../../shared/assets/markdown/md-sample.md'
@@ -431,43 +431,29 @@ export class MockApiService extends ApiService {
   }
 
   async addBackupTarget(
-    params: RR.AddBackupTargetReq,
+    type: BackupTargetType,
+    params: RR.AddCifsBackupTargetReq | RR.AddCloudBackupTargetReq,
   ): Promise<RR.AddBackupTargetRes> {
     await pauseFor(2000)
     const { hostname, path, username } = params
     return {
-      // latfgvwdbhjsndmk: {
-      //   type: 'cifs',
-      //   hostname,
-      //   path: path.replace(/\\/g, '/'),
-      //   username,
-      //   mountable: true,
-      //   'embassy-os': null,
-      // },
-      alksdhewbfjwamd: {
-        type: 'cloud',
-        name: 'Dropbox 4',
-        provider: 'dropbox',
-        path: '/',
-        mountable: true,
-        'embassy-os': null,
-      },
+      id: 'latfgvwdbhjsndmk',
+      name: 'Local Macbook',
+      type: 'cifs',
+      hostname,
+      path: path.replace(/\\/g, '/'),
+      username,
+      mountable: true,
+      'embassy-os': null,
     }
   }
 
   async updateBackupTarget(
-    params: RR.UpdateBackupTargetReq,
+    type: BackupTargetType,
+    params: RR.UpdateCifsBackupTargetReq | RR.UpdateCloudBackupTargetReq,
   ): Promise<RR.UpdateBackupTargetRes> {
     await pauseFor(2000)
-    const { id, hostname, path, username } = params
-    return {
-      [id]: {
-        ...(Mock.BackupTargets[id] as CifsBackupTarget),
-        hostname,
-        path,
-        username,
-      },
-    }
+    return Mock.BackupTargets.find(b => b.id === params.id)!
   }
 
   async removeBackupTarget(
@@ -512,6 +498,13 @@ export class MockApiService extends ApiService {
   ): Promise<RR.DeleteBackupJobRes> {
     await pauseFor(2000)
     return null
+  }
+
+  async getBackupRuns(
+    params: RR.GetBackupRunsReq,
+  ): Promise<RR.GetBackupRunsRes> {
+    await pauseFor(2000)
+    return Mock.BackupRuns
   }
 
   async getBackupInfo(

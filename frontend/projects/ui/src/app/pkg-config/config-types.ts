@@ -120,7 +120,7 @@ export interface ValueSpecListOf<T extends ListValueSpecType>
   subtype: T
   spec: ListValueSpecOf<T>
   range: string // '[0,1]' (inclusive) OR '[0,*)' (right unbounded), normal math rules
-  default: string[] | number[] | DefaultString[] | object[]
+  default: string[] | number[] | DefaultString[] | Record<string, unknown>[]
 }
 
 // sometimes the type checker needs just a little bit of help

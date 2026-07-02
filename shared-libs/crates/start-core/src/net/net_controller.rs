@@ -226,7 +226,7 @@ impl NetController {
         service.clear_bindings(Default::default()).await?;
         service
             .bind(
-                HostId::default(),
+                HostId::admin(),
                 80,
                 BindOptions {
                     preferred_external_port: 80,
@@ -252,7 +252,7 @@ impl NetController {
         self.db
             .mutate(|db| {
                 let iface_id = ServiceInterfaceId::from(
-                    Id::try_from("startos-ui".to_owned()).expect("valid id"),
+                    Id::try_from("admin-ui".to_owned()).expect("valid id"),
                 );
                 let iface = ServiceInterface {
                     id: iface_id.clone(),
@@ -263,7 +263,7 @@ impl NetController {
                     masked: false,
                     address_info: AddressInfo {
                         username: None,
-                        host_id: HostId::default(),
+                        host_id: HostId::admin(),
                         internal_port: 80,
                         scheme: Some(InternedString::intern("http")),
                         ssl_scheme: Some(InternedString::intern("https")),
@@ -1138,7 +1138,7 @@ impl NetService {
                         let host = watch.peek()?.de()?;
                         let mut data = thread_data.lock().await;
                         let ctrl = data.net_controller()?;
-                        data.update(&*ctrl, HostId::default(), host).await?;
+                        data.update(&*ctrl, HostId::admin(), host).await?;
                         Ok::<_, Error>(())
                     }
                     .await
@@ -1179,7 +1179,11 @@ impl NetService {
                     .de()?;
                 let hostname = ServerHostname::load(db.as_public().as_server_info())?;
                 let mut ports = db.as_private().as_available_ports().de()?;
-                let host = host_for(db, pkg_id.as_ref(), &id)?;
+                let host = host_for(
+                    db,
+                    pkg_id.as_ref().unwrap_or(&PackageId::start_os()),
+                    &id,
+                )?;
                 host.add_binding(&mut ports, internal_port, options)?;
                 host.update_addresses(&hostname, &gateways, &ports)?;
                 db.as_private_mut().as_available_ports_mut().ser(&ports)?;
@@ -1210,7 +1214,11 @@ impl NetService {
                     .de()?;
                 let hostname = ServerHostname::load(db.as_public().as_server_info())?;
                 let mut ports = db.as_private().as_available_ports().de()?;
-                let host = host_for(db, pkg_id.as_ref(), &id)?;
+                let host = host_for(
+                    db,
+                    pkg_id.as_ref().unwrap_or(&PackageId::start_os()),
+                    &id,
+                )?;
                 host.add_binding_range(
                     &mut ports,
                     internal_start_port,
@@ -1286,7 +1294,7 @@ impl NetService {
                     host.as_bindings_mut().mutate(|b| {
                         for (internal_port, info) in b.iter_mut() {
                             if !except.contains(&BindId {
-                                id: HostId::default(),
+                                id: HostId::admin(),
                                 internal_port: *internal_port,
                             }) {
                                 info.disable();
@@ -1297,7 +1305,7 @@ impl NetService {
                     host.as_binding_ranges_mut().mutate(|r| {
                         for (internal_port, info) in r.iter_mut() {
                             if !except.contains(&BindId {
-                                id: HostId::default(),
+                                id: HostId::admin(),
                                 internal_port: *internal_port,
                             }) {
                                 info.disable();

@@ -65,6 +65,7 @@ mod v0_4_0_alpha_22;
 mod v0_4_0_alpha_23;
 mod v0_4_0_beta_0;
 mod v0_4_0_beta_1;
+mod v0_4_0_beta_10;
 mod v0_4_0_beta_2;
 mod v0_4_0_beta_3;
 mod v0_4_0_beta_4;
@@ -73,7 +74,6 @@ mod v0_4_0_beta_6;
 mod v0_4_0_beta_7;
 mod v0_4_0_beta_8;
 mod v0_4_0_beta_9;
-mod v0_4_0_beta_10;
 
 pub type Current = v0_4_0_beta_10::Version; // VERSION_BUMP
 

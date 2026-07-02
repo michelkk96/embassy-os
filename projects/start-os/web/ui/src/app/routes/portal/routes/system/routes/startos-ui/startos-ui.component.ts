@@ -29,7 +29,7 @@ import { TitleDirective } from 'src/app/services/title.service'
       </hgroup>
     </header>
     <br />
-    <service-interface [value]="ui()" [isRunning]="true" />
+    <service-interface packageId="start-os" [value]="ui()" [isRunning]="true" />
   `,
   host: { class: 'g-subpage' },
   providers: [GatewayService],
@@ -49,7 +49,7 @@ export default class StartOsUiComponent {
   private readonly i18n = inject(i18nPipe)
 
   readonly iface: T.ServiceInterface = {
-    id: 'startos-ui',
+    id: 'admin-ui',
     name: 'StartOS UI',
     description: this.i18n.transform(
       'Your personal StartOS web user interface.',
@@ -57,7 +57,7 @@ export default class StartOsUiComponent {
     type: 'ui' as const,
     masked: false,
     addressInfo: {
-      hostId: 'startos-ui',
+      hostId: 'admin',
       internalPort: 80,
       scheme: 'http',
       sslScheme: 'https',

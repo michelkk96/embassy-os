@@ -7,7 +7,7 @@ use ts_rs::TS;
 
 use crate::{Id, InvalidId};
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, TS)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, TS)]
 #[ts(type = "string")]
 pub struct HostId(Id);
 impl FromStr for HostId {
@@ -53,6 +53,13 @@ impl<'de> Deserialize<'de> for HostId {
         D: Deserializer<'de>,
     {
         Ok(HostId(Deserialize::deserialize(deserializer)?))
+    }
+}
+impl HostId {
+    /// The server host's id — the host owning the OS's own bindings (the
+    /// StartOS UI) rather than a package's.
+    pub fn admin() -> Self {
+        Self(Id::try_from("admin").expect("valid id"))
     }
 }
 impl AsRef<Path> for HostId {

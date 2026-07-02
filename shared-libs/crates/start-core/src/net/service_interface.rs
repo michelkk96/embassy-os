@@ -108,7 +108,8 @@ impl HostnameMetadata {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginHostnameInfo {
-    pub package_id: Option<PackageId>,
+    /// [`PackageId::start_os`] identifies the server's own host (the StartOS UI).
+    pub package_id: PackageId,
     pub host_id: HostId,
     pub internal_port: u16,
     pub ssl: bool,

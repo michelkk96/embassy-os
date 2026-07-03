@@ -7,7 +7,8 @@
 # See usage() for the subcommands. The <project> is one of the monorepo's
 # releasable products; its version is read from that product's canonical
 # manifest (Cargo.toml for the Rust products, package.json for the SDK) and its
-# git tag / GitHub release is <project>/v<version>.
+# git tag / GitHub release is <project>/v<version> (the slash namespaces each
+# product's tags; releases before July 2026 used <project>_v<version>).
 
 set -euo pipefail
 
@@ -15,10 +16,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 REPO="Start9Labs/start-technologies"
-# Registries are scoped per project (<PROJECT>_SOURCE/TARGET_REGISTRY); only the
-# OS promotes between registries. The OS chain: CI indexes images into alpha;
-# alpha -> beta is promoted manually, out of band; the full `release` promotes
-# the source (beta) -> target (production). Override either per run.
+# Registries are scoped per project (<PROJECT>_SOURCE/TARGET_REGISTRY); the OS
+# and StartWRT promote source -> target. The OS chain: CI indexes images into
+# alpha; alpha -> beta is promoted manually, out of band; the full `release`
+# promotes the source (beta) -> target (production). Override either per run.
 STARTOS_SOURCE_REGISTRY="${STARTOS_SOURCE_REGISTRY:-https://beta-registry.start9.com}"
 STARTOS_TARGET_REGISTRY="${STARTOS_TARGET_REGISTRY:-https://registry.start9.com}"
 S3_BUCKET="s3://startos-images"
@@ -30,13 +31,37 @@ APT_BASE_URL="https://start9-debs.nyc3.digitaloceanspaces.com"
 APT_SUITE="stable"
 APT_COMPONENT="main"
 
+# StartWRT publishes flashable images to its own registry pair + S3 bucket. The
+# chain mirrors the OS, minus the alpha tier: the CI deploy job (start-wrt.yaml)
+# uploads a build's images to S3 AND registers + indexes them into the source
+# (beta) registry, where beta routers (UCI `startwrt.system.registry` pointed at
+# it) soak the version; the full `release` promotes source -> target
+# (production). `register` is the manual fallback for CI's register/index steps
+# (same commands; keep them in sync — see root AGENTS.md "Coupled changes"). It
+# ships two gzipped images: an sdcard image (fresh install -> the registry `img`
+# slot) and a sysupgrade image (OTA update -> the `squashfs` slot; see
+# cmd_register for the hardlink trick that maps the .img.gz names onto those
+# slots). Override either registry per run.
+STARTWRT_SOURCE_REGISTRY="${STARTWRT_SOURCE_REGISTRY:-https://beta-startwrt-registry.start9.com}"
+STARTWRT_TARGET_REGISTRY="${STARTWRT_TARGET_REGISTRY:-https://startwrt-registry.start9.com}"
+STARTWRT_S3_BUCKET="s3://startwrt-images"
+STARTWRT_S3_CDN="https://startwrt-images.nyc3.cdn.digitaloceanspaces.com"
+STARTWRT_PLATFORM="spacemit,k1-x"
+# The CI artifact (start-wrt.yaml `image` job) holding both images.
+STARTWRT_BUILD_ARTIFACT="startwrt-openwrt-image"
+# Compat floor for `registry os version add`: the oldest installed version
+# allowed to upgrade to this one. An explicit beta floor (not a `^` caret) keeps
+# beta prerelease tags in range. The upper bound (<=$VERSION) is added in
+# cmd_register. Mirrored in start-wrt.yaml's register step.
+STARTWRT_COMPAT_FLOOR="${STARTWRT_COMPAT_FLOOR:->=0.1.0-beta.1}"
+
 # Every OS image platform. Most ship an iso + squashfs; raspberrypi ships a
 # flashable img + squashfs (no iso). See os_image_exts.
 OS_PLATFORMS="x86_64 x86_64-nonfree x86_64-nvidia aarch64 aarch64-nonfree aarch64-nvidia raspberrypi riscv64 riscv64-nonfree"
 CLI_TRIPLES="x86_64-unknown-linux-musl x86_64-apple-darwin aarch64-unknown-linux-musl aarch64-apple-darwin riscv64gc-unknown-linux-musl"
 DEB_ARCHES="x86_64 aarch64 riscv64"
 
-PROJECTS="start-os start-cli start-tunnel start-registry start-sdk"
+PROJECTS="start-os start-cli start-tunnel start-registry start-sdk start-wrt"
 
 # --- Project metadata ---
 
@@ -46,6 +71,7 @@ project_kind() {
         start-cli) echo cli ;;
         start-tunnel | start-registry) echo deb ;;
         start-sdk) echo npm ;;
+        start-wrt) echo wrt ;;
         *) return 1 ;;
     esac
 }
@@ -56,7 +82,13 @@ derive_version() {
         jq -r .version "$REPO_ROOT/projects/$project/package.json"
         return
     fi
+    # start-wrt has no top-level crate; its canonical version lives in the ctrl
+    # crate manifest (mirrors the top CHANGELOG.md entry and start-wrt.yaml's
+    # "Determine version" step).
     local toml="$REPO_ROOT/projects/$project/Cargo.toml"
+    if [ "$project" = start-wrt ]; then
+        toml="$REPO_ROOT/projects/start-wrt/backend/ctrl/Cargo.toml"
+    fi
     version=$(grep -m1 'VERSION_BUMP' "$toml" 2>/dev/null | sed -E 's/.*version *= *"([^"]+)".*/\1/')
     if [ -z "$version" ]; then
         version=$(sed -nE '/^\[package\]/,/^\[/{s/^version *= *"([^"]+)".*/\1/p}' "$toml" | head -1)
@@ -121,6 +153,7 @@ parse_run_id() {
     fi
 }
 
+# Local staging dir: keeps the flat _v separator (the tag's / would nest dirs).
 release_dir() { echo "$HOME/Downloads/${PROJECT}_v${VERSION}"; }
 
 ensure_release_dir() {
@@ -165,6 +198,7 @@ release_files() {
         os) for f in *.iso *.img *.squashfs; do [ -f "$f" ] && echo "$f"; done ;;
         cli) cli_binaries; deb_files ;;
         deb) deb_files ;;
+        wrt) for f in *-sdcard.img.gz *-sysupgrade.img.gz; do [ -f "$f" ] && echo "$f"; done ;;
     esac
 }
 
@@ -286,7 +320,7 @@ cmd_pre_check() {
     # by CI, so the registry is expected to already carry them). For npm it's the
     # published package version.
     case "$KIND" in
-        os | cli | deb)
+        os | cli | deb | wrt)
             if gh release view -R "$REPO" "$TAG" >/dev/null 2>&1; then
                 release_guard "GitHub release ${TAG} already exists" || errors=1
             else
@@ -353,17 +387,55 @@ cmd_pre_check() {
                 errors=1
             fi
             ;;
+        wrt)
+            # `release` pulls the images from the source (beta) registry and
+            # promotes them into production, so both assets must already be
+            # registered there (the CI deploy does that; `register` is the
+            # manual fallback).
+            local wrt_idx slot wrt_missing
+            wrt_idx=$(start-cli --registry="$STARTWRT_SOURCE_REGISTRY" registry os index 2>/dev/null || echo '{}')
+            if ! echo "$wrt_idx" | jq -e ".versions[\"$VERSION\"]" >/dev/null 2>&1; then
+                >&2 echo "  ✗ StartWRT ${VERSION} not in source registry ${STARTWRT_SOURCE_REGISTRY} — run the start-wrt deploy workflow (or 'register') first"
+                errors=1
+            else
+                wrt_missing=""
+                for slot in img squashfs; do
+                    echo "$wrt_idx" | jq -e ".versions[\"$VERSION\"].${slot}[\"$STARTWRT_PLATFORM\"].urls[0]" >/dev/null 2>&1 \
+                        || wrt_missing="${wrt_missing} ${slot}"
+                done
+                if [ -n "$wrt_missing" ]; then
+                    >&2 echo "  ✗ source registry is missing StartWRT assets:${wrt_missing}"
+                    errors=1
+                else
+                    echo "  ✓ source registry has both ${VERSION} images"
+                fi
+            fi
+            # `release` promotes into production; it shouldn't already be there.
+            if start-cli --registry="$STARTWRT_TARGET_REGISTRY" registry os index 2>/dev/null \
+                | jq -e ".versions[\"$VERSION\"]" >/dev/null 2>&1; then
+                release_guard "StartWRT ${VERSION} already in production registry ${STARTWRT_TARGET_REGISTRY}" || errors=1
+            else
+                echo "  ✓ not yet in production registry"
+            fi
+            # promoting re-signs registry commitments with the developer key.
+            if [ -f "$HOME/.startos/developer.key.pem" ]; then
+                echo "  ✓ developer key present"
+            else
+                >&2 echo "  ✗ ~/.startos/developer.key.pem missing (needed to promote to the registry)"
+                errors=1
+            fi
+            ;;
     esac
 
     # gh is needed by every release to create the GitHub release (plus the asset
-    # upload, sign, and apt Release signature for os/cli/deb).
+    # upload, sign, and apt Release signature for os/cli/deb/wrt).
     if gh auth status >/dev/null 2>&1; then
         echo "  ✓ gh authenticated"
     else
         >&2 echo "  ✗ gh not authenticated (run: gh auth login)"
         errors=1
     fi
-    # os/cli/deb also sign their artifacts with the Start9 org key.
+    # os/cli/deb/wrt also sign their artifacts with the Start9 org key.
     if [ "$KIND" != npm ]; then
         if gpg --list-secret-keys "$START9_GPG_KEY" >/dev/null 2>&1; then
             echo "  ✓ Start9 signing key ${START9_GPG_KEY} present"
@@ -396,7 +468,7 @@ cmd_pre_check() {
 }
 
 cmd_pull_gha() {
-    require_kind os cli deb
+    require_kind os cli deb wrt
 
     if [ -z "${RUN_ID:-}" ]; then
         read -rp "RUN_ID (GitHub Actions run for ${PROJECT}): " RUN_ID
@@ -432,6 +504,10 @@ cmd_pull_gha() {
         deb)
             pull_gha_debs
             ;;
+        wrt)
+            echo "  ${STARTWRT_BUILD_ARTIFACT} (sdcard + sysupgrade .img.gz)"
+            gh run download -R "$REPO" "$RUN_ID" -n "$STARTWRT_BUILD_ARTIFACT" -D "$(pwd)"
+            ;;
     esac
 }
 
@@ -458,6 +534,30 @@ cmd_pull() {
         npm)
             npm pack "${SDK_NPM_PACKAGE}@${VERSION}"
             ;;
+        wrt)
+            # Pull from the source (beta) registry — at release time the
+            # version is not yet promoted into production. `registry os asset
+            # get` verifies the ed25519 registry signature + blake3 commitment
+            # as it streams. start-cli names its output
+            # startos-<ver>_<platform>.<ext>, so move each into place under its
+            # published basename (the basename of the indexed URL) to match
+            # release_files().
+            local slot url published tmp
+            for slot in img squashfs; do
+                url=$(start-cli --registry="$STARTWRT_SOURCE_REGISTRY" registry os index 2>/dev/null \
+                    | jq -r ".versions[\"$VERSION\"].${slot}[\"$STARTWRT_PLATFORM\"].urls[0]")
+                if [ -z "$url" ] || [ "$url" = null ]; then
+                    >&2 echo "  (no '$slot' asset indexed for v$VERSION, skipping)"
+                    continue
+                fi
+                published=$(basename "$url")
+                echo "  ${slot} -> ${published}"
+                tmp=$(mktemp -d "$(pwd)/.get-$slot.XXXXXX")
+                start-cli --registry="$STARTWRT_SOURCE_REGISTRY" registry os asset get "$slot" "$VERSION" "$STARTWRT_PLATFORM" -d "$tmp"
+                mv -f "$tmp"/* "$published"
+                rmdir "$tmp"
+            done
+            ;;
     esac
 }
 
@@ -471,8 +571,8 @@ cmd_tag() {
 }
 
 cmd_create_gh_release() {
-    require_kind os cli deb npm
-    # os/cli/deb reference their pulled artifacts in the notes; npm (the SDK)
+    require_kind os cli deb npm wrt
+    # os/cli/deb/wrt reference their pulled artifacts in the notes; npm (the SDK)
     # ships to npm and its notes are just the changelog, so it needs no release dir.
     [ "$KIND" = npm ] || enter_release_dir
     local notes
@@ -518,21 +618,78 @@ cmd_push() {
             echo "Building and publishing ${SDK_NPM_PACKAGE}@${VERSION} to npm..."
             make -C "$REPO_ROOT/projects/start-sdk" publish ${OTP:+OTP=$OTP}
             ;;
+        wrt)
+            enter_release_dir
+            echo "Uploading StartWRT images to ${STARTWRT_S3_BUCKET}/v${VERSION}/ ..."
+            local file
+            for file in $(release_files); do
+                echo "  $file"
+                s3cmd put -P "$file" "${STARTWRT_S3_BUCKET}/v${VERSION}/$file"
+            done
+            ;;
     esac
 }
 
 cmd_index() {
-    require_kind os
-    # Promote the version (+ every iso/squashfs/img asset) from the source
-    # registry into production. This copies the index entries and re-signs the
-    # commitments with the developer key — the images stay on the shared S3
-    # bucket, so nothing is re-uploaded.
-    echo "Promoting OS ${VERSION}: ${STARTOS_SOURCE_REGISTRY} -> ${STARTOS_TARGET_REGISTRY} ..."
-    start-cli registry os promote --from "$STARTOS_SOURCE_REGISTRY" --to "$STARTOS_TARGET_REGISTRY" "$VERSION"
+    require_kind os wrt
+    case "$KIND" in
+        os)
+            # Promote the version (+ every iso/squashfs/img asset) from the source
+            # registry into production. This copies the index entries and re-signs
+            # the commitments with the developer key — the images stay on the
+            # shared S3 bucket, so nothing is re-uploaded.
+            echo "Promoting OS ${VERSION}: ${STARTOS_SOURCE_REGISTRY} -> ${STARTOS_TARGET_REGISTRY} ..."
+            start-cli registry os promote --from "$STARTOS_SOURCE_REGISTRY" --to "$STARTOS_TARGET_REGISTRY" "$VERSION"
+            ;;
+        wrt)
+            # Promote the version (+ its img/squashfs assets) from the source
+            # (beta) registry into production — the same index-copy +
+            # developer-key re-sign as the OS; the images stay on the StartWRT
+            # S3 bucket, so nothing is re-uploaded.
+            echo "Promoting StartWRT ${VERSION}: ${STARTWRT_SOURCE_REGISTRY} -> ${STARTWRT_TARGET_REGISTRY} ..."
+            start-cli registry os promote --from "$STARTWRT_SOURCE_REGISTRY" --to "$STARTWRT_TARGET_REGISTRY" "$VERSION"
+            ;;
+    esac
+}
+
+cmd_register() {
+    require_kind wrt
+    # Register + index a CI build into the source (beta) registry, where beta
+    # routers soak it before `release` promotes it into production. Normally
+    # the CI deploy job (start-wrt.yaml) does this itself right after the S3
+    # upload — this is the manual fallback (same commands; keep in sync). Run
+    # pull-gha first: registering needs the image files locally to compute the
+    # signed blake3 commitments. The compat range is the set of installed
+    # versions allowed to upgrade to this one.
+    enter_release_dir
+    echo "Registering StartWRT ${VERSION} in ${STARTWRT_SOURCE_REGISTRY}..."
+    start-cli --registry="$STARTWRT_SOURCE_REGISTRY" registry os version add \
+        "$VERSION" "v$VERSION" '' "${STARTWRT_COMPAT_FLOOR} <=$VERSION"
+
+    # start-cli infers the asset slot from the file extension and only accepts
+    # iso/img/squashfs. Both images ship gzipped, so present each under a
+    # hardlink whose extension names its slot: the sdcard image as .img (the
+    # fresh-install slot) and the sysupgrade image as .squashfs (start-os's
+    # update-asset slot). The indexed URLs still point at the honestly-named
+    # .img.gz files on S3 (the registry only requires the URL's bytes to match
+    # the signed blake3 commitment, which the hardlinks share).
+    local file index_file
+    for file in $(release_files); do
+        case "$file" in
+            *-sdcard.img.gz) index_file="${file%.img.gz}.img" ;;
+            *-sysupgrade.img.gz) index_file="${file%.img.gz}.squashfs" ;;
+            *) index_file="$file" ;;
+        esac
+        [ "$index_file" = "$file" ] || ln -f "$file" "$index_file"
+        echo "Indexing $file for platform ${STARTWRT_PLATFORM}..."
+        start-cli --registry="$STARTWRT_SOURCE_REGISTRY" registry os asset add \
+            --platform="$STARTWRT_PLATFORM" --version="$VERSION" \
+            "$index_file" "$STARTWRT_S3_CDN/v$VERSION/$file"
+    done
 }
 
 cmd_sign() {
-    require_kind os cli deb
+    require_kind os cli deb wrt
     enter_release_dir
     resolve_gh_user
 
@@ -558,7 +715,7 @@ cmd_sign() {
 }
 
 cmd_cosign() {
-    require_kind os cli deb
+    require_kind os cli deb wrt
     enter_release_dir
     resolve_gh_user
 
@@ -621,6 +778,18 @@ release_notes() {
             mapfile -t debs < <(deb_files)
             checksum_block "${PROJECT} packages" "${debs[@]}"
             ;;
+        wrt)
+            echo "## Image Downloads"
+            echo
+            local sdcard sysupgrade imgs
+            sdcard=$(release_files | grep -E -- '-sdcard\.img\.gz$' | head -1)
+            sysupgrade=$(release_files | grep -E -- '-sysupgrade\.img\.gz$' | head -1)
+            [ -n "$sdcard" ] && echo "- [SD card image (fresh install)]($STARTWRT_S3_CDN/v$VERSION/$sdcard \"Write to microSD/eMMC to flash a new device\")"
+            [ -n "$sysupgrade" ] && echo "- [Sysupgrade image (OTA update)]($STARTWRT_S3_CDN/v$VERSION/$sysupgrade \"In-place upgrade via OpenWrt sysupgrade\")"
+            echo
+            mapfile -t imgs < <(release_files)
+            checksum_block "StartWRT" "${imgs[@]}"
+            ;;
     esac
 }
 
@@ -642,7 +811,7 @@ checksum_block() {
 }
 
 cmd_notes() {
-    require_kind os cli deb npm
+    require_kind os cli deb npm wrt
     [ "$KIND" = npm ] || enter_release_dir
     release_notes
 }
@@ -677,6 +846,20 @@ cmd_release() {
             cmd_create_gh_release
             cmd_push
             ;;
+        wrt)
+            # CI (start-wrt.yaml `deploy`) uploaded the images to S3 and
+            # registered + indexed them into the source (beta) registry, where
+            # beta routers soaked the version — so there's no push here. Pull
+            # the registered images (signature-verified) to build the release
+            # notes + sign them, tag, cut the GitHub release, and `index`
+            # promotes them from source into production.
+            cmd_pre_check
+            cmd_pull
+            cmd_tag
+            cmd_create_gh_release
+            cmd_index
+            cmd_sign
+            ;;
     esac
 }
 
@@ -690,15 +873,19 @@ Projects:
   start-tunnel    per-arch .deb -> apt repo + GitHub release
   start-registry  per-arch .deb -> apt repo + GitHub release
   start-sdk       npm package -> npm + GitHub release
+  start-wrt       flashable images (sdcard + sysupgrade .img.gz) -> S3 +
+                  StartWRT registries (CI's deploy indexes into beta; `release`
+                  promotes beta -> production)
 
-Version is read from the project's manifest (Cargo.toml, or package.json for
-start-sdk); the git tag / GitHub release is <project>/v<version>.
+Version is read from the project's manifest (Cargo.toml — for start-wrt the ctrl
+crate's — or package.json for start-sdk); the git tag / GitHub release is
+<project>/v<version>.
 
 Subcommands:
   pre-check          Verify the changelog documents this version and that the
                      version is not already tagged/released.
   pull-gha           Download build artifacts from a GitHub Actions run.
-                     (os/cli/deb; set RUN_ID or you'll be prompted.)
+                     (os/cli/deb/wrt; set RUN_ID or you'll be prompted.)
   pull               Download the released assets from their official location
                      (registry / apt repo / GitHub release / npm).
   tag                Create and push the <project>/v<version> git tag.
@@ -707,13 +894,18 @@ Subcommands:
   push               Upload artifacts to their destination (S3 for os, GitHub
                      release + apt for cli/deb, npm publish for sdk). For os this
                      normally runs in CI; use it for a manual re-publish.
-  index              Promote the OS version from the source registry into the
-                     production registry (os only). CI indexes alpha; alpha->beta
-                     is promoted manually; this does source (beta) -> prod.
+  index              Promote the version from the source (beta) registry into
+                     the production registry. (os: CI indexes alpha; alpha->beta
+                     is promoted manually. wrt: CI indexes into beta.)
+  register           wrt only: register + index a CI build's images into the
+                     source (beta) registry, pointing at their S3/CDN URLs.
+                     Manual fallback — the CI deploy normally does this. Run
+                     pull-gha first; beta routers then soak the version
+                     until `release` promotes it.
   sign               Sign artifacts with the Start9 org key (+ personal key if
-                     available) and upload signatures.tar.gz. (os/cli/deb.)
+                     available) and upload signatures.tar.gz. (os/cli/deb/wrt.)
   cosign             Add your personal GPG signature to an existing release's
-                     signatures.tar.gz. (os/cli/deb; run 'pull' first.)
+                     signatures.tar.gz. (os/cli/deb/wrt; run 'pull' first.)
   notes              Print the release notes to stdout. (all projects.)
   release            Run the full applicable pipeline for the project.
 
@@ -730,9 +922,15 @@ Environment variables:
   OTP                      npm one-time password for start-sdk publish
                            (prompted for at publish time if unset)
 
-Registries are scoped per project (only the OS promotes between registries):
-  STARTOS_SOURCE_REGISTRY  registry the OS release pulls/promotes from (default: beta)
-  STARTOS_TARGET_REGISTRY  registry the OS release promotes into (default: production)
+Registries are scoped per project (the OS and StartWRT promote source -> target):
+  STARTOS_SOURCE_REGISTRY   registry the OS release pulls/promotes from (default: beta)
+  STARTOS_TARGET_REGISTRY   registry the OS release promotes into (default: production)
+  STARTWRT_SOURCE_REGISTRY  registry CI (or `register`) indexes into and the
+                            StartWRT release pulls/promotes from (default: beta)
+  STARTWRT_TARGET_REGISTRY  registry the StartWRT release promotes into
+                            (default: production)
+  STARTWRT_COMPAT_FLOOR     oldest version allowed to upgrade to this StartWRT
+                            release (default: >=0.1.0-beta.1)
 EOF
 }
 
@@ -767,6 +965,7 @@ case "$SUBCOMMAND" in
     create-gh-release) cmd_create_gh_release ;;
     push) cmd_push ;;
     index) cmd_index ;;
+    register) cmd_register ;;
     sign) cmd_sign ;;
     cosign) cmd_cosign ;;
     notes) cmd_notes ;;

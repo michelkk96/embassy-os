@@ -3,22 +3,22 @@ export {};
 /**
  * Generate llms.txt from multiple mdBook instances
  *
- * Discovers books by scanning for {name}/book.toml at repo root,
- * parses each book's SUMMARY.md to get page hierarchy,
- * reads each page's H1 title and intro prose,
- * and outputs per-book files (docs/<book>/llms.txt, docs/<book>/llms-full.txt)
- * plus global combined files (docs/llms.txt, docs/llms-full.txt).
+ * Discovers books from versions.conf and resolves each to its source dir
+ * (mirroring build.sh's book_dir()), parses each book's SUMMARY.md to get page
+ * hierarchy, reads each page's H1 title and intro prose, and outputs per-book
+ * files (docs/<book>/llms.txt, docs/<book>/llms-full.txt) plus global combined
+ * files (docs/llms.txt, docs/llms-full.txt).
  *
  * Usage: npx tsx generate-llms-txt.ts
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
-import { globSync } from "glob";
 
 const ROOT_DIR = join(import.meta.dirname, "..");
 const OUT_DIR = join(ROOT_DIR, "docs");
 const BASE_URL = "https://docs.start9.com";
+const VERSIONS_CONF = join(ROOT_DIR, "versions.conf");
 
 type Book = {
   name: string;
@@ -61,20 +61,58 @@ const bookInfo: Record<string, { label: string; description: string }> = {
   },
 };
 
-/** Discover all books by finding {name}/book.toml at repo root */
+/**
+ * Map a book name to its source dir, mirroring build.sh's book_dir().
+ * The per-product books live next to their code, not under this project.
+ */
+function bookDir(name: string): string {
+  switch (name) {
+    case "start-os":
+      return join(ROOT_DIR, "..", "start-os", "docs");
+    case "start-tunnel":
+      return join(ROOT_DIR, "..", "start-tunnel", "docs");
+    case "packaging":
+      return join(ROOT_DIR, "..", "start-sdk", "docs");
+    case "start-wrt":
+      return join(ROOT_DIR, "..", "start-wrt", "docs");
+    default:
+      return join(ROOT_DIR, name);
+  }
+}
+
+/**
+ * Discover books from versions.conf — the source of truth shared with build.sh,
+ * docs-deploy.yml, and nginx routing — resolving each to its source dir.
+ * Throws if a listed book has no SUMMARY.md so CI fails loudly instead of
+ * silently shipping a docs site missing a product's llms.txt (which is what
+ * starved the support bot when the books moved into the monorepo).
+ */
 function discoverBooks(): Book[] {
-  const bookTomls = globSync("*/book.toml", { cwd: ROOT_DIR });
-  return bookTomls.map((tomlPath) => {
-    const name = tomlPath.split("/")[0];
+  const books: Book[] = [];
+  for (const line of readFileSync(VERSIONS_CONF, "utf-8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const name = trimmed.split("=")[0].trim();
+    if (!name) continue;
+
+    const srcDir = join(bookDir(name), "src");
+    const summaryPath = join(srcDir, "SUMMARY.md");
+    if (!existsSync(summaryPath)) {
+      throw new Error(
+        `Book "${name}" from versions.conf has no SUMMARY.md at ${summaryPath}`,
+      );
+    }
+
     const info = bookInfo[name] || { label: name, description: "" };
-    return {
+    books.push({
       name,
       label: info.label,
       description: info.description,
-      srcDir: join(ROOT_DIR, name, "src"),
-      summaryPath: join(ROOT_DIR, name, "src", "SUMMARY.md"),
-    };
-  });
+      srcDir,
+      summaryPath,
+    });
+  }
+  return books;
 }
 
 // Parse SUMMARY.md into a flat list of part titles and page entries.

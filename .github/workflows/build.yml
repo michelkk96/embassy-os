@@ -30,6 +30,14 @@ jobs:
         with:
           submodules: recursive
 
+      # `make print-TARGETS` parses the Makefile, whose `include
+      # node_modules/@start9labs/start-sdk/s9pk.mk` (SDK 2.0+) only exists after
+      # a dependency install. Without this the include is unresolvable, make
+      # can't parse, and discovery falls back to a single-runner build.
+      - name: Install package dependencies
+        run: npm ci
+        shell: bash
+
       - name: Discover build matrix
         id: discover
         run: |
@@ -78,6 +86,12 @@ jobs:
           else
             start-cli init-key
           fi
+        shell: bash
+
+      # SDK 2.0+ packages `include node_modules/@start9labs/start-sdk/s9pk.mk`,
+      # so node_modules must exist before make can parse the Makefile.
+      - name: Install package dependencies
+        run: npm ci
         shell: bash
 
       - name: Build (make ${{ matrix.target || '(default)' }})

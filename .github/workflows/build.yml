@@ -88,6 +88,18 @@ jobs:
           fi
         shell: bash
 
+      # start-cli 0.4.0-beta.10's `s9pk pack` requires a packaging workspace: a
+      # `.startos/` dir holding a `build-key` signing key. A bare CI checkout has
+      # none, and `s9pk init-workspace` would clone the guide repo. Provision the
+      # minimum instead — reuse the developer key as the workspace build key,
+      # which restores the pre-beta.10 signing identity (s9pks were signed by the
+      # developer key before the build-key split).
+      - name: Provision workspace build key
+        run: |
+          mkdir -p .startos
+          cp ~/.startos/developer.key.pem .startos/build-key
+        shell: bash
+
       # SDK 2.0+ packages `include node_modules/@start9labs/start-sdk/s9pk.mk`,
       # so node_modules must exist before make can parse the Makefile.
       - name: Install package dependencies

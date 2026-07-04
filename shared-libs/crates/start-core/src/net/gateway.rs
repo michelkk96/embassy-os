@@ -34,7 +34,7 @@ use crate::db::model::public::{IpInfo, NetworkInterfaceInfo, NetworkInterfaceTyp
 use crate::net::forward::{START9_BRIDGE_IFACE, nft_ensure_base};
 use crate::net::gateway::device::DeviceProxy;
 use crate::net::host::all_hosts;
-use crate::net::utils::{bind_mio_listener, find_wifi_iface};
+use crate::net::utils::{bind_mio_listener, find_wifi_iface, ipv6_is_local};
 use crate::net::web_server::{Accept, AcceptStream, MetadataVisitor, TcpMetadata};
 use crate::prelude::*;
 use crate::util::Invoke;
@@ -354,6 +354,13 @@ impl WgConfig {
                 d.insert("public-key".into(), p.public_key.as_str().into());
                 if let Some(psk) = &p.preshared_key {
                     d.insert("preshared-key".into(), psk.as_str().into());
+                    // NM_SETTING_SECRET_FLAG_NONE (system-owned, stored). Required
+                    // for the update-config path: `Update2` persists the interface
+                    // `private-key` but silently DROPS this nested peer secret when
+                    // no flag is set, so a re-issued tunnel loses its PSK and the
+                    // handshake fails. `AddAndActivateConnection` normalizes the
+                    // flag for us; `Update2` does not — so we set it explicitly.
+                    d.insert("preshared-key-flags".into(), 0u32.into());
                 }
                 if let Some(ep) = &p.endpoint {
                     d.insert("endpoint".into(), ep.as_str().into());
@@ -1259,14 +1266,23 @@ async fn gc_policy_routing(active_ifaces: &BTreeSet<GatewayId>) {
         .filter_map(|iface| if_nametoindex(iface.as_str()).ok().map(|idx| 1000 + idx))
         .collect();
 
-    // GC fwmark ip rules at priority 50 and their routing tables.
-    if let Ok(rules) = Command::new("ip")
-        .arg("rule")
-        .arg("show")
-        .invoke(ErrorKind::Network)
-        .await
-        .and_then(|b| String::from_utf8(b).with_kind(ErrorKind::Utf8))
-    {
+    // Collect stale per-interface table ids from the priority-50 fwmark rules in
+    // both families (IPv4 and IPv6 install the same `1000 + ifindex` rule).
+    let mut stale = BTreeSet::<u32>::new();
+    for v6 in [false, true] {
+        let mut cmd = Command::new("ip");
+        if v6 {
+            cmd.arg("-6");
+        }
+        let Ok(rules) = cmd
+            .arg("rule")
+            .arg("show")
+            .invoke(ErrorKind::Network)
+            .await
+            .and_then(|b| String::from_utf8(b).with_kind(ErrorKind::Utf8))
+        else {
+            continue;
+        };
         for line in rules.lines() {
             let line = line.trim();
             if !line.starts_with("50:") {
@@ -1282,10 +1298,22 @@ async fn gc_policy_routing(active_ifaces: &BTreeSet<GatewayId>) {
             if table_id < 1000 || active_tables.contains(&table_id) {
                 continue;
             }
-            let table_str = table_id.to_string();
-            tracing::debug!("gc_policy_routing: removing stale table {table_id}");
-            Command::new("ip")
-                .arg("rule")
+            stale.insert(table_id);
+        }
+    }
+
+    // For each stale table, remove the priority-50 fwmark rule and flush its
+    // routing table in both families, so a removed interface leaves no stale
+    // reply-routing rule, v4 default, or v6 default/blackhole behind.
+    for table_id in stale {
+        let table_str = table_id.to_string();
+        tracing::debug!("gc_policy_routing: removing stale table {table_id}");
+        for v6 in [false, true] {
+            let mut del = Command::new("ip");
+            if v6 {
+                del.arg("-6");
+            }
+            del.arg("rule")
                 .arg("del")
                 .arg("fwmark")
                 .arg(&table_str)
@@ -1296,7 +1324,11 @@ async fn gc_policy_routing(active_ifaces: &BTreeSet<GatewayId>) {
                 .invoke(ErrorKind::Network)
                 .await
                 .ok();
-            Command::new("ip")
+            let mut flush = Command::new("ip");
+            if v6 {
+                flush.arg("-6");
+            }
+            flush
                 .arg("route")
                 .arg("flush")
                 .arg("table")
@@ -1305,6 +1337,122 @@ async fn gc_policy_routing(active_ifaces: &BTreeSet<GatewayId>) {
                 .await
                 .ok();
         }
+    }
+}
+
+/// Snapshot the fwmarks at priority 74 and table ids at priority 75 already
+/// present in one family's rule table (`v6` selects `ip -6`). Both families are
+/// reconciled from the same desired set, so `apply_default_outbound` snapshots
+/// each separately.
+async fn snapshot_outbound_rules(v6: bool) -> (BTreeSet<u32>, BTreeSet<u32>) {
+    match async {
+        let mut cmd = Command::new("ip");
+        if v6 {
+            cmd.arg("-6");
+        }
+        let output =
+            String::from_utf8(cmd.arg("rule").arg("show").invoke(ErrorKind::Network).await?)?;
+        let mut fwmarks_74 = BTreeSet::<u32>::new();
+        let mut tables_75 = BTreeSet::<u32>::new();
+        for line in output.lines() {
+            let line = line.trim();
+            if let Some(rest) = line.strip_prefix("74:") {
+                if let Some(pos) = rest.find("fwmark ") {
+                    let after = &rest[pos + 7..];
+                    let token = after.split_whitespace().next().unwrap_or("");
+                    if let Ok(v) =
+                        u32::from_str_radix(token.strip_prefix("0x").unwrap_or(token), 16)
+                    {
+                        fwmarks_74.insert(v);
+                    }
+                }
+            } else if let Some(rest) = line.strip_prefix("75:") {
+                if let Some(pos) = rest.find("lookup ") {
+                    let after = &rest[pos + 7..];
+                    let token = after.split_whitespace().next().unwrap_or("");
+                    if let Ok(v) = token.parse::<u32>() {
+                        tables_75.insert(v);
+                    }
+                }
+            }
+        }
+        Ok::<_, Error>((fwmarks_74, tables_75))
+    }
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!("failed to snapshot outbound rules: {e}");
+            (BTreeSet::new(), BTreeSet::new())
+        }
+    }
+}
+
+/// Reconcile one family's priority-74 (wg-encap fwmark → main) and priority-75
+/// (catch-all → chosen gateway's table) outbound rules from `existing` toward
+/// `desired`. The desired sets are family-agnostic — the same wg fwmarks and
+/// gateway table id — so only the rule table (`v6` selects `ip -6`) differs.
+async fn reconcile_outbound_rules(
+    v6: bool,
+    existing_74: &BTreeSet<u32>,
+    desired_74: &BTreeSet<u32>,
+    existing_75: &BTreeSet<u32>,
+    desired_75: &BTreeSet<u32>,
+) {
+    let ip = || {
+        let mut c = Command::new("ip");
+        if v6 {
+            c.arg("-6");
+        }
+        c
+    };
+    for fwmark in desired_74.difference(existing_74) {
+        ip().arg("rule")
+            .arg("add")
+            .arg("fwmark")
+            .arg(fwmark.to_string())
+            .arg("lookup")
+            .arg("main")
+            .arg("priority")
+            .arg("74")
+            .invoke(ErrorKind::Network)
+            .await
+            .log_err();
+    }
+    for table in desired_75.difference(existing_75) {
+        ip().arg("rule")
+            .arg("add")
+            .arg("table")
+            .arg(table.to_string())
+            .arg("priority")
+            .arg("75")
+            .invoke(ErrorKind::Network)
+            .await
+            .log_err();
+    }
+    for fwmark in existing_74.difference(desired_74) {
+        ip().arg("rule")
+            .arg("del")
+            .arg("fwmark")
+            .arg(fwmark.to_string())
+            .arg("lookup")
+            .arg("main")
+            .arg("priority")
+            .arg("74")
+            .invoke(ErrorKind::Network)
+            .await
+            .log_err();
+    }
+    for table in existing_75.difference(desired_75) {
+        ip().arg("rule")
+            .arg("del")
+            .arg("table")
+            .arg(table.to_string())
+            .arg("priority")
+            .arg("75")
+            .invoke(ErrorKind::Network)
+            .await
+            .log_err();
     }
 }
 
@@ -1337,16 +1485,23 @@ fn policy_table_for(device_type: Option<NetworkInterfaceType>, iface: &GatewayId
 /// Declaratively reconcile the StartOS-owned mangle policy-routing rules.
 ///
 /// Single-writer (only the gateway coordinator calls this) and applied as one
-/// atomic nft transaction: both mangle chains are flushed and rebuilt from the
+/// atomic nft transaction: the mangle chains are flushed and rebuilt from the
 /// active interface set, so there is no multi-writer race and defunct
 /// `mark-<iface>` rules are removed for free by the flush. `restore-mark` is
 /// emitted first so it runs before the per-interface set-mark rules (a new
 /// packet then leaves with mark 0 and routes via the main table).
+///
+/// IPv4 and IPv6 carry the same CONNMARK reply-routing layer, rebuilt together
+/// so a reply to a v6 connection that arrived on a tunnel (host-terminated or
+/// DNAT'd to a container) routes back out it via the priority-50 fwmark rule,
+/// exactly like v4. `sni-divert` is IPv4-only (IP_TRANSPARENT egress is v4).
 async fn reconcile_mangle_rules(policy_ifaces: &BTreeMap<GatewayId, u32>) -> Result<(), Error> {
     nft_ensure_base().await?;
     let mut script = String::new();
     script.push_str("flush chain ip startos mangle_prerouting\n");
     script.push_str("flush chain ip startos mangle_output\n");
+    script.push_str("flush chain ip6 startos mangle_prerouting\n");
+    script.push_str("flush chain ip6 startos mangle_output\n");
     script.push_str(
         "add rule ip startos mangle_prerouting meta mark 0x00000000 meta mark set ct mark comment \"restore-mark\"\n",
     );
@@ -1356,9 +1511,19 @@ async fn reconcile_mangle_rules(policy_ifaces: &BTreeMap<GatewayId, u32>) -> Res
     script.push_str(
         "add rule ip startos mangle_output meta mark 0x00000000 meta mark set ct mark comment \"restore-mark\"\n",
     );
+    script.push_str(
+        "add rule ip6 startos mangle_prerouting meta mark 0x00000000 meta mark set ct mark comment \"restore-mark\"\n",
+    );
+    script.push_str(
+        "add rule ip6 startos mangle_output meta mark 0x00000000 meta mark set ct mark comment \"restore-mark\"\n",
+    );
     for (iface, table_id) in policy_ifaces {
         script.push_str(&format!(
             "add rule ip startos mangle_prerouting iifname \"{iface}\" ct state new ct mark set {table_id} comment \"mark-{iface}\"\n",
+            iface = iface.as_str(),
+        ));
+        script.push_str(&format!(
+            "add rule ip6 startos mangle_prerouting iifname \"{iface}\" ct state new ct mark set {table_id} comment \"mark-{iface}\"\n",
             iface = iface.as_str(),
         ));
     }
@@ -1660,6 +1825,174 @@ async fn apply_policy_routing(
     Ok(())
 }
 
+/// IPv6 counterpart of [`apply_policy_routing`]'s per-interface table work.
+///
+/// The table `1000 + ifindex` mirrors `main`'s non-default v6 routes (so
+/// on-link/local v6 still goes direct) plus a default: `default [via gw] dev
+/// iface` when the interface can carry v6, otherwise `blackhole default`. That
+/// per-gateway blackhole is the leak guard — a gateway with no IPv6 selected as
+/// the default outbound (the priority-75 catch-all) then drops v6 rather than
+/// letting it fall through to some other interface's default.
+///
+/// The table backs two rule layers, both IPv4 parity: the priority-75
+/// default-outbound catch-all ([`apply_default_outbound`]) and the priority-50
+/// CONNMARK reply-routing rule installed at the end here (marks set by
+/// [`reconcile_mangle_rules`]). IPv6 has no NAT/SNI-demux reply layer to build —
+/// the mark alone routes a reply back out the interface its connection arrived
+/// on, so a v6 service reached through a tunnel can answer.
+async fn apply_policy_routing_v6(
+    guard: &PolicyRoutingGuard,
+    iface: &GatewayId,
+    lan_ip: &OrdSet<IpAddr>,
+    subnets: &OrdSet<IpNet>,
+) -> Result<(), Error> {
+    let table_id = guard.table_id;
+    let table_str = table_id.to_string();
+
+    let ipv6_gateway: Option<Ipv6Addr> = lan_ip.iter().find_map(|ip| match ip {
+        IpAddr::V6(v6) => Some(*v6),
+        _ => None,
+    });
+    // The interface can carry v6 if it has a v6 gateway, or holds a global
+    // (non-link-local, non-ULA) v6 address of its own — the delegated-GUA case,
+    // where a point-to-point wg tunnel has no gateway but still routes v6.
+    let v6_capable = ipv6_gateway.is_some()
+        || subnets.iter().any(|n| match n {
+            IpNet::V6(v6n) => !ipv6_is_local(v6n.addr()),
+            _ => false,
+        });
+
+    // Mirror main's non-default v6 routes into the per-interface table, so the
+    // priority-75 catch-all does not send on-link/local v6 through the gateway.
+    let mut desired_prefixes = BTreeSet::<String>::new();
+    if let Ok(main_routes) = Command::new("ip")
+        .arg("-6")
+        .arg("route")
+        .arg("show")
+        .arg("table")
+        .arg("main")
+        .invoke(ErrorKind::Network)
+        .await
+        .and_then(|b| String::from_utf8(b).with_kind(ErrorKind::Utf8))
+    {
+        for line in main_routes.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with("default") {
+                continue;
+            }
+            if let Some(prefix) = line.split_whitespace().next() {
+                desired_prefixes.insert(prefix.to_owned());
+            }
+            let mut cmd = Command::new("ip");
+            cmd.arg("-6").arg("route").arg("replace");
+            for part in line.split_whitespace() {
+                if part == "linkdown" || part == "dead" {
+                    continue;
+                }
+                cmd.arg(part);
+            }
+            cmd.arg("table").arg(&table_str);
+            if let Err(e) = cmd.invoke(ErrorKind::Network).await {
+                if e.source.to_string().contains("No such file or directory") {
+                    tracing::trace!("ip -6 route replace (transient device): {e}");
+                } else {
+                    tracing::error!("{e}");
+                    tracing::debug!("{e:?}");
+                }
+            }
+        }
+    }
+
+    // Replace the default: a real route when the interface can carry v6, else a
+    // blackhole so a non-v6 gateway selected as default outbound drops v6.
+    {
+        let mut cmd = Command::new("ip");
+        cmd.arg("-6").arg("route").arg("replace");
+        if v6_capable {
+            cmd.arg("default");
+            if let Some(gw) = ipv6_gateway {
+                cmd.arg("via").arg(gw.to_string());
+            }
+            cmd.arg("dev").arg(iface.as_str()).arg("table").arg(&table_str);
+        } else {
+            cmd.arg("blackhole")
+                .arg("default")
+                .arg("table")
+                .arg(&table_str);
+        }
+        cmd.invoke(ErrorKind::Network).await.log_err();
+    }
+
+    // Delete stale non-default v6 routes no longer mirrored from main.
+    if let Ok(existing_routes) = Command::new("ip")
+        .arg("-6")
+        .arg("route")
+        .arg("show")
+        .arg("table")
+        .arg(&table_str)
+        .invoke(ErrorKind::Network)
+        .await
+        .and_then(|b| String::from_utf8(b).with_kind(ErrorKind::Utf8))
+    {
+        for line in existing_routes.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with("default") || line.starts_with("blackhole") {
+                continue;
+            }
+            let Some(prefix) = line.split_whitespace().next() else {
+                continue;
+            };
+            if desired_prefixes.contains(prefix) {
+                continue;
+            }
+            Command::new("ip")
+                .arg("-6")
+                .arg("route")
+                .arg("del")
+                .arg(prefix)
+                .arg("table")
+                .arg(&table_str)
+                .invoke(ErrorKind::Network)
+                .await
+                .log_err();
+        }
+    }
+
+    // Ensure the priority-50 fwmark ip rule for this interface's table — the
+    // IPv6 half of the CONNMARK reply-routing layer (marks set by
+    // `reconcile_mangle_rules`). Mirrors `apply_policy_routing`'s IPv4 rule so a
+    // reply to a connection that arrived on this interface (host-terminated or
+    // DNAT'd to a container) routes back out it rather than being lost.
+    let rules_output = String::from_utf8(
+        Command::new("ip")
+            .arg("-6")
+            .arg("rule")
+            .arg("list")
+            .invoke(ErrorKind::Network)
+            .await?,
+    )?;
+    if !rules_output
+        .lines()
+        .any(|l| l.contains("fwmark") && l.contains(&format!("lookup {table_id}")))
+    {
+        Command::new("ip")
+            .arg("-6")
+            .arg("rule")
+            .arg("add")
+            .arg("fwmark")
+            .arg(&table_str)
+            .arg("lookup")
+            .arg(&table_str)
+            .arg("priority")
+            .arg("50")
+            .invoke(ErrorKind::Network)
+            .await
+            .log_err();
+    }
+
+    Ok(())
+}
+
 async fn poll_ip_info(
     ip4_proxy: &Ip4ConfigProxy<'_>,
     ip6_proxy: &Ip6ConfigProxy<'_>,
@@ -1729,6 +2062,12 @@ async fn poll_ip_info(
     // eliminating the need for MASQUERADE.
     if let Some(guard) = policy_guard {
         apply_policy_routing(guard, iface, &lan_ip).await?;
+        // v6 has no NAT/SNI-demux reply layer, but this now installs the v6
+        // CONNMARK reply-routing rule (priority 50, IPv4 parity — marks set by
+        // `reconcile_mangle_rules`) alongside readying the interface's v6 table
+        // for the default-outbound catch-all and the per-gateway leak-guard
+        // blackhole (when the interface can't carry v6).
+        apply_policy_routing_v6(guard, iface, &lan_ip, &subnets).await?;
     }
 
     // Write IP info to the watch immediately so the gateway appears in the
@@ -2052,51 +2391,12 @@ impl NetworkInterfaceController {
         default_outbound: &Option<GatewayId>,
         ip_info: &OrdMap<GatewayId, NetworkInterfaceInfo>,
     ) {
-        // 1. Snapshot existing rules at priorities 74 and 75.
-        //    Priority 74: fwmark-based exemptions (WireGuard encap packets)
-        //    Priority 75: catch-all routing to the chosen gateway's table
-        let (existing_74, existing_75) = match async {
-            let output = String::from_utf8(
-                Command::new("ip")
-                    .arg("rule")
-                    .arg("show")
-                    .invoke(ErrorKind::Network)
-                    .await?,
-            )?;
-            let mut fwmarks_74 = BTreeSet::<u32>::new();
-            let mut tables_75 = BTreeSet::<u32>::new();
-            for line in output.lines() {
-                let line = line.trim();
-                if let Some(rest) = line.strip_prefix("74:") {
-                    if let Some(pos) = rest.find("fwmark ") {
-                        let after = &rest[pos + 7..];
-                        let token = after.split_whitespace().next().unwrap_or("");
-                        if let Ok(v) =
-                            u32::from_str_radix(token.strip_prefix("0x").unwrap_or(token), 16)
-                        {
-                            fwmarks_74.insert(v);
-                        }
-                    }
-                } else if let Some(rest) = line.strip_prefix("75:") {
-                    if let Some(pos) = rest.find("lookup ") {
-                        let after = &rest[pos + 7..];
-                        let token = after.split_whitespace().next().unwrap_or("");
-                        if let Ok(v) = token.parse::<u32>() {
-                            tables_75.insert(v);
-                        }
-                    }
-                }
-            }
-            Ok::<_, Error>((fwmarks_74, tables_75))
-        }
-        .await
-        {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::error!("failed to snapshot outbound rules: {e}");
-                (BTreeSet::new(), BTreeSet::new())
-            }
-        };
+        // 1. Snapshot existing priority-74/75 rules in both families. The desired
+        //    set computed below is family-agnostic (the same wg-encap fwmarks and
+        //    gateway table id), so v4 and v6 differ only in the rule table they
+        //    are reconciled against.
+        let (existing_74, existing_75) = snapshot_outbound_rules(false).await;
+        let (existing_74_v6, existing_75_v6) = snapshot_outbound_rules(true).await;
 
         // 2. Compute desired rules
         let mut desired_74 = BTreeSet::<u32>::new();
@@ -2171,61 +2471,21 @@ impl NetworkInterfaceController {
             }
         }
 
-        // 3. Add rules in desired set but not in existing set
-        for fwmark in desired_74.difference(&existing_74) {
-            Command::new("ip")
-                .arg("rule")
-                .arg("add")
-                .arg("fwmark")
-                .arg(fwmark.to_string())
-                .arg("lookup")
-                .arg("main")
-                .arg("priority")
-                .arg("74")
-                .invoke(ErrorKind::Network)
-                .await
-                .log_err();
-        }
-        for table in desired_75.difference(&existing_75) {
-            Command::new("ip")
-                .arg("rule")
-                .arg("add")
-                .arg("table")
-                .arg(table.to_string())
-                .arg("priority")
-                .arg("75")
-                .invoke(ErrorKind::Network)
-                .await
-                .log_err();
-        }
-
-        // 4. Delete rules in existing set but not in desired set
-        for fwmark in existing_74.difference(&desired_74) {
-            Command::new("ip")
-                .arg("rule")
-                .arg("del")
-                .arg("fwmark")
-                .arg(fwmark.to_string())
-                .arg("lookup")
-                .arg("main")
-                .arg("priority")
-                .arg("74")
-                .invoke(ErrorKind::Network)
-                .await
-                .log_err();
-        }
-        for table in existing_75.difference(&desired_75) {
-            Command::new("ip")
-                .arg("rule")
-                .arg("del")
-                .arg("table")
-                .arg(table.to_string())
-                .arg("priority")
-                .arg("75")
-                .invoke(ErrorKind::Network)
-                .await
-                .log_err();
-        }
+        // 3. Reconcile each family toward the desired set. Both use the same
+        //    desired fwmarks/tables but separate rule tables; v6 carries no NAT,
+        //    so this is the only v6 default-outbound machinery — the per-gateway
+        //    v6 table it points at is populated by `apply_policy_routing_v6`
+        //    (a real default when the gateway carries v6, else a blackhole so a
+        //    non-v6 default outbound drops v6 instead of leaking it).
+        reconcile_outbound_rules(false, &existing_74, &desired_74, &existing_75, &desired_75).await;
+        reconcile_outbound_rules(
+            true,
+            &existing_74_v6,
+            &desired_74,
+            &existing_75_v6,
+            &desired_75,
+        )
+        .await;
     }
 
     pub fn new(db: TypedPatchDb<Database>) -> Self {

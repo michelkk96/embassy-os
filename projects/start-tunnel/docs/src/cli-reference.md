@@ -73,6 +73,14 @@ Create a new subnet with the given name.
 
 Remove a subnet and all its devices.
 
+### `start-tunnel subnet <SUBNET> set-ipv6`
+
+Set (or clear) the routed IPv6 prefix delegated to the subnet. Each host on the
+subnet is assigned a globally-routable `/128` out of it. See [IPv6](ipv6.md).
+
+- `--prefix <PREFIX>` — The routed prefix (e.g. `2001:db8:abcd::/64`). Omit to
+  disable IPv6 on the subnet.
+
 ## Devices
 
 Manage devices within a subnet. Each device gets a unique WireGuard configuration.

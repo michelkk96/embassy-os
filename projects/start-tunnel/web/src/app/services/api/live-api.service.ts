@@ -148,6 +148,12 @@ export class LiveApiService extends ApiService {
     return this.rpcRequest({ method: 'port-forward.set-enabled', params })
   }
 
+  // ipv6
+
+  async setSubnetIpv6(params: T.Tunnel.SetSubnetIpv6Params): Promise<null> {
+    return this.rpcRequest({ method: 'subnet.set-ipv6', params })
+  }
+
   // system
 
   async restart(): Promise<null> {

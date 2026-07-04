@@ -1,15 +1,15 @@
 use std::collections::BTreeMap;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use imbl_value::InternedString;
-use ipnet::Ipv4Net;
-use itertools::Itertools;
+use ipnet::{Ipv4Net, Ipv6Net};
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 use ts_rs::TS;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 use crate::prelude::*;
+use crate::tunnel::wg6;
 use crate::util::Invoke;
 use crate::util::io::write_file_atomic;
 use crate::util::serde::Base64;
@@ -125,6 +125,12 @@ pub struct WgSubnetConfig {
     #[serde(default)]
     #[ts(type = "string | null")]
     pub wan_ip: Option<std::net::Ipv4Addr>,
+    /// Routed IPv6 prefix delegated to this subnet, if any. Each host on the
+    /// subnet (the server and every client) gets one `/128` out of it with its
+    /// tunnel IPv4 embedded — see [`crate::tunnel::wg6`].
+    #[serde(default)]
+    #[ts(type = "string | null")]
+    pub ipv6: Option<Ipv6Net>,
 }
 impl WgSubnetConfig {
     pub fn new(name: InternedString) -> Self {
@@ -238,10 +244,15 @@ impl WgConfig {
             wan_ip: None,
         }
     }
-    pub fn server_peer_config<'a>(&'a self, addr: Ipv4Addr) -> ServerPeerConfig<'a> {
+    pub fn server_peer_config<'a>(
+        &'a self,
+        addr: Ipv4Addr,
+        client_v6: Option<Ipv6Net>,
+    ) -> ServerPeerConfig<'a> {
         ServerPeerConfig {
             client_config: self,
             client_addr: addr,
+            client_v6,
         }
     }
     pub fn client_config(
@@ -250,6 +261,7 @@ impl WgConfig {
         subnet: Ipv4Net,
         server_pubkey: Base64<PublicKey>,
         server_addr: SocketAddr,
+        client_v6: Option<Ipv6Addr>,
     ) -> ClientConfig {
         ClientConfig {
             client_config: self,
@@ -257,6 +269,7 @@ impl WgConfig {
             subnet,
             server_pubkey,
             server_addr,
+            client_v6,
         }
     }
 }
@@ -264,15 +277,22 @@ impl WgConfig {
 pub struct ServerPeerConfig<'a> {
     client_config: &'a WgConfig,
     client_addr: Ipv4Addr,
+    /// The client's `/128` out of its subnet's prefix, routed back to it over
+    /// WireGuard. `None` when the subnet has no IPv6 prefix.
+    client_v6: Option<Ipv6Net>,
 }
 impl<'a> std::fmt::Display for ServerPeerConfig<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let allowed = match self.client_v6 {
+            Some(net) => format!("{}/32, {net}", self.client_addr),
+            None => format!("{}/32", self.client_addr),
+        };
         write!(
             f,
             include_str!("./server-peer.conf.template"),
             pubkey = self.client_config.key.verifying_key().to_padded_string(),
             psk = self.client_config.psk.to_padded_string(),
-            addr = self.client_addr,
+            allowed = allowed,
         )
     }
 }
@@ -296,9 +316,28 @@ pub struct ClientConfig {
     #[serde(deserialize_with = "deserialize_verifying_key")]
     server_pubkey: Base64<PublicKey>,
     server_addr: SocketAddr,
+    #[serde(default)]
+    client_v6: Option<Ipv6Addr>,
 }
 impl std::fmt::Display for ClientConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let v4_addr = Ipv4Net::new_assert(self.client_addr, self.subnet.prefix_len());
+        // Each host gets a single /128 from its subnet's prefix.
+        let addr = match self.client_v6 {
+            Some(v6) => format!("{v4_addr}, {v6}/128"),
+            None => v4_addr.to_string(),
+        };
+        // Only the subnet's IPv4 `.1` is advertised for DNS — the proxy binds
+        // IPv4 only, and AAAA resolution works fine over it. No v6 DNS address
+        // is advertised until the proxy also listens on the tunnel's v6.
+        let dns = self.subnet.addr().to_string();
+        // IPv6 is full-tunnel (`::/0`): replies sourced from the VPS-delegated
+        // global address must return through the tunnel, and a plain WireGuard
+        // peer can't source-route otherwise. IPv4 stays split (subnet only).
+        let allowed = match self.client_v6 {
+            Some(_) => format!("{}, ::/0", self.subnet.trunc()),
+            None => self.subnet.trunc().to_string(),
+        };
         write!(
             f,
             include_str!("./client.conf.template"),
@@ -306,12 +345,86 @@ impl std::fmt::Display for ClientConfig {
             name = self.client_config.name,
             privkey = self.client_config.key.to_padded_string(),
             psk = self.client_config.psk.to_padded_string(),
-            addr = Ipv4Net::new_assert(self.client_addr, self.subnet.prefix_len()),
-            dns = self.subnet.addr(),
-            subnet = self.subnet.trunc(),
+            addr = addr,
+            dns = dns,
+            allowed = allowed,
             server_pubkey = self.server_pubkey.to_padded_string(),
             server_addr = self.server_addr,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn client() -> WgConfig {
+        WgConfig::generate("phone".into(), WgClientKind::Client)
+    }
+
+    #[test]
+    fn client_config_without_ipv6_is_v4_only() {
+        // Subnets carry the server's `.1` host in the key; `addr()` is the DNS.
+        let cfg = client()
+            .client_config(
+                "10.59.0.2".parse().unwrap(),
+                "10.59.0.1/24".parse().unwrap(),
+                Base64(WgKey::generate()).verifying_key(),
+                "1.2.3.4:51820".parse().unwrap(),
+                None,
+            )
+            .to_string();
+        assert!(cfg.contains("Address = 10.59.0.2/24"));
+        assert!(cfg.contains("DNS = 10.59.0.1"));
+        assert!(cfg.contains("AllowedIPs = 10.59.0.0/24"));
+        assert!(!cfg.contains("::"));
+    }
+
+    #[test]
+    fn client_config_with_subnet_prefix_carries_a_128() {
+        // 10.59.0.2 == 0x0a3b0002, so the /128 host bits are `a3b:2`.
+        let v6 = wg6::host_v6(
+            "2001:db8:abcd::/64".parse().unwrap(),
+            "10.59.0.2".parse().unwrap(),
+        );
+        let cfg = client()
+            .client_config(
+                "10.59.0.2".parse().unwrap(),
+                "10.59.0.1/24".parse().unwrap(),
+                Base64(WgKey::generate()).verifying_key(),
+                "1.2.3.4:51820".parse().unwrap(),
+                Some(v6),
+            )
+            .to_string();
+        assert!(cfg.contains("Address = 10.59.0.2/24, 2001:db8:abcd::a3b:2/128"));
+        // Only the IPv4 DNS is advertised (the proxy binds IPv4 only).
+        assert!(cfg.contains("DNS = 10.59.0.1"));
+        assert!(!cfg.contains("DNS = 10.59.0.1, 2001"));
+        // IPv6 is full-tunnel so replies from the delegated GUA return via wg.
+        assert!(cfg.contains("AllowedIPs = 10.59.0.0/24, ::/0"));
+    }
+
+    #[test]
+    fn server_config_lists_subnet_v6_and_routes_client_128() {
+        let mut server = WgServer::default();
+        server.subnets = WgSubnetMap::default();
+        server.subnets.0.insert(
+            "10.59.0.1/24".parse().unwrap(),
+            WgSubnetConfig {
+                name: "net".into(),
+                clients: {
+                    let mut c = WgSubnetClients::default();
+                    c.0.insert("10.59.0.2".parse().unwrap(), client());
+                    c
+                },
+                ipv6: Some("2001:db8:abcd::/64".parse().unwrap()),
+                ..Default::default()
+            },
+        );
+        let rendered = server.server_config().to_string();
+        // Server's own /128 (subnet .1) on its interface, at the prefix length.
+        assert!(rendered.contains("2001:db8:abcd::a3b:1/64"));
+        assert!(rendered.contains("AllowedIPs = 10.59.0.2/32, 2001:db8:abcd::a3b:2/128"));
     }
 }
 
@@ -319,15 +432,30 @@ pub struct ServerConfig<'a>(&'a WgServer);
 impl<'a> std::fmt::Display for ServerConfig<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(server) = *self;
+        // Interface Address: each subnet's v4 (its `.1/len`), plus the server's
+        // own /128 out of that subnet's prefix when it carries one.
+        let mut addresses = Vec::new();
+        for (net, cfg) in &server.subnets.0 {
+            addresses.push(net.to_string());
+            if let Some(prefix) = cfg.ipv6 {
+                let server_v6 = wg6::host_v6(prefix, net.addr());
+                addresses.push(format!("{server_v6}/{}", prefix.prefix_len()));
+            }
+        }
         write!(
             f,
             include_str!("./server.conf.template"),
-            subnets = server.subnets.0.keys().join(", "),
+            subnets = addresses.join(", "),
             server_port = server.port,
             server_privkey = server.key.to_padded_string(),
         )?;
-        for (addr, peer) in server.subnets.0.values().flat_map(|s| &s.clients.0) {
-            write!(f, "{}", peer.server_peer_config(*addr))?;
+        for cfg in server.subnets.0.values() {
+            for (client_addr, peer) in &cfg.clients.0 {
+                let client_v6 = cfg
+                    .ipv6
+                    .map(|p| Ipv6Net::new_assert(wg6::host_v6(p, *client_addr), 128));
+                write!(f, "{}", peer.server_peer_config(*client_addr, client_v6))?;
+            }
         }
         Ok(())
     }

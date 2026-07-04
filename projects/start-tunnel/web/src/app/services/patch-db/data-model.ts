@@ -43,6 +43,7 @@ export const mockTunnelData: TunnelData = {
         },
         dns: { type: 'default' },
         wanIp: '69.1.1.42',
+        ipv6: '2001:db8:59::/64',
       },
     },
   },

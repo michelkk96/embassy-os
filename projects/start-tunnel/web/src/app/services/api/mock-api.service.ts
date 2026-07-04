@@ -78,6 +78,7 @@ export class MockApiService extends ApiService {
           clients: {},
           dns: { type: 'default' },
           wanIp: null,
+          ipv6: null,
         },
       },
     ]
@@ -476,6 +477,21 @@ export class MockApiService extends ApiService {
         { op: PatchOp.REMOVE, path: `/portForwards/${params.source}` },
       ])
     }
+
+    return null
+  }
+
+  async setSubnetIpv6(params: T.Tunnel.SetSubnetIpv6Params): Promise<null> {
+    await pauseFor(1000)
+
+    const patch: ReplaceOperation<string | null>[] = [
+      {
+        op: PatchOp.REPLACE,
+        path: `/wg/subnets/${replaceSlashes(params.subnet)}/ipv6`,
+        value: params.prefix,
+      },
+    ]
+    this.mockRevision(patch)
 
     return null
   }

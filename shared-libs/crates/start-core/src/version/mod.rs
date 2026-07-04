@@ -419,6 +419,27 @@ fn post_init_migration_todos_accessor(db: &mut Value) -> Option<&mut Value> {
     server_info.get_mut("postInitMigrationTodos")
 }
 
+/// True when this run has migrated a version <= `0.4.0-alpha.0`, i.e. the server came
+/// from a pre-0.4.0 release. Reads `postInitMigrationTodos`, which `commit` fills as the
+/// run progresses, so it must be called from `up` (before `post_init` drains it).
+fn migrated_from_pre_0_4_0(db: &Value) -> bool {
+    let floor = v0_4_0_alpha_0::Version.semver();
+    db["public"]["serverInfo"]["postInitMigrationTodos"]
+        .as_object()
+        .into_iter()
+        .flat_map(|todos| todos.iter())
+        .filter_map(|(k, _)| (&**k).parse::<exver::Version>().ok())
+        .any(|v| v <= floor)
+}
+
+/// A per-release welcome fires only when `version` is the release being landed on (the
+/// current head, so intermediate hops in a multi-version jump stay silent) and the server
+/// was already on the 0.4.0 line — pre-0.4.0 arrivals get `v0_4_0_alpha_0`'s welcome
+/// instead. `from_pre_0_4_0` is `migrated_from_pre_0_4_0`, threaded through `up`'s output.
+fn should_welcome_to_release(version: impl VersionT, from_pre_0_4_0: bool) -> bool {
+    version.semver() == Current::default().semver() && !from_pre_0_4_0
+}
+
 struct PreUps {
     prev: Option<Box<PreUps>>,
     value: Box<dyn Any + UnwindSafe + Send + 'static>,
@@ -754,5 +775,31 @@ mod tests {
             let back = Version::from_exver_version(sem_ver.into());
             prop_assert_eq!(format!("{:?}",version), format!("{:?}", back), "All versions should round trip");
         }
+    }
+
+    #[test]
+    fn welcome_routing() {
+        use imbl_value::json;
+
+        let todos = |v| json!({ "public": { "serverInfo": { "postInitMigrationTodos": v } } });
+
+        assert!(!migrated_from_pre_0_4_0(&todos(json!({})))); // empty at up() time
+        assert!(!migrated_from_pre_0_4_0(&json!({ "public": { "serverInfo": {} } })));
+        assert!(!migrated_from_pre_0_4_0(&todos(
+            json!({ "0.4.0-alpha.6": null, "0.4.0-beta.9": null })
+        )));
+        assert!(migrated_from_pre_0_4_0(&todos(
+            json!({ "0.3.5.2": null, "0.4.0-alpha.0": null })
+        )));
+        // boundary: the last 0.3.x release still commits the alpha.0 key
+        assert!(migrated_from_pre_0_4_0(&todos(
+            json!({ "0.4.0-alpha.0": null, "0.4.0-alpha.1": null })
+        )));
+
+        let current = Current::default();
+        assert!(should_welcome_to_release(current, false));
+        assert!(!should_welcome_to_release(current, true)); // from 0.3.x -> 0.4.0 welcome instead
+        // an intermediate (non-current) release stays silent, even from the 0.4.0 line
+        assert!(!should_welcome_to_release(v0_4_0_beta_9::Version, false));
     }
 }

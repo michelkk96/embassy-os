@@ -35,6 +35,10 @@ Each product lives under `projects/` as a thin wrapper; the bulk of the code liv
 - **Tests:** `make test` (all), `make start-core-test` / `make start-sdk-test` / `make container-runtime-test` (scoped). A single Rust test: `cd shared-libs/crates/start-core && cargo test <test_name> --features=test`.
 - **Format:** `make format` (Rust nightly fmt + web prettier + SDK); CI runs `make format-check`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full build/test/format workflow.
 
+## Code style
+
+- **Comment only what the code can't say for itself.** Add a comment for a non-obvious mechanism, a deviation from convention, or a load-bearing subtlety — not to restate what the code plainly does. Keep it terse: say what needs saying and no more, and prefer cutting a comment to padding it.
+
 ## Gotchas
 
 - **Polyglot repo.** Per-component gotchas live in component-level `AGENTS.md` files — read the relevant one before operating on that component (see Sub-scopes).

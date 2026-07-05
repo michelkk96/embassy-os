@@ -1,15 +1,15 @@
+import { inject, Injectable } from '@angular/core'
 import { Dump } from 'patch-db-client'
 import { DataModel } from 'src/app/services/patch-db/data-model'
-import { Injectable } from '@angular/core'
 import { StorageService } from '../storage.service'
 
 @Injectable({
   providedIn: 'root',
 })
 export class LocalStorageBootstrap {
-  static CONTENT_KEY = 'patchDB'
+  private readonly storage = inject(StorageService)
 
-  constructor(private readonly storage: StorageService) {}
+  static CONTENT_KEY = 'patchDB'
 
   init(): Dump<DataModel> {
     const cache = this.storage.get<DataModel>(LocalStorageBootstrap.CONTENT_KEY)

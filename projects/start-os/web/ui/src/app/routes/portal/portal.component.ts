@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { RouterOutlet } from '@angular/router'
 import { WA_IS_MOBILE } from '@ng-web-apis/platform'
-import { ErrorService, i18nPipe, LeafProgressPipe } from '@start9labs/shared'
+import { i18nPipe, LeafProgressPipe, TaskService } from '@start9labs/shared'
 import {
   TuiButton,
   TuiCell,
@@ -11,13 +11,8 @@ import {
   TuiPopup,
   TuiScrollbar,
 } from '@taiga-ui/core'
-import {
-  TuiActionBar,
-  TuiNotificationMiddleService,
-  TuiProgress,
-} from '@taiga-ui/kit'
+import { TuiActionBar, TuiProgress } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
-import { PluginsComponent } from 'src/app/routes/portal/components/plugins.component'
 import { TabsComponent } from 'src/app/routes/portal/components/tabs.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { OSService } from 'src/app/services/os.service'
@@ -172,8 +167,7 @@ import { HeaderComponent } from './components/header/header.component'
   ],
 })
 export class PortalComponent {
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly api = inject(ApiService)
 
@@ -189,16 +183,10 @@ export class PortalComponent {
     return Math.round((100 * downloaded) / (size || 1))
   }
 
-  async restart() {
-    const loader = this.loader.open('Beginning restart').subscribe()
-
-    try {
+  restart() {
+    this.tasks.run(async () => {
       this.bar.set(false)
       await this.api.restartServer({})
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Beginning restart')
   }
 }

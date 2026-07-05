@@ -1,8 +1,7 @@
 import { inject, Injectable } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
-import { DialogService, ErrorService, i18nPipe } from '@start9labs/shared'
+import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { ISB, utils } from '@start9labs/start-core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { filter, map } from 'rxjs'
 import { FormComponent } from 'src/app/routes/portal/components/form.component'
@@ -23,8 +22,7 @@ export type RemoteAuthority = Authority & { url: string }
 @Injectable()
 export class AuthorityService {
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly formDialog = inject(FormDialogService)
   private readonly i18n = inject(i18nPipe)
@@ -127,34 +125,23 @@ export class AuthorityService {
     this.dialog
       .openConfirm({ label: 'Are you sure?', size: 's' })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loader.open('Removing').subscribe()
-
-        try {
-          await this.api.removeAcme({ provider: url })
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(async () =>
+        this.tasks.run(
+          async () => await this.api.removeAcme({ provider: url }),
+          'Removing',
+        ),
+      )
   }
 
   private async save(url: string, contact: readonly string[]) {
-    const loader = this.loader.open('Saving').subscribe()
-
-    try {
-      await this.api.initAcme({
-        provider: new URL(url).href,
-        contact: contact.map(address => `mailto:${address}`),
-      })
-      return true
-    } catch (e: any) {
-      this.errorService.handleError(e)
-      return false
-    } finally {
-      loader.unsubscribe()
-    }
+    return this.tasks.run(
+      async () =>
+        await await this.api.initAcme({
+          provider: new URL(url).href,
+          contact: contact.map(address => `mailto:${address}`),
+        }),
+      'Saving',
+    )
   }
 
   private emailListSpec() {

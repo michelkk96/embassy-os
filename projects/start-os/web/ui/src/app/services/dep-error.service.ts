@@ -1,16 +1,16 @@
-import { Injectable } from '@angular/core'
+import { inject, Injectable } from '@angular/core'
 import { Exver } from '@start9labs/shared'
-import { distinctUntilChanged, map, shareReplay } from 'rxjs/operators'
+import { T } from '@start9labs/start-core'
+import deepEqual from 'fast-deep-equal'
 import { PatchDB } from 'patch-db-client'
+import { Observable } from 'rxjs'
+import { distinctUntilChanged, map, shareReplay } from 'rxjs/operators'
+import { isInstalled } from 'src/app/utils/get-package-data'
 import {
   DataModel,
   InstalledState,
   PackageDataEntry,
 } from './patch-db/data-model'
-import deepEqual from 'fast-deep-equal'
-import { Observable } from 'rxjs'
-import { isInstalled } from 'src/app/utils/get-package-data'
-import { T } from '@start9labs/start-core'
 import { getInstalledBaseStatus } from './pkg-status-rendering.service'
 
 export type AllDependencyErrors = Record<string, PkgDependencyErrors>
@@ -55,6 +55,9 @@ export type DependencyErrorTransitive = {
   providedIn: 'root',
 })
 export class DepErrorService {
+  private readonly exver = inject(Exver)
+  private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
+
   readonly depErrors$: Observable<AllDependencyErrors> = this.patch
     .watch$('packageData')
     .pipe(
@@ -76,11 +79,6 @@ export class DepErrorService {
       distinctUntilChanged(deepEqual),
       shareReplay(1),
     )
-
-  constructor(
-    private readonly exver: Exver,
-    private readonly patch: PatchDB<DataModel>,
-  ) {}
 
   getPkgDepErrors$(pkgId: string): Observable<PkgDependencyErrors> {
     return this.depErrors$.pipe(

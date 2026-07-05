@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core'
+import { inject, Injectable } from '@angular/core'
 import { GetPackageRes, GetPackagesRes } from '@start9labs/marketplace'
 import {
   FullKeyboard,
@@ -103,14 +103,10 @@ export class MockApiService extends ApiService {
   private readonly revertTime = 1800
   sequence = 0
 
-  constructor(private readonly auth: AuthService) {
+  constructor() {
     super()
-    this.auth.isVerified$
-      .pipe(
-        tap(() => {
-          this.sequence = 0
-        }),
-      )
+    inject(AuthService)
+      .isVerified$.pipe(tap(() => (this.sequence = 0)))
       .subscribe()
   }
 

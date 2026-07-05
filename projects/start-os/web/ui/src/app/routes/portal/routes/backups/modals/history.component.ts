@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common'
 import { Component, inject, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
-import { ErrorService } from '@start9labs/shared'
+import { ErrorService, TaskService } from '@start9labs/shared'
 import { TUI_FALSE_HANDLER, TUI_TRUE_HANDLER } from '@taiga-ui/cdk'
 import {
   TuiButton,
@@ -11,7 +11,7 @@ import {
   TuiIcon,
   TuiLink,
 } from '@taiga-ui/core'
-import { TuiNotificationMiddleService, TuiSkeleton } from '@taiga-ui/kit'
+import { TuiSkeleton } from '@taiga-ui/kit'
 import { PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { from } from 'rxjs'
 import { REPORT } from 'src/app/components/backup-report.component'
@@ -193,7 +193,7 @@ export class BackupsHistoryModal {
   private readonly api = inject(ApiService)
   private readonly dialogs = inject(TuiDialogService)
   private readonly errorService = inject(ErrorService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
 
   readonly targets = toSignal(from(this.api.getBackupTargets({})))
   readonly runs = signal<BackupRun[] | null>(null)
@@ -228,20 +228,15 @@ export class BackupsHistoryModal {
   }
 
   async delete() {
-    const loader = this.loader.open('Deleting').subscribe()
     const ids = this.selected
       .filter(Boolean)
       .map((_, i) => this.runs()?.[i].id || '')
 
-    try {
+    this.tasks.run(async () => {
       await this.api.deleteBackupRuns({ ids })
       this.runs.set(this.runs()?.filter(r => !ids.includes(r.id)) || [])
       this.selected = this.runs()?.map(TUI_FALSE_HANDLER) || []
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Deleting')
   }
 
   showReport({ report, completedAt }: BackupRun) {

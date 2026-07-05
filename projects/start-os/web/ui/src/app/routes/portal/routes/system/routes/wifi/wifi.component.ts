@@ -8,13 +8,10 @@ import {
   i18nKey,
   i18nPipe,
   pauseFor,
+  TaskService,
 } from '@start9labs/shared'
 import { TuiButton, TuiLoader, TuiNotificationService } from '@taiga-ui/core'
-import {
-  TuiButtonLoading,
-  TuiNotificationMiddleService,
-  TuiSwitch,
-} from '@taiga-ui/kit'
+import { TuiButtonLoading, TuiSwitch } from '@taiga-ui/kit'
 import { TuiCardLarge } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import {
@@ -160,7 +157,7 @@ import { wifiSpec } from './wifi.const'
   ],
 })
 export default class SystemWifiComponent {
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly errorService = inject(ErrorService)
   private readonly api = inject(ApiService)
   private readonly alerts = inject(TuiNotificationService)
@@ -196,21 +193,16 @@ export default class SystemWifiComponent {
   }
 
   async onToggle(enable: boolean) {
-    const loader = this.loader
-      .open(enable ? 'Enabling' : 'Disabling')
-      .subscribe()
-
-    try {
-      await this.api.enableWifi({ enabled: enable })
-      if (enable) {
-        this.update$.next({ known: [], available: [] })
-        this.pollForNetworks()
-      }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    this.tasks.run(
+      async () => {
+        await this.api.enableWifi({ enabled: enable })
+        if (enable) {
+          this.update$.next({ known: [], available: [] })
+          this.pollForNetworks()
+        }
+      },
+      enable ? 'Enabling' : 'Disabling',
+    )
   }
 
   other(wifi: WifiData) {
@@ -235,29 +227,16 @@ export default class SystemWifiComponent {
   }
 
   async saveAndConnect(ssid: string, password?: string): Promise<boolean> {
-    const loader = this.loader
-      .open('Connecting. This could take a while')
-      .subscribe()
-
-    try {
+    return this.tasks.run(async () => {
       if (password) {
-        await this.api.addWifi({
-          ssid,
-          password,
-        })
+        await this.api.addWifi({ ssid, password })
         await this.api.connectWifi({ ssid })
       } else {
         await this.api.connectWifi({ ssid })
       }
 
       await this.confirmWifi(ssid)
-      return true
-    } catch (e: any) {
-      this.errorService.handleError(e)
-      return false
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Connecting. This could take a while')
   }
 
   private pollForNetworks(): void {
@@ -322,13 +301,8 @@ export default class SystemWifiComponent {
     password: string,
     wifi: WifiData,
   ): Promise<boolean> {
-    const loader = this.loader.open('Saving').subscribe()
-
-    try {
-      await this.api.addWifi({
-        ssid,
-        password,
-      })
+    return this.tasks.run(async () => {
+      await this.api.addWifi({ ssid, password })
       wifi.known = wifi.known.concat({
         ssid,
         strength: 0,
@@ -336,13 +310,6 @@ export default class SystemWifiComponent {
         connected: false,
       })
       this.cdr.markForCheck()
-
-      return true
-    } catch (e: any) {
-      this.errorService.handleError(e)
-      return false
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Saving')
   }
 }

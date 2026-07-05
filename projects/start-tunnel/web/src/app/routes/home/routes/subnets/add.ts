@@ -6,16 +6,11 @@ import {
   Validators,
 } from '@angular/forms'
 import { WA_IS_MOBILE } from '@ng-web-apis/platform'
-import { ErrorService } from '@start9labs/shared'
+import { TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiAutoFocus, tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
 import { TuiButton, TuiDialogContext, TuiError, TuiInput } from '@taiga-ui/core'
-import {
-  TuiChevron,
-  TuiDataListWrapper,
-  TuiNotificationMiddleService,
-  TuiSelect,
-} from '@taiga-ui/kit'
+import { TuiChevron, TuiDataListWrapper, TuiSelect } from '@taiga-ui/kit'
 import { TuiForm } from '@taiga-ui/layout'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import {
@@ -192,8 +187,7 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
 })
 export class SubnetsAdd {
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly fb = inject(NonNullableFormBuilder)
 
   protected readonly mobile = inject(WA_IS_MOBILE)
@@ -273,10 +267,9 @@ export class SubnetsAdd {
       return
     }
 
-    const loader = this.loading.open('').subscribe()
     const { name, subnet } = this.form.getRawValue()
 
-    try {
+    this.tasks.run(async () => {
       editing
         ? await this.api.editSubnet({ subnet, name })
         : await this.api.addSubnet({ subnet, name })
@@ -302,12 +295,8 @@ export class SubnetsAdd {
       if (ipv6 !== (this.context.data.ipv6 ?? null)) {
         await this.api.setSubnetIpv6({ subnet, prefix: ipv6 })
       }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
       this.context.$implicit.complete()
-    }
+    })
   }
 
   // Avoid an unnecessary DNS proxy resync (which briefly rebinds every subnet's

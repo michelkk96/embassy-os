@@ -16,7 +16,7 @@ import {
   Validators,
 } from '@angular/forms'
 import { WA_IS_MOBILE } from '@ng-web-apis/platform'
-import { ErrorService } from '@start9labs/shared'
+import { TaskService } from '@start9labs/shared'
 import { utils } from '@start9labs/start-core'
 import { tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
 import {
@@ -30,7 +30,6 @@ import {
   TuiChevron,
   TuiDataListWrapper,
   TuiInputNumber,
-  TuiNotificationMiddleService,
   TuiSelect,
 } from '@taiga-ui/kit'
 import { TuiForm } from '@taiga-ui/layout'
@@ -170,8 +169,7 @@ function configure(
 })
 export class DnsAdd {
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
 
   protected readonly mobile = inject(WA_IS_MOBILE)
   protected readonly context =
@@ -227,7 +225,6 @@ export class DnsAdd {
       return
     }
 
-    const loader = this.loading.open('').subscribe()
     const { name, type, device, custom, value, ttl } = this.form.getRawValue()
     const finalValue =
       type === 'A' || type === 'AAAA'
@@ -236,14 +233,10 @@ export class DnsAdd {
           : (device?.ip ?? '')
         : value.trim()
 
-    try {
+    this.tasks.run(async () => {
       await this.api.addDnsRecord({ name, type, value: finalValue, ttl })
       this.context.$implicit.complete()
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    })
   }
 }
 

@@ -3,9 +3,9 @@ import { toSignal } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import {
   DialogService,
-  ErrorService,
   i18nPipe,
   sameUrl,
+  TaskService,
 } from '@start9labs/shared'
 import {
   TuiButton,
@@ -14,7 +14,7 @@ import {
   TuiIcon,
   TuiTitle,
 } from '@taiga-ui/core'
-import { TuiAvatar, TuiFade, TuiNotificationMiddleService } from '@taiga-ui/kit'
+import { TuiAvatar, TuiFade } from '@taiga-ui/kit'
 import {
   combineLatest,
   defaultIfEmpty,
@@ -155,8 +155,7 @@ export const MARKETPLACE_REGISTRY_ALERTS =
   ],
 })
 export class MarketplaceRegistrySelectComponent {
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly dialog = inject(DialogService)
   private readonly marketplace = inject(AbstractMarketplaceService)
   private readonly router = inject(Router)
@@ -201,19 +200,14 @@ export class MarketplaceRegistrySelectComponent {
     // Already on this registry: just close the dropdown
     if (sameUrl(url, this.data()?.current?.url)) return
 
-    const loader = this.loader.open('Changing registry').subscribe()
-    try {
+    this.tasks.run(async () => {
       await this.marketplace.connect(url)
       this.router.navigate([], {
         queryParams: { registry: url },
         queryParamsHandling: 'merge',
       })
       this.alerts?.alertRegistryChange(url)
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Changing registry')
   }
 
   async add(): Promise<void> {
@@ -235,28 +229,15 @@ export class MarketplaceRegistrySelectComponent {
 
     if (!rawUrl) return
 
-    const loader = this.loader.open('Validating registry').subscribe()
-    try {
-      const url = await this.marketplace.add(rawUrl)
-      await this.connect(url)
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    this.tasks.run(
+      async () => await this.connect(await this.marketplace.add(rawUrl)),
+      'Validating registry',
+    )
   }
 
   async saveCurrent(url: string): Promise<void> {
     this.open = false
-
-    const loader = this.loader.open('Saving').subscribe()
-    try {
-      await this.marketplace.add(url)
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    this.tasks.run(async () => await this.marketplace.add(url), 'Saving')
   }
 
   delete(url: string): void {
@@ -271,15 +252,11 @@ export class MarketplaceRegistrySelectComponent {
         },
       })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loader.open('Deleting').subscribe()
-        try {
-          await this.marketplace.delete(url)
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(() =>
+        this.tasks.run(
+          async () => await this.marketplace.delete(url),
+          'Deleting',
+        ),
+      )
   }
 }

@@ -1,6 +1,6 @@
 import { NgTemplateOutlet } from '@angular/common'
-import { ChangeDetectorRef, Component, inject, Input } from '@angular/core'
-import { DialogService, ErrorService, i18nPipe } from '@start9labs/shared'
+import { Component, inject, model } from '@angular/core'
+import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { IST } from '@start9labs/start-core'
 import {
   TuiButton,
@@ -10,12 +10,7 @@ import {
   TuiIcon,
   TuiTitle,
 } from '@taiga-ui/core'
-import {
-  TuiBadge,
-  TuiBadgedContent,
-  TuiFade,
-  TuiNotificationMiddleService,
-} from '@taiga-ui/kit'
+import { TuiBadge, TuiBadgedContent, TuiFade } from '@taiga-ui/kit'
 import { filter } from 'rxjs'
 import {
   FormComponent,
@@ -89,7 +84,7 @@ import { wifiSpec } from './wifi.const'
         </button>
       }
     </ng-template>
-    @for (network of wifi; track $index) {
+    @for (network of wifi(); track $index) {
       @if (network.ssid) {
         @if (network.connected === undefined) {
           <button tuiCell (click)="prompt(network)">
@@ -147,17 +142,14 @@ import { wifiSpec } from './wifi.const'
   ],
 })
 export class WifiTableComponent {
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly dialogs = inject(DialogService)
   private readonly api = inject(ApiService)
   private readonly formDialog = inject(FormDialogService)
   private readonly component = inject(SystemWifiComponent)
-  private readonly cdr = inject(ChangeDetectorRef)
   private readonly i18n = inject(i18nPipe)
 
-  @Input()
-  wifi: readonly Wifi[] = []
+  readonly wifi = model<readonly Wifi[]>([])
 
   getSignal(signal: number) {
     if (signal < 5) {
@@ -183,17 +175,10 @@ export class WifiTableComponent {
   }
 
   async forget({ ssid }: Wifi): Promise<void> {
-    const loader = this.loader.open('Deleting').subscribe()
-
-    try {
+    this.tasks.run(async () => {
       await this.api.deleteWifi({ ssid })
-      this.wifi = this.wifi.filter(network => network.ssid !== ssid)
-      this.cdr.markForCheck()
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+      this.wifi.update(wifi => wifi.filter(network => network.ssid !== ssid))
+    }, 'Deleting')
   }
 
   async prompt(network: Wifi): Promise<void> {

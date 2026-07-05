@@ -1,12 +1,8 @@
-import { Injectable } from '@angular/core'
+import { Service } from '@angular/core'
 import { ExtendedVersion, VersionRange } from '@start9labs/start-core'
 
-@Injectable({
-  providedIn: 'root',
-})
+@Service()
 export class Exver {
-  constructor() {}
-
   compareExver(lhs: string, rhs: string): number | null {
     if (!lhs || !rhs) return null
     try {

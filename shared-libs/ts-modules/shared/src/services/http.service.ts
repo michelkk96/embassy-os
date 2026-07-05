@@ -1,5 +1,5 @@
-import { Inject, Injectable, DOCUMENT } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
+import { DOCUMENT, inject, Service } from '@angular/core'
 import {
   firstValueFrom,
   from,
@@ -12,27 +12,19 @@ import {
 } from 'rxjs'
 
 import { HttpError } from '../classes/http-error'
+import { RELATIVE_URL } from '../tokens/relative-url'
 import {
   HttpAngularOptions,
   HttpOptions,
   LocalHttpResponse,
 } from '../types/http.types'
-import { RPCResponse, RPCOptions } from '../types/rpc.types'
-import { RELATIVE_URL } from '../tokens/relative-url'
+import { RPCOptions, RPCResponse } from '../types/rpc.types'
 
-@Injectable({
-  providedIn: 'root',
-})
+@Service()
 export class HttpService {
-  private fullUrl: string
-
-  constructor(
-    @Inject(RELATIVE_URL) private readonly relativeUrl: string,
-    @Inject(DOCUMENT) private readonly document: Document,
-    private readonly http: HttpClient,
-  ) {
-    this.fullUrl = this.document.location.origin
-  }
+  private readonly relativeUrl = inject(RELATIVE_URL)
+  private readonly http = inject(HttpClient)
+  private readonly fullUrl = inject(DOCUMENT).location.origin
 
   async rpcRequest<T>(
     opts: RPCOptions,

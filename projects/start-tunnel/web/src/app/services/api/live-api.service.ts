@@ -1,17 +1,16 @@
-import { Injectable, DOCUMENT, inject } from '@angular/core'
+import { DOCUMENT, inject, Injectable } from '@angular/core'
 import {
   HttpService,
-  RPCOptions,
   isRpcError,
   RpcError,
-  ErrorService,
+  RPCOptions,
 } from '@start9labs/shared'
+import { T } from '@start9labs/start-core'
 import { filter, firstValueFrom, Observable } from 'rxjs'
 import { webSocket } from 'rxjs/webSocket'
-import { T } from '@start9labs/start-core'
-import { ApiService, SubscribeRes } from './api.service'
 import { AuthService } from '../auth.service'
 import { PATCH_CACHE } from '../patch-db/patch-db-source'
+import { ApiService, SubscribeRes } from './api.service'
 
 @Injectable({
   providedIn: 'root',
@@ -21,7 +20,6 @@ export class LiveApiService extends ApiService {
   private readonly document = inject(DOCUMENT)
   private readonly auth = inject(AuthService)
   private readonly cache$ = inject(PATCH_CACHE)
-  private readonly errorService = inject(ErrorService)
 
   constructor() {
     super()

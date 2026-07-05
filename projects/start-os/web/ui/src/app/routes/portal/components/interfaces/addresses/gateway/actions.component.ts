@@ -3,8 +3,8 @@ import { WA_IS_MOBILE } from '@ng-web-apis/platform'
 import {
   CopyService,
   DialogService,
-  ErrorService,
   i18nPipe,
+  TaskService,
 } from '@start9labs/shared'
 import {
   TuiButton,
@@ -13,7 +13,6 @@ import {
   TuiDropdown,
   TuiInput,
 } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { QRModal } from 'src/app/routes/portal/modals/qr.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -224,8 +223,7 @@ export class GatewayActionsComponent {
   private readonly isMobile = inject(WA_IS_MOBILE)
   private readonly dialog = inject(DialogService)
   private readonly api = inject(ApiService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly domainHealth = inject(DomainHealthService)
   readonly copyService = inject(CopyService)
   readonly currentlyMasked = model(true)
@@ -253,17 +251,16 @@ export class GatewayActionsComponent {
     if (!iface) return
 
     const enabled = !addr.enabled
-    const loader = this.loader.open('Saving').subscribe()
+    const params = {
+      internalPort: iface.addressInfo.internalPort,
+      address: addr.hostnameInfo,
+      enabled,
+      package: this.packageId(),
+      host: iface.addressInfo.hostId,
+    }
 
-    try {
+    this.tasks.run(async () => {
       if (this.packageId()) {
-        const params = {
-          internalPort: iface.addressInfo.internalPort,
-          address: addr.hostnameInfo,
-          enabled,
-          package: this.packageId(),
-          host: iface.addressInfo.hostId,
-        }
         // A range spans >1 port and lives in a separate subtree, so it has its
         // own endpoint; a single-port binding is exactly 1.
         if (addr.count > 1) {
@@ -278,11 +275,7 @@ export class GatewayActionsComponent {
           enabled,
         })
       }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Saving')
   }
 
   showDnsValidation() {
@@ -315,6 +308,7 @@ export class GatewayActionsComponent {
 
   async deleteDomain() {
     const addr = this.address()
+    const host = addr.hostnameInfo.hostname
     const iface = this.value()
     if (!iface) return
 
@@ -324,11 +318,7 @@ export class GatewayActionsComponent {
 
     if (!confirmed) return
 
-    const loader = this.loader.open('Removing').subscribe()
-
-    try {
-      const host = addr.hostnameInfo.hostname
-
+    this.tasks.run(async () => {
       if (addr.hostnameInfo.metadata.kind === 'public-domain') {
         if (this.packageId()) {
           await this.api.pkgRemovePublicDomain({
@@ -350,10 +340,6 @@ export class GatewayActionsComponent {
           await this.api.osUiRemovePrivateDomain({ fqdn: host })
         }
       }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Removing')
   }
 }

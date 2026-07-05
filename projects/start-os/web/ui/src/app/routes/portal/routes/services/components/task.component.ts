@@ -1,8 +1,8 @@
 import { Component, computed, inject, input } from '@angular/core'
-import { DialogService, ErrorService, i18nPipe } from '@start9labs/shared'
+import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton } from '@taiga-ui/core'
-import { TuiAvatar, TuiFade, TuiNotificationMiddleService } from '@taiga-ui/kit'
+import { TuiAvatar, TuiFade } from '@taiga-ui/kit'
 import { filter } from 'rxjs'
 import { ServiceTasksComponent } from 'src/app/routes/portal/routes/services/components/tasks.component'
 import { ActionService } from 'src/app/services/action.service'
@@ -138,9 +138,8 @@ export class ServiceTaskComponent {
   private readonly actionService = inject(ActionService)
   private readonly dialog = inject(DialogService)
   private readonly api = inject(ApiService)
-  private readonly errorService = inject(ErrorService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly tasks = inject(ServiceTasksComponent)
+  private readonly tasks = inject(TaskService)
+  private readonly component = inject(ServiceTasksComponent)
   private readonly i18n = inject(i18nPipe)
 
   readonly task = input.required<T.Task & { replayId: string }>()
@@ -150,7 +149,7 @@ export class ServiceTaskComponent {
   readonly title = computed((pkg = this.pkg()) => pkg && getManifest(pkg).title)
 
   readonly fallback = computed(
-    () => this.tasks.pkg().currentDependencies[this.task().packageId],
+    () => this.component.pkg().currentDependencies[this.task().packageId],
   )
 
   readonly disabled = computed(() => {
@@ -181,16 +180,12 @@ export class ServiceTaskComponent {
     this.dialog
       .openConfirm(DISMISS)
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loader.open('').subscribe()
-        try {
-          await this.api.clearTask({ packageId, replayId, force: false })
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(() =>
+        this.tasks.run(
+          async () =>
+            await this.api.clearTask({ packageId, replayId, force: false }),
+        ),
+      )
   }
 
   async handle() {

@@ -1,7 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
-import { ErrorService } from '@start9labs/shared'
+import { ErrorService, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
 import {
@@ -12,12 +12,7 @@ import {
   TuiLoader,
   TuiTitle,
 } from '@taiga-ui/core'
-import {
-  TUI_CONFIRM,
-  TuiNotificationMiddleService,
-  TuiSkeleton,
-  TuiSwitch,
-} from '@taiga-ui/kit'
+import { TUI_CONFIRM, TuiSkeleton, TuiSwitch } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { filter, map } from 'rxjs'
@@ -270,7 +265,7 @@ import { deviceIpv6, MappedDevice } from './utils'
 export default class Devices {
   private readonly dialogs = inject(TuiResponsiveDialogService)
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly errorService = inject(ErrorService)
   private readonly patch = inject<PatchDB<TunnelData>>(PatchDB)
 
@@ -367,36 +362,24 @@ export default class Devices {
   }
 
   async onConfig({ subnet, ip }: MappedDevice) {
-    const loader = this.loading.open('').subscribe()
-    try {
+    this.tasks.run(async () => {
       const data = await this.api.showDeviceConfig({ subnet: subnet.range, ip })
 
       this.dialogs
         .open(DEVICES_CONFIG, { data, closable: false, size: 'm' })
         .subscribe()
-    } catch (e: any) {
-      console.log(e)
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    })
   }
 
   protected onDelete({ subnet, ip }: MappedDevice): void {
     this.dialogs
       .open(TUI_CONFIRM, { label: 'Are you sure?' })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loading.open('').subscribe()
-        try {
-          await this.api.deleteDevice({ subnet: subnet.range, ip })
-        } catch (e: any) {
-          this.errorService.handleError(e)
-          console.log(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(() =>
+        this.tasks.run(
+          async () => await this.api.deleteDevice({ subnet: subnet.range, ip }),
+        ),
+      )
   }
 
   protected async onDnsInjection({
@@ -444,16 +427,11 @@ export default class Devices {
     this.dialogs
       .open(TUI_CONFIRM, { label: 'Are you sure?' })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loading.open('').subscribe()
-        try {
-          await this.api.setDeviceKind({ subnet: subnet.range, ip, kind })
-        } catch (e: any) {
-          this.errorService.handleError(e)
-          console.log(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(() =>
+        this.tasks.run(
+          async () =>
+            await this.api.setDeviceKind({ subnet: subnet.range, ip, kind }),
+        ),
+      )
   }
 }

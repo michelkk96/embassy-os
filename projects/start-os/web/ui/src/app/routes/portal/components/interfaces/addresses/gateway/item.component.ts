@@ -1,13 +1,9 @@
 import { Component, computed, inject, input, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
-import { ErrorService, i18nPipe } from '@start9labs/shared'
+import { i18nPipe, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton, TuiIcon } from '@taiga-ui/core'
-import {
-  TuiBadge,
-  TuiNotificationMiddleService,
-  TuiSwitch,
-} from '@taiga-ui/kit'
+import { TuiBadge, TuiSwitch } from '@taiga-ui/kit'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { GatewayAddress, MappedServiceInterface } from '../../interface.service'
 import { GatewayActionsComponent } from './actions.component'
@@ -252,8 +248,7 @@ import { DomainHealthService } from './domain-health.service'
 })
 export class GatewayItemComponent {
   private readonly api = inject(ApiService)
-  private readonly errorService = inject(ErrorService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly domainHealth = inject(DomainHealthService)
 
   readonly address = input.required<GatewayAddress>()
@@ -303,19 +298,18 @@ export class GatewayItemComponent {
     const iface = this.value()
     if (!iface) return
 
-    this.toggling.set(true)
     const enabled = !addr.enabled
-    const loader = this.loader.open('Saving').subscribe()
+    const params = {
+      internalPort: iface.addressInfo.internalPort,
+      address: addr.hostnameInfo,
+      enabled,
+      package: this.packageId(),
+      host: iface.addressInfo.hostId,
+    }
 
-    try {
+    this.toggling.set(true)
+    await this.tasks.run(async () => {
       if (this.packageId()) {
-        const params = {
-          internalPort: iface.addressInfo.internalPort,
-          address: addr.hostnameInfo,
-          enabled,
-          package: this.packageId(),
-          host: iface.addressInfo.hostId,
-        }
         // A range spans >1 port and lives in a separate subtree, so it has its
         // own endpoint; a single-port binding is exactly 1.
         if (addr.count > 1) {
@@ -359,12 +353,8 @@ export class GatewayItemComponent {
           )
         }
       }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-      this.toggling.set(false)
-    }
+    }, 'Saving')
+    this.toggling.set(false)
   }
 
   async onSetGuaAccess(access: T.GuaAccess) {
@@ -373,9 +363,7 @@ export class GatewayItemComponent {
     if (!iface) return
 
     this.toggling.set(true)
-    const loader = this.loader.open('Saving').subscribe()
-
-    try {
+    await this.tasks.run(async () => {
       if (this.packageId()) {
         await this.api.pkgBindingSetGuaAccess({
           internalPort: iface.addressInfo.internalPort,
@@ -391,11 +379,7 @@ export class GatewayItemComponent {
           access,
         })
       }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-      this.toggling.set(false)
-    }
+    }, 'Saving')
+    this.toggling.set(false)
   }
 }

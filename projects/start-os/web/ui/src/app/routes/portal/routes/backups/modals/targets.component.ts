@@ -1,8 +1,11 @@
 import { Component, inject, OnInit, signal } from '@angular/core'
-import { DocsLinkDirective, ErrorService } from '@start9labs/shared'
+import {
+  DocsLinkDirective,
+  ErrorService,
+  TaskService,
+} from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton, TuiLink, TuiNotification } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { FormComponent } from 'src/app/routes/portal/components/form.component'
 import { RR, UnknownDisk } from 'src/app/services/api/api.types'
@@ -73,7 +76,7 @@ export class BackupsTargetsModal implements OnInit {
   private readonly api = inject(ApiService)
   private readonly errorService = inject(ErrorService)
   private readonly formDialog = inject(FormDialogService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
 
   targets = signal<RR.GetBackupTargetsRes | null>(null)
 
@@ -93,9 +96,7 @@ export class BackupsTargetsModal implements OnInit {
   }
 
   async onDelete(id: string) {
-    const loader = this.loader.open('Removing').subscribe()
-
-    try {
+    this.tasks.run(async () => {
       await this.api.removeBackupTarget({ id })
 
       const saved = this.targets()?.saved || {}
@@ -103,11 +104,7 @@ export class BackupsTargetsModal implements OnInit {
       delete saved[id]
 
       this.setTargets(saved)
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Removing')
   }
 
   async onUpdate(id: string) {
@@ -191,14 +188,11 @@ export class BackupsTargetsModal implements OnInit {
       | RR.AddCifsBackupTargetReq
       | RR.AddCloudBackupTargetReq
       | RR.AddDiskBackupTargetReq,
-  ): Promise<RR.AddBackupTargetRes> {
-    const loader = this.loader.open('Saving target').subscribe()
-
-    try {
-      return await this.api.addBackupTarget(type, value)
-    } finally {
-      loader.unsubscribe()
-    }
+  ): Promise<boolean> {
+    return this.tasks.run(
+      async () => await this.api.addBackupTarget(type, value),
+      'Saving target',
+    )
   }
 
   private async update(
@@ -207,14 +201,11 @@ export class BackupsTargetsModal implements OnInit {
       | RR.UpdateCifsBackupTargetReq
       | RR.UpdateCloudBackupTargetReq
       | RR.UpdateDiskBackupTargetReq,
-  ): Promise<RR.UpdateBackupTargetRes> {
-    const loader = this.loader.open('Saving target').subscribe()
-
-    try {
-      return await this.api.updateBackupTarget(type, value)
-    } finally {
-      loader.unsubscribe()
-    }
+  ): Promise<boolean> {
+    return this.tasks.run(
+      async () => await this.api.updateBackupTarget(type, value),
+      'Saving target',
+    )
   }
 
   private setTargets(

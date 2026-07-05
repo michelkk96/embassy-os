@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
-import { ErrorService } from '@start9labs/shared'
+import { TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
   TuiButton,
@@ -9,11 +9,7 @@ import {
   TuiDialogService,
   TuiInput,
 } from '@taiga-ui/core'
-import {
-  TuiBadge,
-  TuiNotificationMiddleService,
-  TuiSwitch,
-} from '@taiga-ui/kit'
+import { TuiBadge, TuiSwitch } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { from, map } from 'rxjs'
 import { BackupJob } from 'src/app/services/api/api.types'
@@ -126,8 +122,7 @@ import { TARGET, TARGET_CREATE } from './target.component'
 })
 export class BackupsEditModal {
   private readonly api = inject(ApiService)
-  private readonly errorService = inject(ErrorService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly dialogs = inject(TuiDialogService)
   private readonly context =
     injectContext<TuiDialogContext<BackupJob, BackupJobBuilder>>()
@@ -144,19 +139,13 @@ export class BackupsEditModal {
   }
 
   async save() {
-    const loader = this.loader.open('Saving Job').subscribe()
-
-    try {
+    this.tasks.run(async () => {
       const job = this.job.job.id
         ? await this.api.updateBackupJob(this.job.buildUpdate(this.job.job.id))
         : await this.api.createBackupJob(this.job.buildCreate())
 
       this.context.completeWith(job)
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Saving Job')
   }
 
   selectTarget() {

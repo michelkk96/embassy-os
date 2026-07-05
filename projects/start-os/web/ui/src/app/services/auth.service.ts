@@ -1,6 +1,6 @@
-import { Injectable, NgZone } from '@angular/core'
-import { distinctUntilChanged, map, ReplaySubject } from 'rxjs'
+import { inject, Injectable, NgZone } from '@angular/core'
 import { Router } from '@angular/router'
+import { distinctUntilChanged, map, ReplaySubject } from 'rxjs'
 import { StorageService } from './storage.service'
 
 export enum AuthState {
@@ -11,6 +11,9 @@ export enum AuthState {
   providedIn: 'root',
 })
 export class AuthService {
+  private readonly storage = inject(StorageService)
+  private readonly zone = inject(NgZone)
+  private readonly router = inject(Router)
   private readonly LOGGED_IN_KEY = 'loggedIn'
   private readonly authState$ = new ReplaySubject<AuthState>(1)
 
@@ -18,12 +21,6 @@ export class AuthService {
     map(state => state === AuthState.VERIFIED),
     distinctUntilChanged(),
   )
-
-  constructor(
-    private readonly storage: StorageService,
-    private readonly zone: NgZone,
-    private readonly router: Router,
-  ) {}
 
   init(): void {
     if (this.storage.get(this.LOGGED_IN_KEY)) {

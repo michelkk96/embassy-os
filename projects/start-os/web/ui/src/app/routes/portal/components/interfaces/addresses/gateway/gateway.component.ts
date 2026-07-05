@@ -1,13 +1,12 @@
 import { Component, computed, inject, input } from '@angular/core'
 import {
   DialogService,
-  ErrorService,
   i18nKey,
   i18nPipe,
+  TaskService,
 } from '@start9labs/shared'
 import { ISB, utils } from '@start9labs/start-core'
 import { TuiButton, TuiIcon } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom } from 'rxjs'
 import {
@@ -102,8 +101,7 @@ export class GatewayComponent {
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly formDialog = inject(FormDialogService)
   private readonly dialog = inject(DialogService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly i18n = inject(i18nPipe)
   private readonly domainHealth = inject(DomainHealthService)
@@ -238,9 +236,8 @@ export class GatewayComponent {
   private async savePrivateDomain(fqdn: string): Promise<boolean> {
     const iface = this.value()
     const gatewayId = this.gatewayGroup().gatewayId
-    const loader = this.loader.open('Saving').subscribe()
 
-    try {
+    return this.tasks.run(async () => {
       let configured: boolean
       if (this.packageId()) {
         configured = await this.api.pkgAddPrivateDomain({
@@ -257,14 +254,7 @@ export class GatewayComponent {
       }
 
       await this.domainHealth.checkPrivateDomain(gatewayId, fqdn, configured)
-
-      return true
-    } catch (e: any) {
-      this.errorService.handleError(e)
-      return false
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Saving')
   }
 
   private getSharedHostNote(): string {
@@ -280,8 +270,6 @@ export class GatewayComponent {
   ): Promise<boolean> {
     const iface = this.value()
     const gatewayId = this.gatewayGroup().gatewayId
-    const loader = this.loader.open('Saving').subscribe()
-
     const params = {
       fqdn,
       gateway: gatewayId,
@@ -289,7 +277,7 @@ export class GatewayComponent {
       internalPort: iface?.addressInfo.internalPort || 80,
     }
 
-    try {
+    return this.tasks.run(async () => {
       let res
       if (this.packageId()) {
         res = await this.api.pkgAddPublicDomain({
@@ -307,13 +295,6 @@ export class GatewayComponent {
         res,
         this.count(),
       )
-
-      return true
-    } catch (e: any) {
-      this.errorService.handleError(e)
-      return false
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Saving')
   }
 }

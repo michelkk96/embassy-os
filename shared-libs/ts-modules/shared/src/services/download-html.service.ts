@@ -1,10 +1,8 @@
-import { Inject, Injectable, DOCUMENT } from '@angular/core'
+import { DOCUMENT, inject, Service } from '@angular/core'
 
-@Injectable({
-  providedIn: 'root',
-})
+@Service()
 export class DownloadHTMLService {
-  constructor(@Inject(DOCUMENT) private readonly document: Document) {}
+  private readonly document = inject(DOCUMENT)
 
   async download(filename: string, html: string, styleObj = {}) {
     const entries = Object.entries(styleObj)

@@ -1,6 +1,6 @@
 import { KeyValuePipe } from '@angular/common'
 import { Component, inject, signal } from '@angular/core'
-import { ErrorService, Exver } from '@start9labs/shared'
+import { ErrorService } from '@start9labs/shared'
 import { T, Version } from '@start9labs/start-core'
 import {
   TuiButton,
@@ -66,7 +66,6 @@ import { TARGETS } from './targets.component'
   ],
 })
 export class BackupsTargetModal {
-  private readonly exver = inject(Exver)
   private readonly dialogs = inject(TuiDialogService)
   private readonly errorService = inject(ErrorService)
   private readonly api = inject(ApiService)

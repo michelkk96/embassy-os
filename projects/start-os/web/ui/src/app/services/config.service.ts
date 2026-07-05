@@ -1,6 +1,6 @@
-import { Inject, Injectable, DOCUMENT } from '@angular/core'
+import { DOCUMENT, inject, Injectable } from '@angular/core'
 import { AccessType, WorkspaceConfig } from '@start9labs/shared'
-import { T, utils } from '@start9labs/start-core'
+import { utils } from '@start9labs/start-core'
 
 const {
   gitHash,
@@ -13,7 +13,7 @@ const {
   providedIn: 'root',
 })
 export class ConfigService {
-  constructor(@Inject(DOCUMENT) private readonly document: Document) {}
+  private readonly document = inject(DOCUMENT)
 
   hostname = this.document.location.hostname
   // includes port

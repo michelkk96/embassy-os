@@ -1,7 +1,7 @@
 import { inject, Injectable } from '@angular/core'
+import { TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiDialogOptions, TuiDialogService } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { from, switchMap } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { BACKUP, BACKUP_OPTIONS } from '../modals/backup.component'
@@ -11,7 +11,7 @@ import { TARGET, TARGET_CREATE } from '../modals/target.component'
   providedIn: 'root',
 })
 export class BackupsCreateService {
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly dialogs = inject(TuiDialogService)
   private readonly api = inject(ApiService)
 
@@ -32,11 +32,10 @@ export class BackupsCreateService {
     targetId: string,
     pkgIds: string[],
   ): Promise<void> {
-    const loader = this.loader.open('Beginning backup').subscribe()
-
-    await this.api
-      .createBackup({ targetId, packageIds: pkgIds })
-      .finally(() => loader.unsubscribe())
+    this.tasks.run(
+      async () => await this.api.createBackup({ targetId, packageIds: pkgIds }),
+      'Beginning Backup',
+    )
   }
 }
 

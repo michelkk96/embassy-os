@@ -5,7 +5,7 @@ import {
   Validators,
 } from '@angular/forms'
 import { WA_IS_MOBILE } from '@ng-web-apis/platform'
-import { ErrorService } from '@start9labs/shared'
+import { TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
 import { TuiAutoFocus, tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
@@ -20,7 +20,6 @@ import {
 import {
   TuiChevron,
   TuiDataListWrapper,
-  TuiNotificationMiddleService,
   TuiSelect,
   TuiTooltip,
 } from '@taiga-ui/kit'
@@ -162,9 +161,8 @@ import {
   ],
 })
 export class DevicesAdd {
-  private readonly loading = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
-  private readonly errorService = inject(ErrorService)
   private readonly dialogs = inject(TuiResponsiveDialogService)
 
   protected readonly mobile = inject(WA_IS_MOBILE)
@@ -249,14 +247,13 @@ export class DevicesAdd {
       return
     }
 
-    const loader = this.loading.open('').subscribe()
     const { ip, name, subnet, wanIp, dnsInjection, autoPortForward } =
       this.form.getRawValue()
     const data = { ip, name, subnet: subnet?.range || '' }
     const device = this.context.data.device
     const kind = this.kind
 
-    try {
+    this.tasks.run(async () => {
       if (device) {
         await this.api.editDevice({ ...data, kind: device.kind })
       } else {
@@ -299,13 +296,8 @@ export class DevicesAdd {
           .open(DEVICES_CONFIG, { data: config, closable: false, size: 'm' })
           .subscribe()
       }
-    } catch (e: any) {
-      console.error(e)
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
       this.context.$implicit.complete()
-    }
+    })
   }
 }
 

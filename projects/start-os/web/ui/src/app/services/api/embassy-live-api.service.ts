@@ -1,5 +1,6 @@
-import { DOCUMENT, Inject, Injectable } from '@angular/core'
+import { DOCUMENT, inject, Injectable } from '@angular/core'
 import { blake3 } from '@noble/hashes/blake3'
+import { GetPackageRes, GetPackagesRes } from '@start9labs/marketplace'
 import {
   FullKeyboard,
   HttpOptions,
@@ -10,7 +11,6 @@ import {
   SetLanguageParams,
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { GetPackageRes, GetPackagesRes } from '@start9labs/marketplace'
 import { Dump, pathFromArray } from 'patch-db-client'
 import { filter, firstValueFrom, Observable } from 'rxjs'
 import { webSocket, WebSocketSubject } from 'rxjs/webSocket'
@@ -43,12 +43,12 @@ import { ApiService } from './embassy-api.service'
 
 @Injectable()
 export class LiveApiService extends ApiService {
-  constructor(
-    @Inject(DOCUMENT) private readonly document: Document,
-    private readonly http: HttpService,
-    private readonly auth: AuthService,
-    @Inject(PATCH_CACHE) private readonly cache$: Observable<Dump<DataModel>>,
-  ) {
+  private readonly document = inject(DOCUMENT)
+  private readonly http = inject(HttpService)
+  private readonly auth = inject(AuthService)
+  private readonly cache$ = inject<Observable<Dump<DataModel>>>(PATCH_CACHE)
+
+  constructor() {
     super()
 
     // @ts-ignore

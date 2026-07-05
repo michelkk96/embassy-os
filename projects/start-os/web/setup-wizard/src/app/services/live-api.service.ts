@@ -1,4 +1,4 @@
-import { Inject, Injectable, DOCUMENT } from '@angular/core'
+import { DOCUMENT, inject, Injectable } from '@angular/core'
 import {
   DiskInfo,
   FullKeyboard,
@@ -13,19 +13,15 @@ import { T } from '@start9labs/start-core'
 import * as jose from 'node-jose'
 import { Observable } from 'rxjs'
 import { webSocket } from 'rxjs/webSocket'
-import { ApiService } from './api.service'
 import { InstallOsParams, InstallOsRes } from '../types'
+import { ApiService } from './api.service'
 
 @Injectable({
   providedIn: 'root',
 })
 export class LiveApiService extends ApiService {
-  constructor(
-    private readonly http: HttpService,
-    @Inject(DOCUMENT) private readonly document: Document,
-  ) {
-    super()
-  }
+  private readonly http = inject(HttpService)
+  private readonly document = inject(DOCUMENT)
 
   openWebsocket$<T>(guid: string): Observable<T> {
     const { location } = this.document.defaultView!

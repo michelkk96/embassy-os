@@ -1,17 +1,13 @@
 import { Directive, HostListener, inject, Input } from '@angular/core'
-import { DialogService, ErrorService, i18nKey } from '@start9labs/shared'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
+import { DialogService, i18nKey, TaskService } from '@start9labs/shared'
 import { PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { filter } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { SnakeComponent } from './snake.component'
 
-@Directive({
-  selector: 'img[snake]',
-})
+@Directive({ selector: 'img[snake]' })
 export class SnakeDirective {
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly dialog = inject(DialogService)
 
@@ -29,16 +25,12 @@ export class SnakeDirective {
         data: this.snake,
       })
       .pipe(filter(score => score > this.snake))
-      .subscribe(async score => {
-        const loader = this.loader.open('Saving high score').subscribe()
-
-        try {
-          await this.api.setDbValue<number>(['snakeHighScore'], score)
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(score =>
+        this.tasks.run(
+          async () =>
+            await this.api.setDbValue<number>(['snakeHighScore'], score),
+          'Saving high score',
+        ),
+      )
   }
 }

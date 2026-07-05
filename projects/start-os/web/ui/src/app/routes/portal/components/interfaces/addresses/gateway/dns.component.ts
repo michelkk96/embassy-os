@@ -1,19 +1,15 @@
 import { Component, computed, inject, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { ErrorService, i18nPipe } from '@start9labs/shared'
+import { T } from '@start9labs/start-core'
 import { TuiButton, TuiDialogContext, TuiIcon, TuiLoader } from '@taiga-ui/core'
-import {
-  TuiButtonLoading,
-  TuiSwitch,
-  tuiSwitchOptionsProvider,
-} from '@taiga-ui/kit'
+import { TuiButtonLoading, TuiSwitch } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { PortCheckIconComponent } from 'src/app/routes/portal/components/port-check-icon.component'
 import { PortCheckWarningsComponent } from 'src/app/routes/portal/components/port-check-warnings.component'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { formatPortRange } from 'src/app/utils/format-port-range'
-import { T } from '@start9labs/start-core'
 import { parse } from 'tldts'
 
 export type DnsGateway = T.NetworkInterfaceInfo & {
@@ -47,7 +43,6 @@ export type DomainValidationData = {
         IP
         <input
           type="checkbox"
-          appearance="flat"
           tuiSwitch
           [(ngModel)]="ddns"
           (ngModelChange)="dnsPass.set(undefined)"
@@ -315,12 +310,6 @@ export type DomainValidationData = {
       }
     }
   `,
-  providers: [
-    tuiSwitchOptionsProvider({
-      appearance: () => 'glass',
-      icon: () => '',
-    }),
-  ],
   imports: [
     TuiButton,
     i18nPipe,
@@ -338,7 +327,7 @@ export class DomainValidationComponent {
   private readonly errorService = inject(ErrorService)
   private readonly api = inject(ApiService)
 
-  readonly ddns = false
+  ddns = false
 
   readonly context =
     injectContext<TuiDialogContext<void, DomainValidationData>>()

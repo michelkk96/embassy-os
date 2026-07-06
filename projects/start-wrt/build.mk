@@ -1,10 +1,5 @@
 # When this product's build inputs change, mirror them into the `paths:` filter
 # of .github/workflows/start-wrt.yaml (see root AGENTS.md "Coupled changes").
-#
-# UNVALIDATED: the riscv dockerized zigbuild and the OpenWrt image assembly
-# (stage / image targets) have NOT been run since the monorepo migration. The
-# binary+web build (the `start-wrt` target) is the first thing to validate on a
-# build host; the image targets follow. See projects/start-wrt/CONTRIBUTING.md.
 
 STARTWRT_DIR := projects/start-wrt
 STARTWRT_RUST_ARCH := riscv64gc
@@ -93,11 +88,18 @@ $(STARTWRT_WEB_CONFIG): $(STARTWRT_GIT_HASH_FILE) $(STARTWRT_DIR)/web/config-sam
 start-wrt-test: $(STARTWRT_RUST_SRC) $(ENVIRONMENT_FILE)
 	./$(STARTWRT_DIR)/build/run-tests.sh
 
-# --- OpenWrt image (HEAVY, UNVALIDATED) ---
-# One-time feeds/config/download.
+# --- OpenWrt image (HEAVY) ---
+# Tree prep + feeds/config/download. openwrt/ is a disposable, gitignored
+# build workspace (no submodule, no git repo inside): openwrt-setup.sh rebuilds
+# it from the sha256-pinned upstream release tarball (build/openwrt-version),
+# applies the Start9 delta (openwrt-patches/ + openwrt-overlay/), then runs
+# feeds/config/download. Re-runs whenever the pin, patches, overlay, feeds, or
+# diffconfig change.
 .PHONY: start-wrt-openwrt-setup
 start-wrt-openwrt-setup: $(STARTWRT_OPENWRT)/.config
-$(STARTWRT_OPENWRT)/.config: $(STARTWRT_DIR)/build/openwrt.diffconfig $(STARTWRT_DIR)/build/feeds.conf
+$(STARTWRT_OPENWRT)/.config: $(STARTWRT_DIR)/build/openwrt.diffconfig $(STARTWRT_DIR)/build/feeds.conf \
+		$(STARTWRT_DIR)/build/openwrt-version $(STARTWRT_DIR)/build/openwrt-setup.sh \
+		$(call ls-files, $(STARTWRT_DIR)/openwrt-patches) $(call ls-files, $(STARTWRT_DIR)/openwrt-overlay)
 	./$(STARTWRT_DIR)/build/openwrt-setup.sh
 
 # Stage the binary + UCI configs + init scripts into openwrt/files/.

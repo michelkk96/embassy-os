@@ -3,7 +3,7 @@ import { Component, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { Router } from '@angular/router'
-import { ErrorService, i18nKey, i18nPipe } from '@start9labs/shared'
+import { i18nKey, i18nPipe, TaskService } from '@start9labs/shared'
 import { Version } from '@start9labs/start-core'
 import { TuiMapperPipe } from '@taiga-ui/cdk'
 import {
@@ -13,7 +13,7 @@ import {
   TuiGroup,
   TuiTitle,
 } from '@taiga-ui/core'
-import { TuiBlock, TuiNotificationMiddleService } from '@taiga-ui/kit'
+import { TuiBlock } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { PatchDB } from 'patch-db-client'
 import { map, take } from 'rxjs'
@@ -85,8 +85,7 @@ import { RecoverData, RecoverOption } from './backup.types'
 export class BackupsRecoverComponent {
   private readonly config = inject(ConfigService)
   private readonly api = inject(ApiService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly router = inject(Router)
   private readonly context =
     injectContext<TuiDialogContext<void, RecoverData>>()
@@ -150,18 +149,12 @@ export class BackupsRecoverComponent {
     const ids = options.filter(({ checked }) => !!checked).map(({ id }) => id)
     const { targetId, serverId, password } = this.context.data
     const params = { ids, targetId, password, serverId }
-    const loader = this.loader.open('Initializing').subscribe()
 
-    try {
+    this.tasks.run(async () => {
       await this.api.restorePackages(params)
-
       this.context.$implicit.complete()
       this.router.navigate(['services'])
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Initializing')
   }
 }
 

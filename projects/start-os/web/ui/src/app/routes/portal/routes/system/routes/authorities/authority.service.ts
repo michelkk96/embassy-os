@@ -136,7 +136,7 @@ export class AuthorityService {
   private async save(url: string, contact: readonly string[]) {
     return this.tasks.run(
       async () =>
-        await await this.api.initAcme({
+        await this.api.initAcme({
           provider: new URL(url).href,
           contact: contact.map(address => `mailto:${address}`),
         }),

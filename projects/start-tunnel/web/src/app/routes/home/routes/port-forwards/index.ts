@@ -1,7 +1,7 @@
 import { Component, computed, inject, signal, Signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
-import { ErrorService } from '@start9labs/shared'
+import { ErrorService, TaskService } from '@start9labs/shared'
 import { utils } from '@start9labs/start-core'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
 import {
@@ -193,7 +193,7 @@ import { mapForwards, mapPinholes, MappedDevice, MappedForward } from './utils'
 export default class PortForwards {
   private readonly dialogs = inject(TuiResponsiveDialogService)
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly patch = inject<PatchDB<TunnelData>>(PatchDB)
   private readonly errorService = inject(ErrorService)
   private readonly ips = toSignal(
@@ -271,8 +271,7 @@ export default class PortForwards {
   }
 
   protected async onToggle(forward: MappedForward) {
-    const key = this.key(forward)
-    this.toggling.set(key)
+    this.toggling.set(this.key(forward))
 
     try {
       if (forward.ipVersion === 'ipv6') {
@@ -328,10 +327,8 @@ export default class PortForwards {
     this.dialogs
       .open(TUI_CONFIRM, { label: 'Are you sure?' })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loading.open('').subscribe()
-
-        try {
+      .subscribe(() =>
+        this.tasks.run(async () => {
           if (forward.ipVersion === 'ipv6') {
             await this.api.deletePinhole({
               gua: forward.externalip,
@@ -343,12 +340,7 @@ export default class PortForwards {
               hostname: forward.hostname,
             })
           }
-        } catch (e: any) {
-          console.log(e)
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+        }),
+      )
   }
 }

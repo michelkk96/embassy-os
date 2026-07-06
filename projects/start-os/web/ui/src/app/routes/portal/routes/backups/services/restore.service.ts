@@ -1,9 +1,10 @@
 import { inject, Injectable } from '@angular/core'
 import { Router } from '@angular/router'
 import { verify } from '@start9labs/argon2'
-import { ErrorService, StartOSDiskInfo, TaskService } from '@start9labs/shared'
+import { ErrorService, StartOSDiskInfo } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiDialogOptions, TuiDialogService } from '@taiga-ui/core'
+import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import {
   catchError,
   EMPTY,
@@ -33,7 +34,7 @@ export class BackupsRestoreService {
   private readonly dialogs = inject(TuiDialogService)
   private readonly router = inject(Router)
   private readonly api = inject(ApiService)
-  private readonly tasks = inject(TaskService)
+  private readonly loader = inject(TuiNotificationMiddleService)
 
   readonly handle = () => {
     this.dialogs
@@ -76,12 +77,13 @@ export class BackupsRestoreService {
   ): Observable<RecoverData> {
     return of(password).pipe(
       tap(() => verify(hash || '', password)),
-      switchMap(() =>
-        this.tasks.run(
-          async () => this.api.getBackupInfo({ targetId, password }),
-          'Decrypting drive',
-        ),
-      ),
+      switchMap(() => {
+        const loader = this.loader.open('Decrypting drive').subscribe()
+
+        return this.api
+          .getBackupInfo({ targetId, password })
+          .finally(() => loader.unsubscribe())
+      }),
       catchError(e => {
         this.errorService.handleError(e)
 

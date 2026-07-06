@@ -1,4 +1,4 @@
-import { inject, Injectable, Service } from '@angular/core'
+import { inject, Service } from '@angular/core'
 import {
   TuiResponsiveDialogOptions,
   TuiResponsiveDialogService,

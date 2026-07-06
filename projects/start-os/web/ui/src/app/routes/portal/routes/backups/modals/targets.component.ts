@@ -142,21 +142,24 @@ export class BackupsTargetsModal implements OnInit {
           {
             text: 'Save',
             handler: (value: Omit<RR.AddDiskBackupTargetReq, 'logicalname'>) =>
-              this.add('disk', {
-                logicalname: disk.logicalname,
-                ...value,
-              }).then(response => {
-                const [id, entry] = Object.entries(response)[0]
-                const saved = this.targets()?.saved || {}
+              this.add(
+                'disk',
+                {
+                  logicalname: disk.logicalname,
+                  ...value,
+                },
+                response => {
+                  const [id, entry] = Object.entries(response)[0]
+                  const saved = this.targets()?.saved || {}
 
-                saved[id] = entry
+                  saved[id] = entry
 
-                this.setTargets(
-                  saved,
-                  this.targets()?.unknownDisks.filter(a => a !== disk),
-                )
-                return true
-              }),
+                  this.setTargets(
+                    saved,
+                    this.targets()?.unknownDisks.filter(a => a !== disk),
+                  )
+                },
+              ),
           },
         ],
       },
@@ -188,9 +191,10 @@ export class BackupsTargetsModal implements OnInit {
       | RR.AddCifsBackupTargetReq
       | RR.AddCloudBackupTargetReq
       | RR.AddDiskBackupTargetReq,
+    handler: (response: RR.AddBackupTargetRes) => void = () => {},
   ): Promise<boolean> {
     return this.tasks.run(
-      async () => await this.api.addBackupTarget(type, value),
+      async () => handler(await this.api.addBackupTarget(type, value)),
       'Saving target',
     )
   }

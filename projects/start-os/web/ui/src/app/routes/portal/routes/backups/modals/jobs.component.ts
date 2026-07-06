@@ -202,7 +202,7 @@ export class BackupsJobsModal implements OnInit {
       .pipe(filter(Boolean))
       .subscribe(() =>
         this.tasks.run(async () => {
-          await this.api.removeBackupJob({ id })
+          await this.api.removeBackupTarget({ id })
           this.jobs.update(j => j?.filter(a => a.id !== id))
         }, 'Deleting'),
       )

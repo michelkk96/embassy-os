@@ -34,7 +34,7 @@ export class BackupsCreateService {
   ): Promise<void> {
     this.tasks.run(
       async () => await this.api.createBackup({ targetId, packageIds: pkgIds }),
-      'Beginning Backup',
+      'Beginning backup',
     )
   }
 }

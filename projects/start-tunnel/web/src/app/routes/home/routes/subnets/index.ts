@@ -10,11 +10,7 @@ import {
   TuiIcon,
   TuiTitle,
 } from '@taiga-ui/core'
-import {
-  TUI_CONFIRM,
-  TuiNotificationMiddleService,
-  TuiSkeleton,
-} from '@taiga-ui/kit'
+import { TUI_CONFIRM, TuiSkeleton } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { filter, map } from 'rxjs'

@@ -13,7 +13,6 @@ import { filter } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { ConfigService } from 'src/app/services/config.service'
 
-// @TODO Matt: we didn't have errorService here, do we still want to show error toast?
 @Component({
   selector: 'diagnostic-home',
   templateUrl: 'home.component.html',
@@ -128,13 +127,7 @@ export default class HomePage implements OnInit {
         },
       })
       .pipe(filter(Boolean))
-      .subscribe(() => {
-        try {
-          this.repairDisk()
-        } catch (e) {
-          console.error(e)
-        }
-      })
+      .subscribe(() => this.repairDisk())
   }
 
   refreshPage(): void {

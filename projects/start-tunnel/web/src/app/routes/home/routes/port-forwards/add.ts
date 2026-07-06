@@ -8,10 +8,10 @@ import {
   Validators,
 } from '@angular/forms'
 import { WA_IS_MOBILE } from '@ng-web-apis/platform'
-import { ErrorService } from '@start9labs/shared'
+import { TaskService } from '@start9labs/shared'
 import {
-  tuiMarkControlAsTouchedAndValidate,
   TuiContext,
+  tuiMarkControlAsTouchedAndValidate,
   TuiValueChanges,
 } from '@taiga-ui/cdk'
 import {
@@ -27,7 +27,6 @@ import {
   TuiChevron,
   TuiDataListWrapper,
   TuiInputNumber,
-  TuiNotificationMiddleService,
   TuiRadioList,
   TuiSelect,
   TuiTooltip,
@@ -210,8 +209,7 @@ const IP_VERSION: Record<string, string> = {
 })
 export class PortForwardsAdd {
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
 
   show80 = false
 
@@ -281,8 +279,6 @@ export class PortForwardsAdd {
       return
     }
 
-    const loader = this.loading.open('').subscribe()
-
     const {
       label,
       externalport,
@@ -308,7 +304,7 @@ export class PortForwardsAdd {
       internalport === 443 &&
       also80
 
-    try {
+    this.tasks.run(async () => {
       if (v4) {
         // The external IP is fixed server-side to the target device's WAN.
         await this.api.addForward({
@@ -345,13 +341,8 @@ export class PortForwardsAdd {
           })
         }
       }
-    } catch (e: any) {
-      console.error(e)
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
       this.context.$implicit.complete()
-    }
+    })
   }
 }
 

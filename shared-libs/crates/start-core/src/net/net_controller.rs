@@ -15,7 +15,6 @@ use tokio_rustls::rustls::crypto::CryptoProvider;
 use tracing::instrument;
 
 use crate::db::model::Database;
-use crate::db::model::public::GatewayType;
 use crate::hostname::ServerHostname;
 use crate::net::dns::DnsController;
 use crate::net::dns_update::DnsUpdateController;
@@ -368,10 +367,15 @@ impl NetServiceData {
             // LAN+WAN GUAs: the host's own GUA is the listener (no DNAT), so
             // rather than a LAN forward we ask the upstream gateway(s) for a
             // firewall pinhole to the GUA:port (best-effort PCP/NAT-PMP).
-            for a in enabled_addresses.iter().filter(|a| bind.addresses.is_wan(a)) {
+            for a in enabled_addresses.iter().filter(|a| a.public) {
                 let Some(gua) = a.gua() else {
                     continue;
                 };
+                // The WAN is never secure: no upstream pinhole for an insecure exposure
+                // (add_ssl terminates TLS on the ssl port → a.ssl).
+                if !(a.ssl || bind.options.secure.is_some()) {
+                    continue;
+                }
                 let v6_gateways: Vec<(IpAddr, Option<u32>)> = a
                     .metadata
                     .gateways()
@@ -433,7 +437,7 @@ impl NetServiceData {
                     // (a GUA set to LAN+WAN is WAN, so it lands in the public set).
                     let server_private_ips: BTreeSet<IpAddr> = enabled_addresses
                         .iter()
-                        .filter(|a| !bind.addresses.is_wan(a))
+                        .filter(|a| !a.public)
                         .flat_map(|a| a.metadata.gateways())
                         .filter_map(|gw| net_ifaces.get(gw).and_then(|info| info.ip_info.as_ref()))
                         .flat_map(|ip_info| ip_info.subnets.iter().map(|s| s.addr()))
@@ -443,7 +447,7 @@ impl NetServiceData {
                     // (public IPv4 WAN, or a GUA the operator set to LAN+WAN).
                     let server_public_gateways: BTreeSet<GatewayId> = enabled_addresses
                         .iter()
-                        .filter(|a| bind.addresses.is_wan(a) && a.metadata.is_ip())
+                        .filter(|a| a.public && a.metadata.is_ip())
                         .flat_map(|a| a.metadata.gateways())
                         .cloned()
                         .collect();
@@ -520,15 +524,19 @@ impl NetServiceData {
                 .map_or(true, |s| !(s.ssl && bind.options.add_ssl.is_some()))
             {
                 let external = bind.net.assigned_port.or_not_found("assigned lan port")?;
+                // Only addresses at this port drive its forward (ssl-port entries are the vhost's).
                 let fwd_public: BTreeSet<GatewayId> = enabled_addresses
                     .iter()
-                    .filter(|a| bind.addresses.is_wan(a))
+                    .filter(|a| a.public && a.port == Some(external))
                     .flat_map(|a| a.metadata.gateways())
                     .cloned()
                     .collect();
                 // Declare which address makes each gateway public, so a stray
                 // auto-port-map can be traced back to the exposure driving it.
-                for a in enabled_addresses.iter().filter(|a| bind.addresses.is_wan(a)) {
+                for a in enabled_addresses
+                    .iter()
+                    .filter(|a| a.public && a.port == Some(external))
+                {
                     tracing::debug!(
                         "port {external}: WAN address {} (ip={}) on gateway(s) {:?}",
                         a.hostname,
@@ -538,7 +546,7 @@ impl NetServiceData {
                 }
                 let fwd_private: BTreeSet<IpAddr> = enabled_addresses
                     .iter()
-                    .filter(|a| !bind.addresses.is_wan(a))
+                    .filter(|a| !a.public && a.port == Some(external))
                     .flat_map(|a| a.metadata.gateways())
                     .filter_map(|gw| net_ifaces.get(gw).and_then(|i| i.ip_info.as_ref()))
                     .flat_map(|ip| ip.subnets.iter().map(|s| s.addr()))
@@ -563,12 +571,27 @@ impl NetServiceData {
                 // can't determine rather than expose it unrestricted.
                 if let Some(container_v6) = self.ipv6 {
                     for a in enabled_addresses.iter() {
-                        let Some(gua) = a.gua() else {
+                        // SSL-port GUAs are the vhost listener's; DNAT only the non-SSL port.
+                        let Some(gua) = a.gua().filter(|g| g.port() == external) else {
                             continue;
                         };
-                        let src_filter = if bind.addresses.is_wan(a) {
+                        // Secure when StartOS terminates TLS (add_ssl → a.ssl) or the
+                        // underlying protocol is itself secure. The WAN is never secure, so an
+                        // insecure exposure that requested public serves the LAN instead.
+                        let secure_exposure = a.ssl || bind.options.secure.is_some();
+                        let src_filter = if a.public && secure_exposure {
                             None
                         } else {
+                            // LAN: insecure reaches it only over a secure gateway (IPv4 parity).
+                            if !secure_exposure
+                                && !a
+                                    .metadata
+                                    .gateways()
+                                    .filter_map(|gw| net_ifaces.get(gw))
+                                    .any(|info| info.secure())
+                            {
+                                continue;
+                            }
                             match a
                                 .metadata
                                 .gateways()
@@ -891,9 +914,6 @@ impl NetServiceData {
                 let Some(info) = net_ifaces.get(gw_id) else {
                     continue;
                 };
-                if matches!(info.gateway_type, Some(GatewayType::OutboundOnly)) {
-                    continue;
-                }
                 let Some(ip_info) = &info.ip_info else { continue };
                 let gateways = candidate_gateways(info);
                 if gateways.is_empty() {

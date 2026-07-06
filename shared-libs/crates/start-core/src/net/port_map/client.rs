@@ -63,6 +63,14 @@ type MappingKey = (IpAddr, u16, Option<String>);
 /// the tunnel server's address, the subnet's first host, where its PCP server
 /// listens.
 pub fn candidate_gateways(info: &NetworkInterfaceInfo) -> Vec<(IpAddr, Option<u32>)> {
+    // Port mapping is inbound-only: an OutboundOnly gateway (e.g. a commercial
+    // VPN) exposes no PCP/NAT-PMP server we'd ever ask for a pinhole. Return no
+    // candidates so every port-map call site — this is the one they all funnel
+    // through — never attempts PCP against it.
+    if info.gateway_type == Some(GatewayType::OutboundOnly) {
+        return Vec::new();
+    }
+
     fn push(out: &mut Vec<(IpAddr, Option<u32>)>, ip: IpAddr, scope_id: Option<u32>) {
         let bad = match ip {
             IpAddr::V4(v4) => v4.is_unspecified() || v4.is_loopback() || v4.is_broadcast(),
@@ -79,9 +87,11 @@ pub fn candidate_gateways(info: &NetworkInterfaceInfo) -> Vec<(IpAddr, Option<u3
     };
 
     for ip in &ip_info.lan_ip {
-        // v4: the gateway must sit within one of our own subnets. v6: accept the
-        // link-local default gateway (fe80::, the common case) or one in our
-        // subnets.
+        // The gateway must sit within one of our own subnets. A link-local v6
+        // gateway is never a PCP server we can reach — a StartTunnel peer owns
+        // none on the wg link, and its own fe80::/64 nominally "contains" any
+        // fe80::, so a subnet check can't distinguish it — so skip it. On a
+        // tunnel the host_v6-derived server fills the v6 slot below.
         match ip {
             IpAddr::V4(_) => {
                 if ip_info.subnets.iter().any(|s| s.contains(ip)) {
@@ -89,13 +99,10 @@ pub fn candidate_gateways(info: &NetworkInterfaceInfo) -> Vec<(IpAddr, Option<u3
                 }
             }
             IpAddr::V6(v6) => {
-                // A StartTunnel peer owns no link-local on the wg link (WireGuard
-                // interfaces carry none), so an NM-reported fe80:: gateway there
-                // can never answer PCP — skip it so the subnet-derived server
-                // address below fills the v6 slot instead.
-                let ll_ok = ipv6_is_link_local(*v6)
-                    && info.gateway_type != Some(GatewayType::InboundOutbound);
-                if ll_ok || ip_info.subnets.iter().any(|s| s.contains(ip)) {
+                if ipv6_is_link_local(*v6) {
+                    continue;
+                }
+                if ip_info.subnets.iter().any(|s| s.contains(ip)) {
                     push(&mut out, *ip, Some(ip_info.scope_id));
                 }
             }
@@ -123,7 +130,11 @@ pub fn candidate_gateways(info: &NetworkInterfaceInfo) -> Vec<(IpAddr, Option<u3
             // resolve to the client's own address, not the server's.
             if !have_v6 {
                 if let Some(prefix) = ip_info.subnets.iter().find_map(|s| match s {
-                    IpNet::V6(n) if n.prefix_len() < 128 => Some(*n),
+                    // Derive the server from the routed prefix, never the wg
+                    // iface's own fe80::/64 — that would yield a link-local server.
+                    IpNet::V6(n) if n.prefix_len() < 128 && !ipv6_is_link_local(n.network()) => {
+                        Some(*n)
+                    }
                     _ => None,
                 }) {
                     let server_v6 = crate::tunnel::wg6::host_v6(prefix, server_v4);
@@ -888,14 +899,63 @@ mod tests {
         assert!(gws.iter().any(|(g, _)| *g == server_v6), "got {gws:?}");
     }
 
-    // A real router's link-local v6 gateway (the common home case) stays.
+    // A link-local v6 gateway is never a reachable PCP server, so it's skipped
+    // regardless of gateway_type — a home router still keeps its v4 gateway.
     #[test]
-    fn router_link_local_gateway_is_kept() {
+    fn link_local_v6_gateway_is_always_skipped() {
         let gws = candidate_gateways(&iface(
             &["192.168.1.5/24"],
             &["192.168.1.1", "fe80::1"],
             None,
         ));
-        assert!(gws.contains(&("fe80::1".parse().unwrap(), Some(42))));
+        assert!(
+            !gws.iter()
+                .any(|(g, _)| matches!(g, IpAddr::V6(v6) if ipv6_is_link_local(*v6))),
+            "link-local v6 gateway must be skipped: {gws:?}"
+        );
+        assert!(gws.contains(&(Ipv4Addr::new(192, 168, 1, 1).into(), None)));
+    }
+
+    // Regression for the live-box timeout: the wg iface carries its own
+    // fe80::/64, so `subnets.contains(fe80::gw)` is true (every link-local shares
+    // that /64) and re-admitted the NM link-local gateway past #3417's guard —
+    // the gateway the tunnel server can't answer on. It must be rejected so the
+    // host_v6-derived server (`.1` of the routed prefix) fills the v6 slot.
+    #[test]
+    fn tunnel_rejects_link_local_gateway_even_when_a_subnet_contains_it() {
+        let gws = candidate_gateways(&iface(
+            &[
+                "10.59.0.2/24",
+                "2604:a880:4:1d0::a3b:2/64",
+                "fe80::1234:5678:9abc:def0/64",
+            ],
+            &["fe80::a3b:1"],
+            Some(GatewayType::InboundOutbound),
+        ));
+        assert!(
+            !gws.iter().any(|(g, _)| match g {
+                IpAddr::V6(v6) => ipv6_is_link_local(*v6),
+                _ => false,
+            }),
+            "link-local gateway survived despite the fe80::/64 subnet: {gws:?}"
+        );
+        let server_v6: IpAddr = "2604:a880:4:1d0::a3b:1".parse().unwrap();
+        assert!(
+            gws.iter().any(|(g, _)| *g == server_v6),
+            "expected host_v6-derived server, got {gws:?}"
+        );
+        assert!(gws.contains(&(Ipv4Addr::new(10, 59, 0, 1).into(), None)));
+    }
+
+    // Port mapping is inbound-only: an OutboundOnly gateway is never a PCP target,
+    // so it yields no candidates regardless of what NM reports.
+    #[test]
+    fn outbound_only_gateway_has_no_candidates() {
+        let gws = candidate_gateways(&iface(
+            &["10.8.0.2/24", "2001:db8::2/64"],
+            &["10.8.0.1", "fe80::1"],
+            Some(GatewayType::OutboundOnly),
+        ));
+        assert!(gws.is_empty(), "OutboundOnly must yield no candidates, got {gws:?}");
     }
 }

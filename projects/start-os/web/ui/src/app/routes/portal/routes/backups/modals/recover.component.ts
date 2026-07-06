@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common'
 import { Component, inject } from '@angular/core'
 import { FormsModule } from '@angular/forms'
-import { ErrorService } from '@start9labs/shared'
+import { TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiMapperPipe } from '@taiga-ui/cdk'
 import {
@@ -10,7 +10,7 @@ import {
   TuiDialogContext,
   TuiGroup,
 } from '@taiga-ui/core'
-import { TuiBlock, TuiNotificationMiddleService } from '@taiga-ui/kit'
+import { TuiBlock } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { PatchDB } from 'patch-db-client'
 import { take } from 'rxjs'
@@ -72,8 +72,7 @@ import { RecoverOption } from '../types/recover-option'
 })
 export class BackupsRecoverModal {
   private readonly api = inject(ApiService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly context =
     injectContext<TuiDialogContext<void, RecoverData>>()
 
@@ -112,11 +111,9 @@ export class BackupsRecoverModal {
 
   async restore(options: RecoverOption[]): Promise<void> {
     const ids = options.filter(({ checked }) => !!checked).map(({ id }) => id)
-    const loader = this.loader.open('Initializing').subscribe()
-
     const { targetId, serverId, password } = this.context.data
 
-    try {
+    this.tasks.run(async () => {
       await this.api.restorePackages({
         ids,
         targetId,
@@ -125,11 +122,7 @@ export class BackupsRecoverModal {
       })
 
       this.context.$implicit.complete()
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Initializing')
   }
 }
 

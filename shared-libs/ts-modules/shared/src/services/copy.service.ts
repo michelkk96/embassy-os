@@ -1,10 +1,10 @@
-import { inject, Injectable } from '@angular/core'
 import { Clipboard } from '@angular/cdk/clipboard'
+import { inject, Service } from '@angular/core'
 import { TuiNotificationService } from '@taiga-ui/core'
 
 import { i18nPipe } from '../i18n/i18n.pipe'
 
-@Injectable({ providedIn: 'root' })
+@Service()
 export class CopyService {
   private readonly clipboard = inject(Clipboard)
   private readonly i18n = inject(i18nPipe)

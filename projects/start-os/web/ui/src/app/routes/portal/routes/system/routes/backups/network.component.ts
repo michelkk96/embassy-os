@@ -1,9 +1,8 @@
 import { Component, inject, output } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
-import { DialogService, ErrorService, i18nPipe } from '@start9labs/shared'
+import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { ISB, T } from '@start9labs/start-core'
 import { TuiButton, TuiDataList, TuiDropdown, TuiIcon } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { filter } from 'rxjs'
 import { FormComponent } from 'src/app/routes/portal/components/form.component'
 import { PlaceholderComponent } from 'src/app/routes/portal/components/placeholder.component'
@@ -197,10 +196,10 @@ export class BackupNetworkComponent {
   private readonly dialog = inject(DialogService)
   private readonly formDialog = inject(FormDialogService)
   private readonly api = inject(ApiService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
-  protected readonly type = inject(ActivatedRoute).snapshot.data['type']
+  private readonly tasks = inject(TaskService)
   private readonly i18n = inject(i18nPipe)
+
+  protected readonly type = inject(ActivatedRoute).snapshot.data['type']
 
   readonly service = inject(BackupService)
   readonly networkFolders = output<MappedBackupTarget<CifsBackupTarget>>()
@@ -242,12 +241,8 @@ export class BackupNetworkComponent {
         buttons: [
           {
             text: this.i18n.transform('Connect'),
-            handler: async (value: T.CifsAddParams) => {
-              const loader = this.loader
-                .open('Testing connectivity to shared folder')
-                .subscribe()
-
-              try {
+            handler: async (value: T.CifsAddParams) =>
+              this.tasks.run(async () => {
                 const res = await this.api.updateBackupTarget({
                   id: target.id,
                   ...value,
@@ -255,14 +250,7 @@ export class BackupNetworkComponent {
 
                 target.entry = Object.values(res)[0]!
                 this.service.cifs.update(cifs => [...cifs])
-                return true
-              } catch (e: any) {
-                this.errorService.handleError(e)
-                return false
-              } finally {
-                loader.unsubscribe()
-              }
-            },
+              }, 'Testing connectivity to shared folder'),
           },
         ],
         value: { ...target.entry },
@@ -274,26 +262,16 @@ export class BackupNetworkComponent {
     this.dialog
       .openConfirm({ label: 'Are you sure?', size: 's' })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loader.open('Removing').subscribe()
-
-        try {
+      .subscribe(() =>
+        this.tasks.run(async () => {
           await this.api.removeBackupTarget({ id })
           this.service.cifs.update(cifs => cifs.filter((_, i) => i !== index))
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+        }, 'Removing'),
+      )
   }
 
   private async addTarget(v: T.CifsAddParams): Promise<boolean> {
-    const loader = this.loader
-      .open('Testing connectivity to shared folder')
-      .subscribe()
-
-    try {
+    return this.tasks.run(async () => {
       const [item] = Object.entries(await this.api.addBackupTarget(v))
       const [id, entry] = item || []
 
@@ -304,13 +282,7 @@ export class BackupNetworkComponent {
       const hasAnyBackup = this.service.hasAnyBackup(entry)
       const added = { id, entry, hasAnyBackup }
       this.service.cifs.update(cifs => [added, ...cifs])
-      return true
-    } catch (e: any) {
-      this.errorService.handleError(e)
-      return false
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Testing connectivity to shared folder')
   }
 
   cifsSpec() {

@@ -2,7 +2,12 @@ import { Component, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { verify } from '@start9labs/argon2'
-import { DialogService, ErrorService, i18nPipe } from '@start9labs/shared'
+import {
+  DialogService,
+  ErrorService,
+  i18nPipe,
+  TaskService,
+} from '@start9labs/shared'
 import {
   TuiButton,
   TuiCheckbox,
@@ -10,7 +15,7 @@ import {
   TuiLoader,
   TuiTitle,
 } from '@taiga-ui/core'
-import { TuiBlock, TuiNotificationMiddleService } from '@taiga-ui/kit'
+import { TuiBlock } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { PatchDB } from 'patch-db-client'
 import { map, take } from 'rxjs'
@@ -90,7 +95,7 @@ interface Package {
 })
 export class BackupsBackupComponent {
   private readonly dialog = inject(DialogService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly errorService = inject(ErrorService)
   private readonly api = inject(ApiService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
@@ -187,7 +192,6 @@ export class BackupsBackupComponent {
     password: string,
     oldPassword: string | null = null,
   ) {
-    const loader = this.loader.open('Beginning backup').subscribe()
     const packageIds =
       this.pkgs()
         ?.filter(p => p.checked)
@@ -199,14 +203,10 @@ export class BackupsBackupComponent {
       password,
     }
 
-    try {
+    this.tasks.run(async () => {
       await this.api.createBackup(params)
       this.context.$implicit.complete()
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Beginning backup')
   }
 }
 

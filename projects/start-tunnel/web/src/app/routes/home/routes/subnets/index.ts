@@ -1,5 +1,6 @@
 import { Component, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
+import { TaskService } from '@start9labs/shared'
 import { T, utils } from '@start9labs/start-core'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
 import {
@@ -9,11 +10,7 @@ import {
   TuiIcon,
   TuiTitle,
 } from '@taiga-ui/core'
-import {
-  TUI_CONFIRM,
-  TuiNotificationMiddleService,
-  TuiSkeleton,
-} from '@taiga-ui/kit'
+import { TUI_CONFIRM, TuiSkeleton } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { filter, map } from 'rxjs'
@@ -127,7 +124,7 @@ import { SUBNETS_ADD } from './add'
 export default class Subnets {
   private readonly dialogs = inject(TuiResponsiveDialogService)
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly patch = inject<PatchDB<TunnelData>>(PatchDB)
 
   protected readonly wanLabel = wanLabel
@@ -218,18 +215,14 @@ export default class Subnets {
     this.dialogs
       .open(TUI_CONFIRM, { label: 'Are you sure?' })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const subnet = this.subnets()?.[index]?.range || ''
-        const loader = this.loading.open('').subscribe()
-
-        try {
-          await this.api.deleteSubnet({ subnet })
-        } catch (e) {
-          console.log(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(() =>
+        this.tasks.run(
+          async () =>
+            await this.api.deleteSubnet({
+              subnet: this.subnets()?.[index]?.range || '',
+            }),
+        ),
+      )
   }
 
   private getNext(): string {

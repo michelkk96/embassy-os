@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core'
+import { inject, Injectable } from '@angular/core'
 import { Router, UrlTree } from '@angular/router'
 import { map, Observable } from 'rxjs'
 import { AuthService } from '../services/auth.service'
@@ -7,10 +7,8 @@ import { AuthService } from '../services/auth.service'
   providedIn: 'root',
 })
 export class UnauthGuard {
-  constructor(
-    private readonly authService: AuthService,
-    private readonly router: Router,
-  ) {}
+  private readonly authService = inject(AuthService)
+  private readonly router = inject(Router)
 
   canActivate(): Observable<boolean | UrlTree> {
     return this.authService.isVerified$.pipe(

@@ -1,16 +1,15 @@
 import { CommonModule, TitleCasePipe } from '@angular/common'
 import { Component, inject } from '@angular/core'
 import {
-  ErrorService,
   i18nPipe,
   MarkdownPipe,
   SafeLinksDirective,
+  TaskService,
 } from '@start9labs/shared'
 import { Version } from '@start9labs/start-core'
 import { TuiAutoFocus } from '@taiga-ui/cdk'
 import { TuiButton, TuiDialogContext, TuiScrollbar } from '@taiga-ui/core'
 import { NgDompurifyPipe } from '@taiga-ui/dompurify'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom } from 'rxjs'
@@ -52,8 +51,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
   ],
 })
 export class SystemUpdateModal {
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly embassyApi = inject(ApiService)
   private readonly os = inject(OSService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
@@ -71,21 +69,15 @@ export class SystemUpdateModal {
     .map(([version, info]) => ({ version, notes: info.releaseNotes }))
 
   async update() {
-    const loader = this.loader.open('Beginning update').subscribe()
-
     const { startosRegistry } = await firstValueFrom(this.patch.watch$('ui'))
 
-    try {
+    this.tasks.run(async () => {
       await this.embassyApi.updateServer({
         targetVersion: `=${this.versions[0]!.version}`,
         registry: startosRegistry,
       })
       this.context.$implicit.complete()
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Beginning update')
   }
 }
 

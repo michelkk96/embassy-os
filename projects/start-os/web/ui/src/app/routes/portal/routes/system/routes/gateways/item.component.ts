@@ -1,5 +1,5 @@
 import { Component, inject, input } from '@angular/core'
-import { DialogService, ErrorService, i18nPipe } from '@start9labs/shared'
+import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { ISB } from '@start9labs/start-core'
 import {
   TuiButton,
@@ -8,7 +8,6 @@ import {
   TuiIcon,
   TuiInput,
 } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { filter } from 'rxjs'
 import { FormComponent } from 'src/app/routes/portal/components/form.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -140,8 +139,7 @@ import { PORT_FORWARDS_MODAL } from './port-forwards.component'
 })
 export class GatewaysItemComponent {
   private readonly dialog = inject(DialogService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly formDialog = inject(FormDialogService)
   private readonly i18n = inject(i18nPipe)
@@ -165,17 +163,12 @@ export class GatewaysItemComponent {
     this.dialog
       .openConfirm({ label: 'Are you sure?', size: 's' })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loader.open('Deleting').subscribe()
-
-        try {
-          await this.api.removeTunnel({ id: this.gateway().id })
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(() =>
+        this.tasks.run(
+          async () => await this.api.removeTunnel({ id: this.gateway().id }),
+          'Deleting',
+        ),
+      )
   }
 
   async rename() {
@@ -243,25 +236,18 @@ export class GatewaysItemComponent {
         buttons: [
           {
             text: this.i18n.transform('Save'),
-            handler: async (input: typeof spec._TYPE) => {
-              const loader = this.loader.open('Saving').subscribe()
-
-              try {
-                await this.api.updateTunnelConfig({
-                  id,
-                  config:
-                    input.config.selection === 'paste'
-                      ? input.config.value.file
-                      : await (input.config.value.file as any as File).text(),
-                })
-                return true
-              } catch (e: any) {
-                this.errorService.handleError(e)
-                return false
-              } finally {
-                loader.unsubscribe()
-              }
-            },
+            handler: async (input: typeof spec._TYPE) =>
+              this.tasks.run(
+                async () =>
+                  await this.api.updateTunnelConfig({
+                    id,
+                    config:
+                      input.config.selection === 'paste'
+                        ? input.config.value.file
+                        : await (input.config.value.file as any as File).text(),
+                  }),
+                'Saving',
+              ),
           },
         ],
       },
@@ -269,16 +255,9 @@ export class GatewaysItemComponent {
   }
 
   private async update(id: string, name: string): Promise<boolean> {
-    const loader = this.loader.open('Saving').subscribe()
-
-    try {
-      await this.api.updateTunnel({ id, name })
-      return true
-    } catch (e: any) {
-      this.errorService.handleError(e)
-      return false
-    } finally {
-      loader.unsubscribe()
-    }
+    return this.tasks.run(
+      async () => await this.api.updateTunnel({ id, name }),
+      'Saving',
+    )
   }
 }

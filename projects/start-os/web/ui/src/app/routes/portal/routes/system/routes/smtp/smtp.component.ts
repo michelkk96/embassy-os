@@ -5,13 +5,12 @@ import { RouterLink } from '@angular/router'
 import {
   DialogService,
   DocsLinkDirective,
-  ErrorService,
   i18nKey,
   i18nPipe,
+  TaskService,
 } from '@start9labs/shared'
 import { inputSpec, ISB, utils } from '@start9labs/start-core'
 import { TuiButton, TuiError, TuiInput, TuiTitle } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { switchMap } from 'rxjs'
@@ -172,8 +171,7 @@ function detectProviderKey(host: string | undefined): string {
 })
 export default class SystemEmailComponent {
   private readonly dialog = inject(DialogService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly formService = inject(FormService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly api = inject(ApiService)
@@ -246,19 +244,13 @@ export default class SystemEmailComponent {
   }
 
   async save(formValue: Record<string, any>): Promise<void> {
-    const loader = this.loader.open('Saving').subscribe()
-
-    try {
+    this.tasks.run(async () => {
       if (formValue['smtp'].selection === 'disabled') {
         await this.api.clearSmtp({})
       } else {
         await this.api.setSmtp(this.getSmtpValue(formValue))
       }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Saving')
   }
 
   cancel(data: {
@@ -271,11 +263,10 @@ export default class SystemEmailComponent {
   async sendTestEmail(formValue: Record<string, any>) {
     const smtpValue = this.getSmtpValue(formValue)
     const address = this.testEmailControl.value!
-    const loader = this.loader.open('Sending email').subscribe()
     const success =
       `${this.i18n.transform('A test email has been sent to')} ${address}. <i>${this.i18n.transform('Check your spam folder and mark as not spam.')}</i>` as i18nKey
 
-    try {
+    this.tasks.run(async () => {
       await this.api.testSmtp({
         ...smtpValue,
         password: smtpValue.password || '',
@@ -285,10 +276,6 @@ export default class SystemEmailComponent {
         .openAlert(success, { label: 'Success', size: 's' })
         .subscribe()
       this.testEmailControl.reset()
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Sending email')
   }
 }

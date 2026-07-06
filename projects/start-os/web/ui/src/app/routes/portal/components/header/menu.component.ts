@@ -3,9 +3,9 @@ import { RouterLink } from '@angular/router'
 import {
   DialogService,
   DocsLinkDirective,
-  ErrorService,
   i18nPipe,
   SafeLinksDirective,
+  TaskService,
 } from '@start9labs/shared'
 import {
   TuiButton,
@@ -14,7 +14,6 @@ import {
   TuiHint,
   TuiIcon,
 } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { filter } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { AuthService } from 'src/app/services/auth.service'
@@ -139,8 +138,7 @@ import { ABOUT } from './about.component'
 export class HeaderMenuComponent {
   private readonly api = inject(ApiService)
   private readonly auth = inject(AuthService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly dialog = inject(DialogService)
 
   open = false
@@ -177,19 +175,15 @@ export class HeaderMenuComponent {
             },
       )
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loader.open(`Beginning ${action}`).subscribe()
-
-        try {
-          await this.api[
-            action === 'restart' ? 'restartServer' : 'shutdownServer'
-          ]({})
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(() =>
+        this.tasks.run(
+          async () =>
+            await this.api[
+              action === 'restart' ? 'restartServer' : 'shutdownServer'
+            ]({}),
+          `Beginning ${action}`,
+        ),
+      )
   }
 
   logout() {

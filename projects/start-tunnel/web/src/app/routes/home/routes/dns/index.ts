@@ -6,7 +6,7 @@ import {
   Signal,
 } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
-import { ErrorService } from '@start9labs/shared'
+import { TaskService } from '@start9labs/shared'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
 import {
   TuiButton,
@@ -15,11 +15,7 @@ import {
   TuiIcon,
   TuiTitle,
 } from '@taiga-ui/core'
-import {
-  TUI_CONFIRM,
-  TuiNotificationMiddleService,
-  TuiSkeleton,
-} from '@taiga-ui/kit'
+import { TUI_CONFIRM, TuiSkeleton } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { filter, map } from 'rxjs'
@@ -155,9 +151,8 @@ import { DNS_ADD } from './add'
 export default class Dns {
   private readonly dialogs = inject(TuiResponsiveDialogService)
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly patch = inject<PatchDB<TunnelData>>(PatchDB)
-  private readonly errorService = inject(ErrorService)
 
   protected readonly records = toSignal(this.patch.watch$('dnsRecords'))
   protected readonly manual = computed(() =>
@@ -222,18 +217,14 @@ export default class Dns {
     this.dialogs
       .open(TUI_CONFIRM, { label: 'Are you sure?' })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loading.open('').subscribe()
-        try {
-          await this.api.removeDnsRecord({
-            name: record.name,
-            type: record.type,
-          })
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(() =>
+        this.tasks.run(
+          async () =>
+            await this.api.removeDnsRecord({
+              name: record.name,
+              type: record.type,
+            }),
+        ),
+      )
   }
 }

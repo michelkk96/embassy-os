@@ -1,10 +1,14 @@
 import { Component, inject, OnInit, signal, viewChild } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { ErrorService, i18nPipe, isEmptyObject } from '@start9labs/shared'
+import {
+  ErrorService,
+  i18nPipe,
+  isEmptyObject,
+  TaskService,
+} from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { filter } from 'rxjs'
 import { distinctUntilChanged, skip } from 'rxjs/operators'
 import { ServerNotification } from 'src/app/services/api/api.types'
@@ -53,7 +57,7 @@ import { NotificationsTableComponent } from './table.component'
 export default class NotificationsComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
 
   readonly service = inject(NotificationService)
   readonly api = inject(ApiService)
@@ -98,16 +102,11 @@ export default class NotificationsComponent implements OnInit {
       this.table()
         ?.selected()
         .map(n => n.id) || []
-    const loader = this.loader.open('Deleting').subscribe()
 
-    try {
+    this.tasks.run(async () => {
       await this.api.deleteNotifications({ ids })
       this.notifications.set(all.filter(n => !ids.includes(n.id)))
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Deleting')
   }
 
   private init() {

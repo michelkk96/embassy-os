@@ -1,31 +1,27 @@
-import { Directive, HostListener, inject, Input } from '@angular/core'
+import { Directive, inject, input } from '@angular/core'
 import {
   convertAnsi,
   DownloadHTMLService,
-  ErrorService,
+  TaskService,
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { LogsComponent } from './logs.component'
 
 @Directive({
   selector: 'button[logsDownload]',
+  host: { '(click)': 'download()' },
 })
 export class LogsDownloadDirective {
   private readonly component = inject(LogsComponent)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly downloadHtml = inject(DownloadHTMLService)
 
-  @Input({ required: true })
-  logsDownload!: (params: T.LogsParams) => Promise<T.LogResponse>
+  logsDownload =
+    input.required<(params: T.LogsParams) => Promise<T.LogResponse>>()
 
-  @HostListener('click')
   async download() {
-    const loader = this.loader.open('Processing 10,000 logs').subscribe()
-
-    try {
-      const { entries } = await this.logsDownload({
+    this.tasks.run(async () => {
+      const { entries } = await this.logsDownload()({
         before: true,
         limit: 10000,
       })
@@ -35,11 +31,7 @@ export class LogsDownloadDirective {
         convertAnsi(entries),
         STYLES,
       )
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Processing 10,000 logs')
   }
 }
 

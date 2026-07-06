@@ -1,10 +1,14 @@
 import { CommonModule } from '@angular/common'
-import { Component, Inject, signal } from '@angular/core'
+import { Component, inject, OnInit, signal } from '@angular/core'
 import { RouterLink } from '@angular/router'
 import { WA_WINDOW } from '@ng-web-apis/common'
-import { DialogService, i18nKey, i18nPipe } from '@start9labs/shared'
+import {
+  DialogService,
+  i18nKey,
+  i18nPipe,
+  TaskService,
+} from '@start9labs/shared'
 import { TuiButton } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { filter } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { ConfigService } from 'src/app/services/config.service'
@@ -15,7 +19,13 @@ import { ConfigService } from 'src/app/services/config.service'
   styleUrls: ['home.page.scss'],
   imports: [CommonModule, TuiButton, i18nPipe, RouterLink],
 })
-export default class HomePage {
+export default class HomePage implements OnInit {
+  private readonly tasks = inject(TaskService)
+  private readonly api = inject(ApiService)
+  private readonly dialog = inject(DialogService)
+  private readonly window = inject(WA_WINDOW)
+
+  readonly config = inject(ConfigService)
   readonly restarted = signal(false)
   readonly error = signal<
     | {
@@ -26,14 +36,6 @@ export default class HomePage {
       }
     | undefined
   >(undefined)
-
-  constructor(
-    private readonly loader: TuiNotificationMiddleService,
-    private readonly api: ApiService,
-    private readonly dialog: DialogService,
-    @Inject(WA_WINDOW) private readonly window: Window,
-    readonly config: ConfigService,
-  ) {}
 
   async ngOnInit() {
     try {
@@ -97,31 +99,19 @@ export default class HomePage {
     }
   }
 
-  async restart(): Promise<void> {
-    const loader = this.loader.open('Loading').subscribe()
-
-    try {
+  restart() {
+    this.tasks.run(async () => {
       await this.api.diagnosticRestart()
       this.restarted.set(true)
-    } catch (e) {
-      console.error(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Loading')
   }
 
-  async forgetDrive(): Promise<void> {
-    const loader = this.loader.open('Loading').subscribe()
-
-    try {
+  forgetDrive() {
+    this.tasks.run(async () => {
       await this.api.diagnosticForgetDrive()
       await this.api.diagnosticRestart()
       this.restarted.set(true)
-    } catch (e) {
-      console.error(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Loading')
   }
 
   async presentAlertRepairDisk() {
@@ -137,30 +127,18 @@ export default class HomePage {
         },
       })
       .pipe(filter(Boolean))
-      .subscribe(() => {
-        try {
-          this.repairDisk()
-        } catch (e) {
-          console.error(e)
-        }
-      })
+      .subscribe(() => this.repairDisk())
   }
 
   refreshPage(): void {
     this.window.location.reload()
   }
 
-  private async repairDisk(): Promise<void> {
-    const loader = this.loader.open('Loading').subscribe()
-
-    try {
+  private repairDisk() {
+    this.tasks.run(async () => {
       await this.api.diagnosticRepairDisk()
       await this.api.diagnosticRestart()
       this.restarted.set(true)
-    } catch (e) {
-      console.error(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Loading')
   }
 }

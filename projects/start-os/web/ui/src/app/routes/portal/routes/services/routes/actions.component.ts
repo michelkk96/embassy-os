@@ -1,10 +1,9 @@
 import { KeyValuePipe } from '@angular/common'
 import { Component, computed, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
-import { ErrorService, getPkgId, i18nPipe } from '@start9labs/shared'
+import { getPkgId, i18nPipe, TaskService } from '@start9labs/shared'
 import { ISB, T } from '@start9labs/start-core'
 import { TuiCell } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom, map } from 'rxjs'
 import { FormComponent } from 'src/app/routes/portal/components/form.component'
@@ -82,8 +81,7 @@ export default class ServiceActionsRoute {
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly formDialog = inject(FormDialogService)
   private readonly api = inject(ApiService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
 
   ungrouped: 'General' | 'Other' = 'General'
 
@@ -231,22 +229,16 @@ export default class ServiceActionsRoute {
         buttons: [
           {
             text: this.i18n.transform('Save'),
-            handler: async (input: typeof spec._TYPE) => {
-              const loader = this.loader.open('Saving').subscribe()
-
-              try {
-                await this.api.setServiceOutbound({
-                  package: pkg.manifest.id,
-                  gateway: input.gateway === SYSTEM_KEY ? null : input.gateway,
-                })
-                return true
-              } catch (e: any) {
-                this.errorService.handleError(e)
-                return false
-              } finally {
-                loader.unsubscribe()
-              }
-            },
+            handler: async (input: typeof spec._TYPE) =>
+              this.tasks.run(
+                async () =>
+                  await this.api.setServiceOutbound({
+                    package: pkg.manifest.id,
+                    gateway:
+                      input.gateway === SYSTEM_KEY ? null : input.gateway,
+                  }),
+                'Saving',
+              ),
           },
         ],
       },

@@ -4,14 +4,13 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { MarketplacePkg } from '@start9labs/marketplace'
 import {
-  ErrorService,
   Exver,
   ExverComparesPipe,
   i18nPipe,
   sameUrl,
+  TaskService,
 } from '@start9labs/shared'
 import { TuiButton } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom, switchMap } from 'rxjs'
 import { ToManifestPipe } from 'src/app/routes/portal/pipes/to-manifest'
@@ -102,8 +101,7 @@ type KEYS = 'id' | 'version' | 'flavor' | 'satisfies'
 export class MarketplaceControlsComponent {
   private readonly alerts = inject(MarketplaceAlertsService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
-  private readonly errorService = inject(ErrorService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly exver = inject(Exver)
   private readonly router = inject(Router)
   private readonly marketplace = inject(MarketplaceService)
@@ -187,31 +185,21 @@ export class MarketplaceControlsComponent {
   }
 
   private async install(url: string) {
-    const loader = this.loader.open('Beginning install').subscribe()
     const { id, version } = this.pkg()
 
-    try {
-      await this.marketplace.installPackage(id, version, url)
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    this.tasks.run(
+      async () => await this.marketplace.installPackage(id, version, url),
+      'Beginning install',
+    )
   }
 
   private async upload() {
     const file = this.file()
     if (!file) throw new Error('no file detected')
 
-    const loader = this.loader.open('Starting upload').subscribe()
-
-    try {
+    this.tasks.run(async () => {
       const res = await this.api.sideloadPackage()
       this.api.uploadFile(res.upload, file).catch(console.error)
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Starting upload')
   }
 }

@@ -103,15 +103,13 @@ export class RefreshAlertComponent {
   )
 
   async pwaReload() {
-    const loader = this.loader.open('Reloading PWA').subscribe()
-
     try {
+      this.loader.open('Reloading PWA').subscribe()
       // attempt to update to the latest client version available
       await this.updates.activateUpdate()
     } catch (e) {
       console.error('Error activating update from service worker: ', e)
     } finally {
-      loader.unsubscribe()
       // always reload, as this resolves most out of sync cases
       this.win.location.reload()
     }

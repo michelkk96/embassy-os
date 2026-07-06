@@ -2,12 +2,11 @@ import { inject, Injectable } from '@angular/core'
 import { Router } from '@angular/router'
 import {
   DialogService,
-  ErrorService,
   i18nKey,
   i18nPipe,
+  TaskService,
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { filter } from 'rxjs'
 import { getAllPackages } from '../utils/get-package-data'
@@ -22,22 +21,15 @@ export class StandardActionsService {
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly api = inject(ApiService)
   private readonly dialog = inject(DialogService)
-  private readonly errorService = inject(ErrorService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly router = inject(Router)
   private readonly i18n = inject(i18nPipe)
 
   async rebuild(id: string) {
-    const loader = this.loader.open('Rebuilding container').subscribe()
-
-    try {
+    this.tasks.run(async () => {
       await this.api.rebuildPackage({ id })
       await this.router.navigate(['services', id])
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Rebuilding container')
   }
 
   async uninstall(
@@ -74,15 +66,9 @@ export class StandardActionsService {
   }
 
   private async doUninstall(options: T.UninstallParams) {
-    const loader = this.loader.open('Beginning uninstall').subscribe()
-
-    try {
+    this.tasks.run(async () => {
       await this.api.uninstallPackage(options)
       await this.router.navigate([''])
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Beginning uninstall')
   }
 }

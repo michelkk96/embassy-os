@@ -1,6 +1,10 @@
 import { Component, inject, OnInit, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
-import { DocsLinkDirective, ErrorService } from '@start9labs/shared'
+import {
+  DocsLinkDirective,
+  ErrorService,
+  TaskService,
+} from '@start9labs/shared'
 import {
   TuiButton,
   TuiDialogOptions,
@@ -9,12 +13,7 @@ import {
   TuiLink,
   TuiNotification,
 } from '@taiga-ui/core'
-import {
-  TUI_CONFIRM,
-  TuiConfirmData,
-  TuiNotificationMiddleService,
-  TuiSkeleton,
-} from '@taiga-ui/kit'
+import { TUI_CONFIRM, TuiConfirmData, TuiSkeleton } from '@taiga-ui/kit'
 import { PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { BehaviorSubject, filter, from } from 'rxjs'
 import { BackupJob } from 'src/app/services/api/api.types'
@@ -151,7 +150,7 @@ import { EDIT } from './edit.component'
 })
 export class BackupsJobsModal implements OnInit {
   private readonly dialogs = inject(TuiDialogService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly errorService = inject(ErrorService)
   private readonly api = inject(ApiService)
 
@@ -201,18 +200,12 @@ export class BackupsJobsModal implements OnInit {
     this.dialogs
       .open(TUI_CONFIRM, PROMPT_OPTIONS)
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loader.open('Deleting').subscribe()
-
-        try {
+      .subscribe(() =>
+        this.tasks.run(async () => {
           await this.api.removeBackupTarget({ id })
           this.jobs.update(j => j?.filter(a => a.id !== id))
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+        }, 'Deleting'),
+      )
   }
 }
 

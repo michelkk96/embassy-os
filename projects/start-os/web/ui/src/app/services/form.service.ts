@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core'
+import { inject, Injectable } from '@angular/core'
 import {
   UntypedFormArray,
   UntypedFormBuilder,
@@ -15,7 +15,7 @@ import Mustache from 'mustache'
   providedIn: 'root',
 })
 export class FormService {
-  constructor(private readonly formBuilder: UntypedFormBuilder) {}
+  private readonly formBuilder = inject(UntypedFormBuilder)
 
   createForm(
     spec: IST.InputSpec,

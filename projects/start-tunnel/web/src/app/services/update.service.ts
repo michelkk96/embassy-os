@@ -87,18 +87,13 @@ export class UpdateService {
           this.polling = false
           this.hideUpdatingDialog()
         },
-        error: () => {
-          this.polling = false
-          this.hideUpdatingDialog()
-        },
       })
   }
 
   private showUpdatingDialog(): void {
-    if (this.updatingDialog) return
-    this.updatingDialog = this.loading
-      .open('StartTunnel is updating...')
-      .subscribe({ complete: () => (this.updatingDialog = null) })
+    this.updatingDialog =
+      this.updatingDialog ||
+      this.loading.open('StartTunnel is updating...').subscribe()
   }
 
   private hideUpdatingDialog(): void {

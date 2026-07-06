@@ -1,13 +1,12 @@
 import { inject, Injectable } from '@angular/core'
 import {
   DialogService,
-  ErrorService,
   i18nKey,
   i18nPipe,
   i18nService,
+  TaskService,
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { defaultIfEmpty, defer, filter, firstValueFrom, of } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -20,8 +19,7 @@ import { hasCurrentDeps } from 'src/app/utils/has-deps'
 })
 export class ControlsService {
   private readonly dialog = inject(DialogService)
-  private readonly errorService = inject(ErrorService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly i18n = inject(i18nPipe)
@@ -31,18 +29,11 @@ export class ControlsService {
     const deps =
       `${title} ${this.i18n.transform('has unmet dependencies. It will not work as expected.')}` as i18nKey
 
-    if (unmet && !(await this.alert(deps))) {
-      return
-    }
-
-    const loader = this.loader.open('Starting').subscribe()
-
-    try {
-      await this.api.startPackage({ id })
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
+    if (!unmet || (await this.alert(deps))) {
+      this.tasks.run(
+        async () => await this.api.startPackage({ id }),
+        'Starting',
+      )
     }
   }
 
@@ -67,29 +58,19 @@ export class ControlsService {
             })
             .pipe(filter(Boolean))
         : of(null),
-    ).subscribe(async () => {
-      const loader = this.loader.open('Stopping').subscribe()
-
-      try {
-        await this.api.stopPackage({ id })
-      } catch (e: any) {
-        this.errorService.handleError(e)
-      } finally {
-        loader.unsubscribe()
-      }
-    })
+    ).subscribe(() =>
+      this.tasks.run(
+        async () => await this.api.stopPackage({ id }),
+        'Stopping',
+      ),
+    )
   }
 
   async restart(id: string) {
-    const loader = this.loader.open('Restarting').subscribe()
-
-    try {
-      await this.api.restartPackage({ id })
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    this.tasks.run(
+      async () => await this.api.restartPackage({ id }),
+      'Restarting',
+    )
   }
 
   private alert(content: T.LocaleString): Promise<boolean> {

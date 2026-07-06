@@ -1,4 +1,4 @@
-import { inject, Injectable } from '@angular/core'
+import { inject, Service } from '@angular/core'
 import {
   TuiResponsiveDialogOptions,
   TuiResponsiveDialogService,
@@ -12,9 +12,7 @@ import { PROMPT, PromptOptions } from '../components/prompt.component'
 import { i18nPipe } from '../i18n/i18n.pipe'
 import { i18nKey } from '../i18n/i18n.providers'
 
-@Injectable({
-  providedIn: 'root',
-})
+@Service()
 export class DialogService {
   private readonly dialogs = inject(TuiResponsiveDialogService)
   private readonly i18n = inject(i18nPipe)

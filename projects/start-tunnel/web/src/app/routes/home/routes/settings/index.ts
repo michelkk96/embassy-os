@@ -1,13 +1,9 @@
 import { Component, inject, signal } from '@angular/core'
 import { Router } from '@angular/router'
-import { ErrorService } from '@start9labs/shared'
+import { ErrorService, TaskService } from '@start9labs/shared'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
 import { TuiButton, TuiCell, TuiTitle } from '@taiga-ui/core'
-import {
-  TuiBadge,
-  TuiButtonLoading,
-  TuiNotificationMiddleService,
-} from '@taiga-ui/kit'
+import { TuiBadge, TuiButtonLoading } from '@taiga-ui/kit'
 import { TuiCardLarge } from '@taiga-ui/layout'
 import { ApiService } from 'src/app/services/api/api.service'
 import { AuthService } from 'src/app/services/auth.service'
@@ -91,7 +87,7 @@ export default class Settings {
   private readonly api = inject(ApiService)
   private readonly auth = inject(AuthService)
   private readonly router = inject(Router)
-  private readonly loading = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
 
   protected readonly update = inject(UpdateService)
   protected readonly checking = signal(false)
@@ -147,16 +143,10 @@ export default class Settings {
   }
 
   protected async onLogout() {
-    const loader = this.loading.open('').subscribe()
-
-    try {
+    this.tasks.run(async () => {
       await this.api.logout()
       this.auth.authenticated.set(false)
       this.router.navigate(['/'])
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    })
   }
 }

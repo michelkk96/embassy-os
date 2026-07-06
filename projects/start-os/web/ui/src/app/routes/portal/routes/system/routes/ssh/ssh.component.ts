@@ -4,12 +4,11 @@ import { RouterLink } from '@angular/router'
 import {
   DialogService,
   DocsLinkDirective,
-  ErrorService,
   i18nPipe,
+  TaskService,
 } from '@start9labs/shared'
 import { ISB, T } from '@start9labs/start-core'
 import { TuiButton } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { filter, from, merge, Subject } from 'rxjs'
 import { FormComponent } from 'src/app/routes/portal/components/form.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -85,9 +84,8 @@ import { SSHTableComponent } from './table.component'
   ],
 })
 export default class SystemSSHComponent {
-  private readonly errorService = inject(ErrorService)
   private readonly api = inject(ApiService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly formDialog = inject(FormDialogService)
   private readonly i18n = inject(i18nPipe)
   private readonly dialogs = inject(DialogService)
@@ -121,20 +119,11 @@ export default class SystemSSHComponent {
         buttons: [
           {
             text: this.i18n.transform('Save'),
-            handler: async ({ key }: typeof spec._TYPE) => {
-              const loader = this.loader.open('Saving').subscribe()
-
-              try {
+            handler: async ({ key }: typeof spec._TYPE) =>
+              this.tasks.run(async () => {
                 const newKey = await this.api.addSshKey({ key })
                 this.local$.next([newKey, ...all])
-                return true
-              } catch (e: any) {
-                this.errorService.handleError(e)
-                return false
-              } finally {
-                loader.unsubscribe()
-              }
-            },
+              }, 'Saving'),
           },
         ],
       },
@@ -148,9 +137,8 @@ export default class SystemSSHComponent {
       .subscribe(async () => {
         const selected = this.tableKeys()?.selected() || []
         const fingerprints = selected.map(s => s.fingerprint) || []
-        const loader = this.loader.open('Deleting').subscribe()
 
-        try {
+        this.tasks.run(async () => {
           await Promise.all(
             fingerprints.map(fingerprint =>
               this.api.deleteSshKey({ fingerprint }),
@@ -160,11 +148,7 @@ export default class SystemSSHComponent {
             all.filter(s => !fingerprints.includes(s.fingerprint)),
           )
           this.tableKeys()?.selected.set([])
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
+        }, 'Deleting')
       })
   }
 }

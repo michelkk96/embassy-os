@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core'
-import { tap, Observable } from 'rxjs'
+import { inject, Injectable } from '@angular/core'
 import { PatchDB } from 'patch-db-client'
+import { Observable, tap } from 'rxjs'
 import { AuthService } from 'src/app/services/auth.service'
 import { DataModel } from './patch-db/data-model'
 
@@ -9,14 +9,12 @@ import { DataModel } from './patch-db/data-model'
   providedIn: 'root',
 })
 export class PatchMonitorService extends Observable<unknown> {
-  private readonly stream$ = this.authService.isVerified$.pipe(
+  private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
+  private readonly stream$ = inject(AuthService).isVerified$.pipe(
     tap(verified => (verified ? this.patch.start() : this.patch.stop())),
   )
 
-  constructor(
-    private readonly authService: AuthService,
-    private readonly patch: PatchDB<DataModel>,
-  ) {
+  constructor() {
     super(subscriber => this.stream$.subscribe(subscriber))
   }
 }

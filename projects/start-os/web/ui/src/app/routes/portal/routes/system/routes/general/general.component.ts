@@ -6,7 +6,6 @@ import { RouterLink } from '@angular/router'
 import { WA_WINDOW } from '@ng-web-apis/common'
 import {
   DialogService,
-  ErrorService,
   getAllKeyboardsSorted,
   getKeyboardName,
   i18nKey,
@@ -17,6 +16,7 @@ import {
   Language,
   LANGUAGE_TO_CODE,
   LANGUAGES,
+  TaskService,
 } from '@start9labs/shared'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
 import { TuiAnimated } from '@taiga-ui/cdk'
@@ -35,7 +35,6 @@ import {
   TuiButtonLoading,
   TuiButtonSelect,
   TuiDataListWrapper,
-  TuiNotificationMiddleService,
 } from '@taiga-ui/kit'
 import { PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { PatchDB } from 'patch-db-client'
@@ -190,7 +189,11 @@ import { UPDATE } from './update.component'
             <strong>{{ 'Disk Repair' | i18n }}</strong>
             <span tuiSubtitle>{{ 'Attempt automatic repair' | i18n }}</span>
           </span>
-          <button tuiButton appearance="glass" (click)="onRepair()">
+          <button
+            tuiButton
+            appearance="primary-destructive"
+            (click)="onRepair()"
+          >
             {{ 'Repair' | i18n }}
           </button>
         </div>
@@ -270,8 +273,7 @@ import { UPDATE } from './update.component'
 })
 export default class SystemGeneralComponent {
   private readonly dialogs = inject(TuiResponsiveDialogService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly api = inject(ApiService)
   private readonly dialog = inject(DialogService)
@@ -329,21 +331,17 @@ export default class SystemGeneralComponent {
   }
 
   private async saveKeyboard(keyboard: Keyboard) {
-    const loader = this.loader.open('Saving').subscribe()
-
-    try {
-      await this.api.setKeyboard({
-        layout: keyboard.layout,
-        keymap: keyboard.keymap,
-        model: null,
-        variant: null,
-        options: [],
-      })
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    this.tasks.run(
+      async () =>
+        await this.api.setKeyboard({
+          layout: keyboard.layout,
+          keymap: keyboard.keymap,
+          model: null,
+          variant: null,
+          options: [],
+        }),
+      'Saving',
+    )
   }
 
   onUpdate() {
@@ -401,29 +399,24 @@ export default class SystemGeneralComponent {
     { name, hostname }: { name: string; hostname: string },
     wasLocal = false,
   ) {
-    const loader = this.loader.open('Saving').subscribe()
+    const success = await this.tasks.run(
+      async () => await this.api.setHostname({ name, hostname }),
+      'Saving',
+    )
 
-    try {
-      await this.api.setHostname({ name, hostname })
-
-      if (wasLocal) {
-        this.dialog
-          .openConfirm({
-            label: 'Hostname Changed',
-            data: {
-              content:
-                `${this.i18n.transform('Your server is now reachable at')} ${hostname}.local` as i18nKey,
-              yes: 'Open new address',
-              no: 'Dismiss',
-            },
-          })
-          .pipe(filter(Boolean))
-          .subscribe(() => this.win.open(`https://${hostname}.local`, '_blank'))
-      }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
+    if (wasLocal && success) {
+      this.dialog
+        .openConfirm({
+          label: 'Hostname Changed',
+          data: {
+            content:
+              `${this.i18n.transform('Your server is now reachable at')} ${hostname}.local` as i18nKey,
+            yes: 'Open new address',
+            no: 'Dismiss',
+          },
+        })
+        .pipe(filter(Boolean))
+        .subscribe(() => this.win.open(`https://${hostname}.local`, '_blank'))
     }
   }
 
@@ -439,14 +432,12 @@ export default class SystemGeneralComponent {
         },
       })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        try {
+      .subscribe(() =>
+        this.tasks.run(async () => {
           await this.api.repairDisk({})
           this.restart()
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        }
-      })
+        }),
+      )
   }
 
   async toggleKiosk() {
@@ -490,21 +481,11 @@ export default class SystemGeneralComponent {
   }
 
   private async enableKiosk() {
-    const loader = this.loader.open('Enabling').subscribe()
-
-    try {
-      await this.api.toggleKiosk(true)
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    this.tasks.run(async () => await this.api.toggleKiosk(true), 'Enabling')
   }
 
   private async enableKioskWithKeyboard(keyboard: Keyboard) {
-    const loader = this.loader.open('Enabling').subscribe()
-
-    try {
+    this.tasks.run(async () => {
       await this.api.setKeyboard({
         layout: keyboard.layout,
         keymap: keyboard.keymap,
@@ -513,64 +494,40 @@ export default class SystemGeneralComponent {
         options: [],
       })
       await this.api.toggleKiosk(true)
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Enabling')
   }
 
   private async disableKiosk() {
-    const loader = this.loader.open('Disabling').subscribe()
-
-    try {
-      await this.api.toggleKiosk(false)
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    this.tasks.run(async () => await this.api.toggleKiosk(false), 'Disabling')
   }
 
   private update() {
     this.dialogs
-      .open(UPDATE, {
-        data: { currentVersion: this.server()?.version },
-      })
+      .open(UPDATE, { data: { currentVersion: this.server()?.version } })
       .subscribe()
   }
 
   private async check(): Promise<void> {
-    const loader = this.loader.open('Checking for updates').subscribe()
+    const success = await this.tasks.run(
+      async () => await this.os.loadOS(),
+      'Checking for updates',
+    )
 
-    try {
-      await this.os.loadOS()
-
-      if (this.os.updateAvailable$.value) {
-        this.update()
-      } else {
-        this.dialog
-          .openAlert('You are on the latest version of StartOS.', {
-            label: 'Up to date!',
-          })
-          .subscribe()
-      }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
+    if (this.os.updateAvailable$.value) {
+      this.update()
+    } else if (success) {
+      this.dialog
+        .openAlert('You are on the latest version of StartOS.', {
+          label: 'Up to date!',
+        })
+        .subscribe()
     }
   }
 
   private async restart() {
-    const loader = this.loader.open('Beginning restart').subscribe()
-
-    try {
-      await this.api.restartServer({})
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    this.tasks.run(
+      async () => await this.api.restartServer({}),
+      'Beginning restart',
+    )
   }
 }

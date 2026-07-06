@@ -7,10 +7,10 @@ import {
   getErrorMessage,
   i18nPipe,
   InitializingComponent,
+  TaskService,
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import {
   catchError,
   filter,
@@ -58,7 +58,7 @@ import { StateService } from '../services/state.service'
 })
 export default class LoadingPage {
   private readonly api = inject(ApiService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly dialog = inject(DialogService)
   private readonly router = inject(Router)
 
@@ -108,19 +108,13 @@ export default class LoadingPage {
   }
 
   async restart(): Promise<void> {
-    const loader = this.loader.open(undefined).subscribe()
-
-    try {
+    this.tasks.run(async () => {
       await this.api.restart()
       this.dialog
         .openAlert('Wait 1-2 minutes and refresh the page', {
           label: 'Server is restarting',
         })
         .subscribe()
-    } catch (e) {
-      console.error(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    })
   }
 }

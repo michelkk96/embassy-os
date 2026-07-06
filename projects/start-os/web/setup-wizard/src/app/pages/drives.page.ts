@@ -1,4 +1,4 @@
-import { Component, HostListener, inject, signal } from '@angular/core'
+import { Component, inject, signal } from '@angular/core'
 import {
   AbstractControl,
   FormControl,
@@ -15,24 +15,20 @@ import {
   ErrorService,
   i18nKey,
   i18nPipe,
+  TaskService,
   toGuid,
 } from '@start9labs/shared'
 import { TuiMapperPipe, TuiValidator } from '@taiga-ui/cdk'
 import {
+  TUI_VALIDATION_ERRORS,
   TuiButton,
   TuiError,
   TuiIcon,
   TuiLoader,
   TuiNotification,
-  TUI_VALIDATION_ERRORS,
   TuiTitle,
 } from '@taiga-ui/core'
-import {
-  TuiDataListWrapper,
-  TuiNotificationMiddleService,
-  TuiSelect,
-  TuiTooltip,
-} from '@taiga-ui/kit'
+import { TuiDataListWrapper, TuiSelect, TuiTooltip } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiForm, TuiHeader } from '@taiga-ui/layout'
 import { distinctUntilChanged, filter, Subscription } from 'rxjs'
 import { PRESERVE_OVERWRITE } from '../components/preserve-overwrite.dialog'
@@ -189,19 +185,19 @@ import { StateService } from '../services/state.service'
       },
     },
   ],
+  host: { '(document:keydown)': 'onKeydown($event)' },
 })
 export default class DrivesPage {
   private readonly api = inject(ApiService)
   private readonly router = inject(Router)
   private readonly dialogs = inject(DialogService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly errorService = inject(ErrorService)
   private readonly stateService = inject(StateService)
   private readonly i18n = inject(i18nPipe)
 
   protected readonly mobile = inject(WA_IS_MOBILE)
 
-  @HostListener('document:keydown', ['$event'])
   onKeydown(event: KeyboardEvent) {
     if (event.ctrlKey && event.shiftKey && event.key === 'X') {
       event.preventDefault()
@@ -445,9 +441,8 @@ export default class DrivesPage {
   private async installOs(wipe: boolean) {
     const osDrive = this.form.controls.osDrive.value!
     const dataDrive = this.form.controls.dataDrive.value!
-    const loader = this.loader.open('Installing StartOS').subscribe()
 
-    try {
+    this.tasks.run(async () => {
       const result = await this.api.installOs({
         // Pre-installed: null OS drive tells the backend to skip the install
         // and only provision the data drive.
@@ -461,8 +456,6 @@ export default class DrivesPage {
       this.stateService.dataDriveGuid = result.guid
       this.stateService.attach = result.attach
       this.stateService.mokEnrolled = result.mokEnrolled
-
-      loader.unsubscribe()
 
       console.log('Ctrl+Shift+X to shutdown')
 
@@ -479,10 +472,7 @@ export default class DrivesPage {
             this.navigateToNextStep(result.attach)
           },
         })
-    } catch (e: any) {
-      loader.unsubscribe()
-      this.errorService.handleError(e)
-    }
+    }, 'Installing StartOS')
   }
 
   private async navigateToNextStep(attach: boolean) {
@@ -496,16 +486,11 @@ export default class DrivesPage {
 
   private async shutdownServer() {
     this.dialogSub?.unsubscribe()
-    const loader = this.loader.open('Beginning shutdown').subscribe()
 
-    try {
+    this.tasks.run(async () => {
       await this.api.shutdown()
       this.shuttingDown.set(true)
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Beginning shutdown')
   }
 
   private async loadDrives() {

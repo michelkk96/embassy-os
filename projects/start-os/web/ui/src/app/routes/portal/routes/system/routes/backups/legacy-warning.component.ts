@@ -1,7 +1,6 @@
 import { Component, inject, input } from '@angular/core'
-import { DialogService, ErrorService, i18nPipe } from '@start9labs/shared'
+import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { TuiButton, TuiNotificationService } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { filter } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { BackupService } from './backup.service'
@@ -28,8 +27,7 @@ import { BackupService } from './backup.service'
 export class BackupLegacyWarningComponent {
   private readonly dialog = inject(DialogService)
   private readonly alerts = inject(TuiNotificationService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly service = inject(BackupService)
   private readonly i18n = inject(i18nPipe)
@@ -49,23 +47,16 @@ export class BackupLegacyWarningComponent {
         },
       })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loader.open('Deleting old backup').subscribe()
-        const id = this.id()
-
-        try {
-          await this.api.deleteLegacyBackup({ targetId: id })
-          this.service.clearLegacy(id)
+      .subscribe(() =>
+        this.tasks.run(async () => {
+          await this.api.deleteLegacyBackup({ targetId: this.id() })
+          this.service.clearLegacy(this.id())
           this.alerts
             .open(this.i18n.transform('Old backup deleted'), {
               appearance: 'positive',
             })
             .subscribe()
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+        }, 'Deleting old backup'),
+      )
   }
 }

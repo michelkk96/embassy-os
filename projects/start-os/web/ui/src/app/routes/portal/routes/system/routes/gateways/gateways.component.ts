@@ -2,15 +2,10 @@ import { Component, computed, inject, linkedSignal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { RouterLink } from '@angular/router'
 import { WA_IS_MOBILE } from '@ng-web-apis/platform'
-import { DocsLinkDirective, ErrorService, i18nPipe } from '@start9labs/shared'
+import { DocsLinkDirective, i18nPipe, TaskService } from '@start9labs/shared'
 import { ISB } from '@start9labs/start-core'
 import { TuiButton, TuiInput, TuiTitle } from '@taiga-ui/core'
-import {
-  TuiChevron,
-  TuiDataListWrapper,
-  TuiNotificationMiddleService,
-  TuiSelect,
-} from '@taiga-ui/kit'
+import { TuiChevron, TuiDataListWrapper, TuiSelect } from '@taiga-ui/kit'
 import { TuiHeader } from '@taiga-ui/layout'
 import { FormComponent } from 'src/app/routes/portal/components/form.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -162,8 +157,7 @@ import { GatewaysTableComponent } from './table.component'
   ],
 })
 export default class GatewaysComponent {
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly formDialog = inject(FormDialogService)
   private readonly i18n = inject(i18nPipe)
@@ -197,17 +191,13 @@ export default class GatewaysComponent {
     opt.name
 
   async saveOutbound() {
-    const loader = this.loader.open('Saving').subscribe()
-
-    try {
-      await this.api.setDefaultOutbound({
-        gateway: this.selectedOutbound()?.id ?? null,
-      })
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    this.tasks.run(
+      async () =>
+        await this.api.setDefaultOutbound({
+          gateway: this.selectedOutbound()?.id ?? null,
+        }),
+      'Saving',
+    )
   }
 
   async add() {
@@ -258,27 +248,20 @@ export default class GatewaysComponent {
         buttons: [
           {
             text: this.i18n.transform('Save'),
-            handler: async (input: typeof spec._TYPE) => {
-              const loader = this.loader.open('Saving').subscribe()
-
-              try {
-                await this.api.addTunnel({
-                  name: input.name,
-                  config:
-                    input.config.selection === 'paste'
-                      ? input.config.value.file
-                      : await (input.config.value.file as any as File).text(),
-                  type: null, // let StartOS auto-detect from the config
-                  setAsDefaultOutbound: false,
-                })
-                return true
-              } catch (e: any) {
-                this.errorService.handleError(e)
-                return false
-              } finally {
-                loader.unsubscribe()
-              }
-            },
+            handler: async (input: typeof spec._TYPE) =>
+              this.tasks.run(
+                async () =>
+                  await this.api.addTunnel({
+                    name: input.name,
+                    config:
+                      input.config.selection === 'paste'
+                        ? input.config.value.file
+                        : await (input.config.value.file as any as File).text(),
+                    type: null, // let StartOS auto-detect from the config
+                    setAsDefaultOutbound: false,
+                  }),
+                'Saving',
+              ),
           },
         ],
       },

@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core'
+import { inject, Injectable } from '@angular/core'
 import { blake3 } from '@noble/hashes/blake3'
 import {
   GetPackageReq,
@@ -19,7 +19,9 @@ import { ApiService } from './api.service'
 
 @Injectable()
 export class LiveApiService extends ApiService {
-  constructor(private readonly http: HttpService) {
+  private readonly http = inject(HttpService)
+
+  constructor() {
     super()
 
     // @ts-ignore

@@ -2,10 +2,9 @@ import { Component, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule, ReactiveFormsModule } from '@angular/forms'
 import { RouterLink } from '@angular/router'
-import { DocsLinkDirective, ErrorService, i18nPipe } from '@start9labs/shared'
+import { DocsLinkDirective, i18nPipe, TaskService } from '@start9labs/shared'
 import { ISB } from '@start9labs/start-core'
 import { TuiButton, TuiTitle } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { combineLatest, first, switchMap } from 'rxjs'
@@ -115,8 +114,7 @@ const ipv6 =
   ],
 })
 export default class SystemDnsComponent {
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly formService = inject(FormService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly api = inject(ApiService)
@@ -217,20 +215,14 @@ export default class SystemDnsComponent {
     ),
   )
 
-  async save(value: typeof this.dnsSpec._TYPE): Promise<void> {
-    const loader = this.loader.open('Saving').subscribe()
-
-    try {
-      await this.api.setDns({
-        servers:
-          value.strategy.selection === 'dhcp'
-            ? null
-            : value.strategy.value.servers,
-      })
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+  async save({ strategy }: typeof this.dnsSpec._TYPE): Promise<void> {
+    this.tasks.run(
+      async () =>
+        await this.api.setDns({
+          servers:
+            strategy.selection === 'dhcp' ? null : strategy.value.servers,
+        }),
+      'Saving',
+    )
   }
 }

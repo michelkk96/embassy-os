@@ -1249,6 +1249,28 @@ pub async fn add_forward(
         )
     })?;
     let source = SocketAddrV4::new(external_ip, external_port);
+
+    // Port 80 is owned by the HTTP→HTTPS redirect (default on per public IPv4).
+    // The redirect and a port-80 forward are mutually exclusive — reject rather
+    // than silently override, so the user disables the redirect first. The
+    // redirect is active on this IP (and thus conflicts) only when it's a public
+    // IPv4 the user hasn't turned off.
+    let covers_80 =
+        external_port <= 80 && 80 <= external_port.saturating_add(count.saturating_sub(1));
+    if covers_80 {
+        let peek = ctx.db.peek().await;
+        let disabled = peek.as_http_redirects().de()?.disabled;
+        let public = crate::tunnel::redirect::public_ipv4s(&peek.as_gateways().de()?);
+        if public.contains(&external_ip) && !disabled.contains(&external_ip) {
+            return Err(Error::new(
+                eyre!(
+                    "port 80 on {external_ip} is used by the HTTP→HTTPS redirect; disable it first (Settings → HTTP Redirect, or `http-redirect set-enabled {external_ip}`)"
+                ),
+                ErrorKind::InvalidRequest,
+            ));
+        }
+    }
+
     if !sni.is_empty() {
         if count > 1 {
             return Err(Error::new(
@@ -1713,6 +1735,20 @@ pub async fn set_http_redirect_enabled(
     ctx: TunnelContext,
     SetHttpRedirectEnabledParams { ip, enabled }: SetHttpRedirectEnabledParams,
 ) -> Result<(), Error> {
+    // The redirect and a port-80 forward are mutually exclusive: refuse to
+    // enable the redirect while port 80 is forwarded, so the two are never both
+    // active. The user deletes the forward first.
+    if enabled {
+        let forwards = ctx.db.peek().await.as_port_forwards().de()?;
+        if forwards.occupied(SocketAddrV4::new(ip, crate::tunnel::redirect::HTTP_PORT)) {
+            return Err(Error::new(
+                eyre!(
+                    "port 80 on {ip} is forwarded; delete that port forward before enabling the HTTP→HTTPS redirect"
+                ),
+                ErrorKind::InvalidRequest,
+            ));
+        }
+    }
     ctx.db
         .mutate(|db| {
             let mut redirects = db.as_http_redirects().de()?;

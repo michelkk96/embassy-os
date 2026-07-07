@@ -1,12 +1,18 @@
-import { Component, inject, signal } from '@angular/core'
+import { Component, computed, inject, signal } from '@angular/core'
+import { toSignal } from '@angular/core/rxjs-interop'
+import { FormsModule } from '@angular/forms'
 import { Router } from '@angular/router'
 import { ErrorService, TaskService } from '@start9labs/shared'
+import { T, utils } from '@start9labs/start-core'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
-import { TuiButton, TuiCell, TuiTitle } from '@taiga-ui/core'
-import { TuiBadge, TuiButtonLoading } from '@taiga-ui/kit'
-import { TuiCardLarge } from '@taiga-ui/layout'
+import { TuiButton, TuiCell, TuiLoader, TuiTitle } from '@taiga-ui/core'
+import { TuiBadge, TuiButtonLoading, TuiSwitch } from '@taiga-ui/kit'
+import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
+import { PatchDB } from 'patch-db-client'
+import { map } from 'rxjs'
 import { ApiService } from 'src/app/services/api/api.service'
 import { AuthService } from 'src/app/services/auth.service'
+import { TunnelData } from 'src/app/services/patch-db/data-model'
 import { UpdateService } from 'src/app/services/update.service'
 import { CHANGE_PASSWORD } from './change-password'
 
@@ -42,6 +48,45 @@ import { CHANGE_PASSWORD } from './change-password'
         }
       </div>
     </div>
+    <div tuiCardLarge="compact" appearance="floating">
+      <header tuiHeader>
+        <hgroup tuiTitle>
+          <h2>HTTP Redirect (80 → 443)</h2>
+          <p tuiSubtitle>
+            Redirect plain http:// on port 80 to https:// for each public IPv4.
+            Turn off to free port 80 for a manual port forward.
+          </p>
+        </hgroup>
+      </header>
+      @for (redirect of redirects(); track redirect.ip) {
+        <div tuiCell>
+          <span tuiTitle>
+            {{ redirect.ip }}
+            @if (redirect.forwarded) {
+              <span tuiSubtitle>
+                Port 80 is forwarded — delete it to re-enable
+              </span>
+            }
+          </span>
+          <tui-loader
+            size="s"
+            [loading]="toggling() === redirect.ip"
+            [overlay]="true"
+          >
+            <input
+              tuiSwitch
+              type="checkbox"
+              [showIcons]="false"
+              [disabled]="redirect.forwarded"
+              [ngModel]="redirect.enabled && !redirect.forwarded"
+              (ngModelChange)="onToggleRedirect(redirect)"
+            />
+          </tui-loader>
+        </div>
+      } @empty {
+        <p>No public IPv4 addresses.</p>
+      }
+    </div>
     <div
       tuiCardLarge="compact"
       appearance="floating"
@@ -73,12 +118,16 @@ import { CHANGE_PASSWORD } from './change-password'
     }
   `,
   imports: [
+    FormsModule,
     TuiCardLarge,
     TuiCell,
     TuiTitle,
+    TuiHeader,
     TuiButton,
     TuiButtonLoading,
     TuiBadge,
+    TuiLoader,
+    TuiSwitch,
   ],
 })
 export default class Settings {
@@ -88,11 +137,59 @@ export default class Settings {
   private readonly auth = inject(AuthService)
   private readonly router = inject(Router)
   private readonly tasks = inject(TaskService)
+  private readonly patch = inject<PatchDB<TunnelData>>(PatchDB)
 
   protected readonly update = inject(UpdateService)
   protected readonly checking = signal(false)
   protected readonly applying = signal(false)
   protected readonly restarting = signal(false)
+  protected readonly toggling = signal<string | null>(null)
+
+  private readonly ips = toSignal(
+    this.patch.watch$('gateways').pipe(
+      map(g =>
+        Object.values(g)
+          .flatMap(
+            val => val.ipInfo?.subnets.map(s => utils.IpNet.parse(s)) || [],
+          )
+          .filter(s => s.isIpv4() && s.isPublic())
+          .map(s => s.address),
+      ),
+    ),
+    { initialValue: [] },
+  )
+  private readonly httpRedirects = toSignal(this.patch.watch$('httpRedirects'))
+  private readonly portForwards = toSignal(this.patch.watch$('portForwards'))
+  protected readonly redirects = computed(() => {
+    const disabled = new Set(this.httpRedirects()?.disabled || [])
+    const forwards = this.portForwards() || {}
+    return this.ips().map(ip => ({
+      ip,
+      enabled: !disabled.has(ip),
+      forwarded: portEightyForwarded(forwards, ip),
+    }))
+  })
+
+  protected async onToggleRedirect(redirect: {
+    ip: string
+    enabled: boolean
+    forwarded: boolean
+  }) {
+    if (redirect.forwarded) return
+
+    this.toggling.set(redirect.ip)
+
+    try {
+      await this.api.setHttpRedirectEnabled({
+        ip: redirect.ip,
+        enabled: !redirect.enabled,
+      })
+    } catch (e: any) {
+      this.errorService.handleError(e)
+    } finally {
+      this.toggling.set(null)
+    }
+  }
 
   protected onChangePassword(): void {
     this.dialogs.open(CHANGE_PASSWORD, { label: 'Change Password' }).subscribe()
@@ -149,4 +246,19 @@ export default class Settings {
       this.router.navigate(['/'])
     })
   }
+}
+
+// Whether any forward on `ip` covers port 80 (a DNAT range or an SNI/single
+// entry) — the redirect and a port-80 forward are mutually exclusive.
+function portEightyForwarded(
+  forwards: Record<string, T.Tunnel.PortForward>,
+  ip: string,
+): boolean {
+  return Object.entries(forwards).some(([source, pf]) => {
+    const idx = source.lastIndexOf(':')
+    if (idx < 0 || source.slice(0, idx) !== ip) return false
+    const start = Number(source.slice(idx + 1))
+    const span = pf.kind === 'dnat' ? (pf.count ?? 1) : 1
+    return start <= 80 && 80 <= start + span - 1
+  })
 }

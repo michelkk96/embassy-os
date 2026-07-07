@@ -133,17 +133,17 @@ Change or clear the label on a port forwarding rule.
 
 ## HTTP Redirects
 
-StartTunnel runs an HTTP→HTTPS redirect on port 80 of every public IPv4 it holds, so a plain `http://` request to an exposed service bounces to `https://`. These are **on by default**; each address can be turned off individually. The redirect yields to a port forward — if port 80 on an IP is forwarded, no redirect runs there.
+StartTunnel runs an HTTP→HTTPS redirect on port 80 of every public IPv4 it holds, so a plain `http://` request to an exposed service bounces to `https://`. These are **on by default**; each address can be turned off individually. A redirect and a port-80 forward are mutually exclusive and never both enabled — forwarding port 80 is rejected while the redirect is on, and enabling the redirect is rejected while port 80 is forwarded.
 
 ### `start-tunnel http-redirect list`
 
-Show the port-80 redirect status of every public IPv4: whether it is enabled, and whether a port forward already occupies port 80 (in which case the redirect yields).
+Show the port-80 redirect status of every public IPv4: whether it is enabled, and whether a port forward already occupies port 80 (which blocks enabling the redirect).
 
 - `--format` — Output format
 
 ### `start-tunnel http-redirect set-enabled <IP>`
 
-Turn the port-80 HTTP→HTTPS redirect on or off for a public IPv4.
+Turn the port-80 HTTP→HTTPS redirect on or off for a public IPv4. Enabling is rejected if a port-80 forward exists on that IP — delete the forward first.
 
 - `--enabled` — Enable the redirect; omit the flag to turn it off
 

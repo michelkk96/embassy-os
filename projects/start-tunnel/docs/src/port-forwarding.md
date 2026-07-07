@@ -16,7 +16,7 @@ Port forwarding exposes a device's port to the public Internet. StartTunnel can 
 Because each device has its own IPv6 address, two different devices can both publish on the same external port over IPv6 (whereas over IPv4 they share one public address, so external ports must be unique).
 
 > [!NOTE]
-> Port 80 on each public IPv4 is claimed by default by an [HTTP→HTTPS redirect](./http-redirects.md) rather than a forward. A redirect and a forward are mutually exclusive on the same address and port: the forward wins, so forwarding port 80 makes that address's redirect yield. See [HTTP Redirects](./http-redirects.md).
+> Port 80 on each public IPv4 is claimed by default by an [HTTP→HTTPS redirect](./http-redirects.md), so you rarely need to forward it. A redirect and a port-80 forward are mutually exclusive and never both enabled: forwarding port 80 is rejected while the redirect is on (turn it off first, under `Settings`). See [HTTP Redirects](./http-redirects.md).
 
 ## Manual and automatic forwards
 
@@ -34,9 +34,10 @@ Deleting a device or demoting it to a client clears all of its forwards (manual 
 
 1. To forward a **range** of ports, set "Number of Ports" to the size of the range. It counts up from both the external and internal ports — e.g. external `49152`, internal `49152`, count `100` forwards `49152–49251` on each side. Leave it at `1` for a single port.
 
-1. If you are forwarding port `443 -> 443`, you will see a checkbox to also forward port `80 -> 443`. This is highly recommended, as it auto-redirects HTTP to HTTPS. It applies to whichever IP versions you selected.
-
 1. Click "Save".
+
+> [!NOTE]
+> There is no option to also forward port `80 → 443` — HTTP→HTTPS on port 80 is handled by the [HTTP redirect](./http-redirects.md) that runs by default on every public IPv4.
 
 ## SNI hostnames (IPv4 only)
 

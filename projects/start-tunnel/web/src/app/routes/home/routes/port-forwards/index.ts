@@ -2,7 +2,7 @@ import { Component, computed, inject, signal, Signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { ErrorService, TaskService } from '@start9labs/shared'
-import { T, utils } from '@start9labs/start-core'
+import { utils } from '@start9labs/start-core'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
 import {
   TuiButton,
@@ -166,73 +166,6 @@ import { mapForwards, mapPinholes, MappedDevice, MappedForward } from './utils'
         </tbody>
       </table>
     </div>
-
-    <div tuiCardLarge="compact" appearance="floating">
-      <header tuiHeader="body-l">
-        <tui-icon icon="@tui.milestone" />
-        <h3 tuiTitle>
-          HTTP Redirects
-          <span tuiSubtitle>
-            Plain http:// requests to port 80 of these public IPs are redirected
-            to https://. Turned off automatically while a port forward occupies
-            port 80.
-          </span>
-        </h3>
-      </header>
-      <table class="g-table no-actions" [tuiSkeleton]="!httpRedirects()">
-        <thead>
-          <tr>
-            <th></th>
-            <th>External IP</th>
-            <th>External Port</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (redirect of redirects(); track redirect.ip) {
-            <tr>
-              <td>
-                <tui-loader
-                  size="xs"
-                  [loading]="togglingRedirect() === redirect.ip"
-                  [overlay]="true"
-                >
-                  <input
-                    tuiSwitch
-                    type="checkbox"
-                    size="s"
-                    [style.display]="'flex'"
-                    [showIcons]="false"
-                    [disabled]="redirect.forwarded"
-                    [ngModel]="redirect.enabled && !redirect.forwarded"
-                    (ngModelChange)="onToggleRedirect(redirect)"
-                  />
-                </tui-loader>
-              </td>
-              <td>{{ redirect.ip }}</td>
-              <td>80</td>
-              <td>
-                {{
-                  redirect.forwarded
-                    ? 'Port 80 forwarded'
-                    : redirect.enabled
-                      ? 'Redirecting → HTTPS'
-                      : 'Off'
-                }}
-              </td>
-            </tr>
-          } @empty {
-            <tr>
-              <td colspan="4">
-                <app-placeholder icon="@tui.globe">
-                  No public IPv4 addresses
-                </app-placeholder>
-              </td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    </div>
   `,
   styles: `
     :host {
@@ -314,18 +247,6 @@ export default class PortForwards {
 
   protected readonly portForwards = toSignal(this.patch.watch$('portForwards'))
   protected readonly pinholes = toSignal(this.patch.watch$('pinholes6'))
-  protected readonly httpRedirects = toSignal(
-    this.patch.watch$('httpRedirects'),
-  )
-  protected readonly redirects = computed<MappedRedirect[]>(() => {
-    const disabled = new Set(this.httpRedirects()?.disabled || [])
-    const forwards = this.portForwards() || {}
-    return this.ips().map(ip => ({
-      ip,
-      enabled: !disabled.has(ip),
-      forwarded: portEightyForwarded(forwards, ip),
-    }))
-  })
   protected readonly forwards = computed(() => [
     ...mapForwards(this.portForwards() || {}, this.allDevices()),
     ...mapPinholes(this.pinholes() || {}, this.allDevices()),
@@ -338,7 +259,6 @@ export default class PortForwards {
   )
 
   protected readonly toggling = signal<string | null>(null)
-  protected readonly togglingRedirect = signal<string | null>(null)
 
   protected key(forward: MappedForward): string {
     return `${forward.ipVersion}:${forward.externalip}:${forward.externalport}:${forward.hostname ?? ''}`
@@ -371,23 +291,6 @@ export default class PortForwards {
       this.errorService.handleError(e)
     } finally {
       this.toggling.set(null)
-    }
-  }
-
-  protected async onToggleRedirect(redirect: MappedRedirect) {
-    if (redirect.forwarded) return
-
-    this.togglingRedirect.set(redirect.ip)
-
-    try {
-      await this.api.setHttpRedirectEnabled({
-        ip: redirect.ip,
-        enabled: !redirect.enabled,
-      })
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      this.togglingRedirect.set(null)
     }
   }
 
@@ -440,25 +343,4 @@ export default class PortForwards {
         }),
       )
   }
-}
-
-interface MappedRedirect {
-  ip: string
-  enabled: boolean
-  forwarded: boolean
-}
-
-// Whether any forward on `ip` covers port 80 (a DNAT range or an SNI/single
-// entry), in which case the redirect yields and its checkbox is disabled.
-function portEightyForwarded(
-  forwards: Record<string, T.Tunnel.PortForward>,
-  ip: string,
-): boolean {
-  return Object.entries(forwards).some(([source, pf]) => {
-    const idx = source.lastIndexOf(':')
-    if (idx < 0 || source.slice(0, idx) !== ip) return false
-    const start = Number(source.slice(idx + 1))
-    const span = pf.kind === 'dnat' ? (pf.count ?? 1) : 1
-    return start <= 80 && 80 <= start + span - 1
-  })
 }

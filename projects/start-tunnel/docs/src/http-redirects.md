@@ -10,15 +10,22 @@ A redirect binds a lightweight listener directly on `<public-IPv4>:80` on the tu
 
 ## Mutually exclusive with a port-80 forward
 
-A redirect and a [port forward](./port-forwarding.md) cannot both own port 80 on the same IP. The forward always wins: if port 80 on an address is forwarded (manually or automatically via PCP/UPnP), the redirect on that address **yields** and stops listening. Remove the port-80 forward and the redirect resumes on its own (unless you turned it off).
+A redirect and a [port forward](./port-forwarding.md) cannot both own port 80 on the same IP — they are never both enabled. The two directions are enforced explicitly rather than by one silently overriding the other:
+
+- **Forwarding port 80 while the redirect is on is rejected.** To forward port 80 to a device, first turn the redirect off for that address.
+- **Enabling the redirect while port 80 is forwarded is rejected.** Delete the port-80 forward first.
+
+Port 80 is also never opened automatically: StartTunnel refuses PCP/UPnP requests to auto-forward it, since the redirect is the intended behavior there.
 
 ## Managing them in the UI
 
-On the `Port Forwards` page, the **HTTP Redirects** card lists every public IPv4 with a checkbox:
+The **HTTP Redirect (80 → 443)** section on the `Settings` page lists every public IPv4 with a toggle:
 
-- **Checked** — the port-80 HTTP→HTTPS redirect is running on that address.
-- **Unchecked** — you have turned it off; port 80 there simply refuses plain HTTP.
-- **Disabled (greyed) checkbox** — a port forward currently occupies port 80 on that address, so the redirect is yielding. Remove the forward to re-enable the redirect.
+- **On** — the port-80 HTTP→HTTPS redirect is running on that address.
+- **Off** — you have turned it off; port 80 there simply refuses plain HTTP (and is free to forward).
+- **Disabled toggle** — a port forward currently occupies port 80 on that address. Remove the forward to re-enable the redirect.
+
+(Most VPSes have a single public IPv4, so this is usually just one toggle.)
 
 ## Managing them from the CLI
 

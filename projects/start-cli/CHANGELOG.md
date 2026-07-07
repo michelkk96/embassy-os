@@ -22,6 +22,13 @@ or the CLI's externally observable behavior.
   repo** — a workspace holds package repos; it isn't one. (There is no automatic
   migration from an older global `~/.startos`; copy `developer.key.pem` to a workspace's
   `.startos/build-key` yourself to reuse a signing key.)
+- **Better "no workspace" errors when building/signing.** `s9pk pack` (and therefore
+  `make` / `make publish`) needs a workspace signing key; when none is found above the
+  cwd it now explains that packaging happens inside a workspace (which also brings the
+  AI guide) and points to `init-workspace`. If you're **inside a package repo**, the
+  error names the parent directory to run it in (`cd <parent> && start-cli s9pk
+  init-workspace`), so an existing package repo is one command away from building. The
+  `init-workspace`-inside-a-package-repo refusal points at the same parent.
 
 ## [1.0.0]
 

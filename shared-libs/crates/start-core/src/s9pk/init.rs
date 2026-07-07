@@ -99,14 +99,17 @@ pub async fn init_workspace(
         .with_ctx(|_| (ErrorKind::Filesystem, root.display().to_string()))?;
 
     // Refuse to turn a package repo into a workspace. A workspace is the *parent*
-    // directory that holds package repos; a `*-startos` package is not one.
+    // directory that holds package repos; a `*-startos` package is not one. Point at
+    // the parent, which is where the workspace belongs.
     if let Some(repo) = find_enclosing_package_repo(&root) {
+        let parent = repo.parent().unwrap_or(repo.as_path());
         return Err(Error::new(
             eyre!(
                 "{}",
                 t!(
                     "s9pk.init.in-package-repo",
                     path = repo.display().to_string(),
+                    parent = parent.display().to_string(),
                     docs = DOCS_URL
                 )
             ),
@@ -355,6 +358,32 @@ fn find_enclosing_package_repo(start: &Path) -> Option<PathBuf> {
     }
 }
 
+/// The error to surface when an s9pk build/sign needs a workspace signing key but none
+/// exists above the cwd. We want packagers to run `init-workspace` (it also brings the
+/// guide + AGENTS.md/CLAUDE.md), so this points the way rather than falling back to any
+/// key. If the cwd is inside a package repo, it names the parent — where the workspace
+/// belongs — so an existing package repo is one `init-workspace` away from building.
+pub(crate) fn no_workspace_error() -> Error {
+    no_workspace_error_at(std::env::current_dir().ok().as_deref())
+}
+
+fn no_workspace_error_at(cwd: Option<&Path>) -> Error {
+    let msg = match cwd.and_then(find_enclosing_package_repo) {
+        Some(repo) => {
+            let parent = repo.parent().unwrap_or(repo.as_path());
+            t!(
+                "s9pk.init.no-workspace-in-package-repo",
+                repo = repo.display().to_string(),
+                parent = parent.display().to_string(),
+                docs = DOCS_URL
+            )
+            .to_string()
+        }
+        None => t!("s9pk.init.no-workspace", docs = DOCS_URL).to_string(),
+    };
+    Error::new(eyre!("{msg}"), ErrorKind::Uninitialized)
+}
+
 /// Normalize a human display name to a candidate package ID: lowercase ASCII
 /// alphanumerics, runs of whitespace/underscore/hyphen collapsed to a single
 /// hyphen, every other character dropped, no leading or trailing hyphen. Validity
@@ -558,5 +587,29 @@ mod test {
         let inside = ws.join("pkgs");
         std::fs::create_dir_all(&inside).unwrap();
         assert_eq!(find_enclosing_package_repo(&inside), None);
+    }
+
+    #[test]
+    fn no_workspace_error_points_at_package_repo_parent() {
+        let repo = tmp();
+        std::fs::write(
+            repo.join("package.json"),
+            r#"{ "dependencies": { "@start9labs/start-sdk": "2.0.1" } }"#,
+        )
+        .unwrap();
+        let sub = repo.join("startos");
+        std::fs::create_dir_all(&sub).unwrap();
+
+        // inside a package repo → the error names the parent (the workspace location)
+        let msg = format!("{}", no_workspace_error_at(Some(&sub)));
+        assert!(
+            msg.contains(&repo.parent().unwrap().display().to_string()),
+            "{msg}"
+        );
+        assert!(msg.contains("init-workspace"), "{msg}");
+
+        // not in a package repo → generic message, still directs to init-workspace
+        let msg = format!("{}", no_workspace_error_at(Some(&tmp())));
+        assert!(msg.contains("init-workspace"), "{msg}");
     }
 }

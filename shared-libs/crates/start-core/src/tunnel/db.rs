@@ -303,16 +303,21 @@ impl Pinholes6 {
     /// `[gua.port(), gua.port() + count - 1]`, if any. An exact key match is
     /// excluded (idempotent re-assert / same-port collision, handled by callers).
     pub fn overlapping(&self, gua: SocketAddrV6, count: u16) -> Option<SocketAddrV6> {
+        let ip = *gua.ip();
         let new_lo = gua.port();
         let new_hi = new_lo.saturating_add(count.saturating_sub(1));
-        self.0.iter().find_map(|(key, ph)| {
-            if key.ip() != gua.ip() || *key == gua {
-                return None;
-            }
-            let lo = key.port();
-            let hi = lo.saturating_add(ph.count.max(1).saturating_sub(1));
-            (new_lo <= hi && lo <= new_hi).then_some(*key)
-        })
+        // Pinholes on one GUA never overlap, so only the nearest entry starting
+        // at or before new_hi (skipping an exact re-assert of `gua`) can reach
+        // into [new_lo, new_hi].
+        self.0
+            .range(..=SocketAddrV6::new(ip, new_hi, 0, 0))
+            .rev()
+            .take_while(|(key, _)| key.ip() == &ip)
+            .find(|(key, _)| **key != gua)
+            .and_then(|(key, ph)| {
+                let hi = key.port().saturating_add(ph.count.max(1).saturating_sub(1));
+                (hi >= new_lo).then_some(*key)
+            })
     }
 }
 impl PortForwards {
@@ -322,26 +327,32 @@ impl PortForwards {
     /// re-assert (auto) or a same-port collision (manual); this catches the case
     /// ranges introduce, where two *different* start ports cover shared ports.
     pub fn overlapping(&self, source: SocketAddrV4, count: u16) -> Option<SocketAddrV4> {
+        let ip = *source.ip();
         let new_lo = source.port();
         let new_hi = new_lo.saturating_add(count.saturating_sub(1));
-        self.0.iter().find_map(|(src, pf)| {
-            if src.ip() != source.ip() || *src == source {
-                return None;
-            }
-            let lo = src.port();
-            let hi = lo.saturating_add(pf.port_span().saturating_sub(1));
-            (new_lo <= hi && lo <= new_hi).then_some(*src)
-        })
+        // Forwards on one external IP never overlap, so only the nearest entry
+        // starting at or before new_hi (skipping an exact re-assert of `source`)
+        // can reach into [new_lo, new_hi].
+        self.0
+            .range(..=SocketAddrV4::new(ip, new_hi))
+            .rev()
+            .take_while(|(src, _)| src.ip() == &ip)
+            .find(|(src, _)| **src != source)
+            .and_then(|(src, pf)| {
+                let hi = src.port().saturating_add(pf.port_span().saturating_sub(1));
+                (hi >= new_lo).then_some(*src)
+            })
     }
 
     /// Whether any forward on `addr`'s IP has a port span covering `addr.port()`.
     /// Used to keep the port-80 HTTP redirect mutually exclusive with forwards:
     /// the redirect yields when a forward already occupies the port.
     pub fn occupied(&self, addr: SocketAddrV4) -> bool {
-        self.0.iter().any(|(src, pf)| {
+        // Only the nearest forward starting at or before `addr` can cover it
+        // (forwards on one IP never overlap).
+        self.0.range(..=addr).next_back().is_some_and(|(src, pf)| {
             src.ip() == addr.ip()
-                && src.port() <= addr.port()
-                && addr.port() <= src.port().saturating_add(pf.port_span().saturating_sub(1))
+                && src.port().saturating_add(pf.port_span().saturating_sub(1)) >= addr.port()
         })
     }
 }

@@ -1751,13 +1751,14 @@ pub async fn set_http_redirect_enabled(
     }
     ctx.db
         .mutate(|db| {
-            let mut redirects = db.as_http_redirects().de()?;
-            if enabled {
-                redirects.disabled.remove(&ip);
-            } else {
-                redirects.disabled.insert(ip);
-            }
-            db.as_http_redirects_mut().ser(&redirects)
+            db.as_http_redirects_mut().mutate(|redirects| {
+                if enabled {
+                    redirects.disabled.remove(&ip);
+                } else {
+                    redirects.disabled.insert(ip);
+                }
+                Ok(())
+            })
         })
         .await
         .result

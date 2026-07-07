@@ -124,7 +124,7 @@ import { CHANGE_PASSWORD } from './change-password'
       display: flex;
       flex-direction: column;
       gap: 1rem;
-      max-inline-size: 40rem;
+      max-inline-size: 32rem;
     }
 
     // The table keeps its full width so the WAN IP column has room; only the

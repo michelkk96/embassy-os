@@ -5,7 +5,13 @@ import { Router } from '@angular/router'
 import { ErrorService, TaskService } from '@start9labs/shared'
 import { T, utils } from '@start9labs/start-core'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
-import { TuiButton, TuiCell, TuiLoader, TuiTitle } from '@taiga-ui/core'
+import {
+  TuiButton,
+  TuiCell,
+  TuiIcon,
+  TuiLoader,
+  TuiTitle,
+} from '@taiga-ui/core'
 import { TuiBadge, TuiButtonLoading, TuiSwitch } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
@@ -49,43 +55,47 @@ import { CHANGE_PASSWORD } from './change-password'
       </div>
     </div>
     <div tuiCardLarge="compact" appearance="floating">
-      <header tuiHeader>
-        <hgroup tuiTitle>
-          <h2>HTTP Redirect (80 → 443)</h2>
-          <p tuiSubtitle>
-            Redirect plain http:// on port 80 to https:// for each public IPv4.
-            Turn off to free port 80 for a manual port forward.
-          </p>
-        </hgroup>
+      <header tuiHeader="body-l">
+        <tui-icon icon="@tui.milestone" />
+        <h3 tuiTitle>HTTP Redirect (80 → 443)</h3>
       </header>
-      @for (redirect of redirects(); track redirect.ip) {
-        <div tuiCell>
-          <span tuiTitle>
-            {{ redirect.ip }}
-            @if (redirect.forwarded) {
-              <span tuiSubtitle>
-                Port 80 is forwarded — delete it to re-enable
-              </span>
-            }
-          </span>
-          <tui-loader
-            size="s"
-            [loading]="toggling() === redirect.ip"
-            [overlay]="true"
-          >
-            <input
-              tuiSwitch
-              type="checkbox"
-              [showIcons]="false"
-              [disabled]="redirect.forwarded"
-              [ngModel]="redirect.enabled && !redirect.forwarded"
-              (ngModelChange)="onToggleRedirect(redirect)"
-            />
-          </tui-loader>
-        </div>
-      } @empty {
-        <p>No public IPv4 addresses.</p>
-      }
+      <table class="g-table no-actions">
+        <thead>
+          <tr>
+            <th>WAN IP</th>
+            <th>Enabled</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (redirect of redirects(); track redirect.ip) {
+            <tr>
+              <td>{{ redirect.ip }}</td>
+              <td>
+                <tui-loader
+                  size="xs"
+                  [loading]="toggling() === redirect.ip"
+                  [overlay]="true"
+                >
+                  <input
+                    tuiSwitch
+                    type="checkbox"
+                    size="s"
+                    [style.display]="'flex'"
+                    [showIcons]="false"
+                    [disabled]="redirect.forwarded"
+                    [ngModel]="redirect.enabled && !redirect.forwarded"
+                    (ngModelChange)="onToggleRedirect(redirect)"
+                  />
+                </tui-loader>
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="2">No public IPv4 addresses</td>
+            </tr>
+          }
+        </tbody>
+      </table>
     </div>
     <div
       tuiCardLarge="compact"
@@ -123,6 +133,7 @@ import { CHANGE_PASSWORD } from './change-password'
     TuiCell,
     TuiTitle,
     TuiHeader,
+    TuiIcon,
     TuiButton,
     TuiButtonLoading,
     TuiBadge,

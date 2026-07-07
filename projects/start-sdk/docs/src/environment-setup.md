@@ -106,6 +106,17 @@ my-workspace/
 
 The context lives once, at the workspace root — it is never copied into your package repos. Open the workspace in your AI tool and it picks up `AGENTS.md` / `CLAUDE.md` automatically.
 
+### Upgrading from a previous start-cli
+
+Earlier `start-cli` versions kept a single global `~/.startos` directory (your signing key and a flat host/registry config). Packaging is now **per-workspace**: each workspace's `.startos/` holds its own signing key (`build-key`) and named host/registry profiles.
+
+If you already have an old `~/.startos`, `init-workspace` detects it and offers to copy your existing signing key and host/registry targets into the new workspace. Your global `~/.startos` is **left untouched** — it's still used for registry/server auth. Accept the prompt, or run non-interactively (or answer `n`) to skip it and configure `.startos/config.yaml` yourself.
+
+To keep you out of a broken setup, `init-workspace` refuses two locations:
+
+- **Inside a package repo.** A workspace is the *parent* directory that holds your package repos, not a package itself — run `init-workspace` in an empty directory, then `start-cli s9pk init-package` inside it.
+- **Your home directory.** That would collide with the global `~/.startos`; use a subdirectory instead.
+
 ### Hosts and registries
 
 The `.startos/config.yaml` created with the workspace defines named **host** targets (your StartOS boxes) and **registry** targets:
@@ -134,7 +145,7 @@ start-cli -H https://my-box.local <command>  # a URL works too
 With no flag, the `default` entry is used. `start-cli` finds this config by walking up from the current directory, so it works anywhere inside the workspace.
 
 > [!NOTE]
-> `make install` and `make publish` read a single `host:` / `registry:` URL from the global `~/.startos/config.yaml` instead of these per-workspace profiles. See [Makefile](./makefile.md).
+> As of `@start9labs/start-sdk` 2.0, `make install` and `make publish` resolve their target through `start-cli` — the workspace `.startos/config.yaml` profiles, or `-H` / `-r`. (Older `s9pk.mk` parsed a single `host:` / `registry:` URL from the global `~/.startos/config.yaml`.) See [Makefile](./makefile.md).
 
 ### Keep it current
 

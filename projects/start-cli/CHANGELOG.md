@@ -11,6 +11,19 @@ or the CLI's externally observable behavior.
 
 ## [Unreleased]
 
+- **`s9pk init-workspace` no longer fails for users upgrading from a previous start-cli.**
+  A leftover global `~/.startos` (flat config + developer key from the pre-workspace
+  model) used to trip the "Cannot create a workspace inside an existing one" guard and
+  block workspace creation anywhere under `$HOME`. The nested-workspace check now only
+  treats a *provisioned* `.startos/` (holding a `build-key` or a schema-tagged config)
+  as a workspace, so the legacy global directory is ignored. When one is present,
+  `init-workspace` explains the per-workspace model and offers to copy the existing
+  signing key and host/registry targets into the new workspace — **non-destructively**;
+  the global `~/.startos` is left in place (it still backs registry/server auth). Two
+  wrong locations are now refused with actionable guidance instead of a confusing state:
+  running inside a package repo, and initializing directly in your home directory
+  (which would collide with the global `~/.startos`).
+
 ## [1.0.0]
 
 - **`package start --force`.** `start-cli package start <id> --force` starts a service

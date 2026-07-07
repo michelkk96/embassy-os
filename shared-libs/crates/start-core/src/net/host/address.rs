@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, SocketAddr, SocketAddrV6};
 
 use clap::Parser;
 use imbl_value::InternedString;
@@ -12,7 +12,11 @@ use crate::context::{CliContext, RpcContext};
 use crate::db::model::DatabaseModel;
 use crate::hostname::ServerHostname;
 use crate::net::acme::AcmeProvider;
-use crate::net::gateway::{CheckDnsParams, CheckPortParams, CheckPortRes, check_dns, check_port};
+use crate::net::dns::QueryDnsRes;
+use crate::net::gateway::{
+    CheckDnsParams, CheckPortParams, CheckPortRes, CheckPortV6Res, check_dns, check_port,
+    check_port_v6,
+};
 use crate::net::host::{HostApiKind, all_hosts};
 use crate::net::service_interface::HostnameMetadata;
 use crate::prelude::*;
@@ -226,9 +230,9 @@ pub struct AddPublicDomainParams {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct AddPublicDomainRes {
-    #[ts(type = "string | null")]
-    pub dns: Option<Ipv4Addr>,
+    pub dns: QueryDnsRes,
     pub port: CheckPortRes,
+    pub port_v6: Option<CheckPortV6Res>,
 }
 
 pub async fn add_public_domain<Kind: HostApiKind>(
@@ -320,6 +324,22 @@ pub async fn add_public_domain<Kind: HostApiKind>(
                                 }
                             }
                         }
+                        // No SNI without SSL, so the domain reaches v6 only via
+                        // the bare GUA — expose it like the WAN IPv4 above (v6 has
+                        // no NAT; the GUA is directly routable).
+                        if let Some(ip_info) =
+                            gateways.get(&gateway).and_then(|g| g.ip_info.as_ref())
+                        {
+                            for subnet in &ip_info.subnets {
+                                if let IpAddr::V6(ip) = subnet.addr() {
+                                    if !crate::net::utils::ipv6_is_local(ip) {
+                                        let gua = SocketAddrV6::new(ip, dp, 0, 0);
+                                        bind.addresses.gua_wan.insert(gua);
+                                        bind.addresses.enabled.insert(SocketAddr::V6(gua));
+                                    }
+                                }
+                            }
+                        }
                         for a in &bind.addresses.available {
                             if a.ssl {
                                 continue;
@@ -357,6 +377,11 @@ pub async fn add_public_domain<Kind: HostApiKind>(
                 Ok(())
             })?;
 
+            // Re-project: the gua_wan change above must flow into the GUA's
+            // HostnameInfo.public so it is treated as WAN-exposed.
+            Kind::host_for(&inheritance, db)?
+                .update_addresses(&hostname, &gateways, &available_ports)?;
+
             Ok(ext_port)
         })
         .await
@@ -365,7 +390,7 @@ pub async fn add_public_domain<Kind: HostApiKind>(
     let ctx2 = ctx.clone();
     let fqdn2 = fqdn.clone();
 
-    let (dns_result, port_result) = tokio::join!(
+    let (dns_result, port_result, port_v6_result) = tokio::join!(
         async {
             tokio::task::spawn_blocking(move || {
                 crate::net::dns::query_dns(ctx2, crate::net::dns::QueryDnsParams { fqdn: fqdn2 })
@@ -379,12 +404,20 @@ pub async fn add_public_domain<Kind: HostApiKind>(
                 port: ext_port,
                 gateway: gateway.clone(),
             },
+        ),
+        check_port_v6(
+            ctx.clone(),
+            CheckPortParams {
+                port: ext_port,
+                gateway: gateway.clone(),
+            },
         )
     );
 
     Ok(AddPublicDomainRes {
         dns: dns_result?,
         port: port_result?,
+        port_v6: port_v6_result?,
     })
 }
 

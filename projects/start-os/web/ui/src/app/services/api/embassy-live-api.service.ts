@@ -276,7 +276,7 @@ export class LiveApiService extends ApiService {
     })
   }
 
-  async queryDns(params: T.QueryDnsParams): Promise<string | null> {
+  async queryDns(params: T.QueryDnsParams): Promise<T.QueryDnsRes> {
     return this.rpcRequest({
       method: 'net.dns.query',
       params,
@@ -286,6 +286,15 @@ export class LiveApiService extends ApiService {
   async checkPort(params: T.CheckPortParams): Promise<T.CheckPortRes> {
     return this.rpcRequest({
       method: 'net.gateway.check-port',
+      params,
+    })
+  }
+
+  async checkPortV6(
+    params: T.CheckPortParams,
+  ): Promise<T.CheckPortV6Res | null> {
+    return this.rpcRequest({
+      method: 'net.gateway.check-port-v6',
       params,
     })
   }

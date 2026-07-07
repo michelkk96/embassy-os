@@ -1,4 +1,3 @@
-use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -7,12 +6,10 @@ use ed25519_dalek::SigningKey;
 use futures::future::{BoxFuture, FutureExt};
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
-use url::Url;
 
 use crate::PackageId;
 use crate::context::CliContext;
-use crate::context::config::local_config_path;
-use crate::developer::{default_developer_key_path, load_signing_key, write_developer_key};
+use crate::developer::write_developer_key;
 use crate::prelude::*;
 use crate::util::Invoke;
 use crate::util::serde::IoFormat;
@@ -28,9 +25,18 @@ pub const BUILD_KEY_FILE: &str = "build-key";
 /// between. Scaffolded with defaults; the `host` entries are placeholders to
 /// point at your own StartOS boxes.
 const CONFIG_FILE: &str = "config.yaml";
+const WORKSPACE_CONFIG_CONTENTS: &str = r#"schema: 1
+host:
+  default: https://dev-vm.local
+  prod: https://prodbox.local
+registry:
+  default: https://alpha-registry-x.start9.com
+  beta: https://beta-registry.start9.com
+  prod: https://registry.start9.com
+"#;
 
-/// Published packaging guide, surfaced whenever init-workspace has to explain the
-/// per-workspace model (legacy migration, wrong-directory refusals).
+/// Published packaging guide, surfaced when init-workspace refuses to scaffold inside
+/// a package repo.
 const DOCS_URL: &str = "https://docs.start9.com/packaging/environment-setup.html";
 
 /// Default source for the packaging guide (which also carries the package
@@ -108,34 +114,10 @@ pub async fn init_workspace(
         ));
     }
 
-    // The home directory already hosts the legacy global `~/.startos`; making it a
-    // workspace would collide the workspace marker with that global config.
-    if is_home_dir(&root) {
-        return Err(Error::new(
-            eyre!("{}", t!("s9pk.init.home-dir-workspace", docs = DOCS_URL)),
-            ErrorKind::InvalidRequest,
-        ));
-    }
-
-    // Refuse nesting inside an existing *workspace* (a real marker — the legacy global
-    // config no longer counts). A marker at `root` itself is just a re-run, allowed.
-    if let Some(outer) = root
-        .parent()
-        .map(find_workspace_root)
-        .transpose()?
-        .flatten()
-    {
-        return Err(Error::new(
-            eyre!(
-                "{}",
-                t!(
-                    "s9pk.init.nested-workspace",
-                    path = outer.display().to_string()
-                )
-            ),
-            ErrorKind::InvalidRequest,
-        ));
-    }
+    // Nesting is allowed: a workspace inside a workspace is fine. When building,
+    // signing, or reading config, start-cli walks up from the cwd and uses the nearest
+    // `.startos/`, so a nested workspace transparently overrides an outer one — no need
+    // to look at, or refuse, an enclosing workspace here.
 
     // Provision the guide. Clone only when absent — refreshing is the session-start
     // sync's job, not this command's, so an existing checkout is left untouched. A
@@ -185,54 +167,16 @@ pub async fn init_workspace(
     }
     write_if_absent(&root.join("AGENTS.local.md"), AGENTS_LOCAL_STUB).await?;
     write_if_absent(&root.join("CLAUDE.md"), CLAUDE_MD_CONTENTS).await?;
-    // .startos/ is the workspace marker (see find_workspace_root) and holds the
-    // signing key + target config. The build-key is generated once and never
-    // regenerated — overwriting it would change the workspace's signing identity.
+    // .startos/ marks the workspace and holds its signing key + target config. Written
+    // last, so only a fully provisioned directory counts as a workspace.
     let startos = root.join(STARTOS_DIR);
     tokio::fs::create_dir_all(&startos)
         .await
         .with_ctx(|_| (ErrorKind::Filesystem, startos.display().to_string()))?;
+    write_if_absent(&startos.join(CONFIG_FILE), WORKSPACE_CONFIG_CONTENTS).await?;
+    // Generated once and never regenerated — overwriting the build-key would change
+    // the workspace's signing identity.
     let build_key = startos.join(BUILD_KEY_FILE);
-    let config = startos.join(CONFIG_FILE);
-
-    // Accommodate packagers upgrading from the pre-workspace start-cli: offer to copy
-    // their existing signing key + targets out of the global `~/.startos` (which is
-    // never modified) rather than silently ignoring the old setup. Gated on the
-    // workspace still missing a key or config — so a fully provisioned re-run doesn't
-    // re-prompt, but a partially migrated one (e.g. key written, config write failed)
-    // still retries instead of falling through to default placeholders.
-    if !(build_key.exists() && config.exists()) {
-        if let Some(legacy) = legacy_global_startos() {
-            eprintln!(
-                "{}",
-                t!(
-                    "s9pk.init.legacy-config-found",
-                    path = legacy.display().to_string(),
-                    docs = DOCS_URL
-                )
-            );
-            // Only a real terminal is prompted; non-interactive runs skip migration
-            // and print the docs pointer instead of blocking.
-            let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
-            let migrate = interactive && prompt_yes_no(&t!("s9pk.init.migrate-prompt"));
-            if migrate {
-                migrate_build_key(&build_key).await?;
-                migrate_config(&legacy, &config).await?;
-                eprintln!(
-                    "{}",
-                    t!(
-                        "s9pk.init.migrated",
-                        path = startos.display().to_string(),
-                        legacy = legacy.display().to_string()
-                    )
-                );
-            } else {
-                eprintln!("{}", t!("s9pk.init.migration-skipped", docs = DOCS_URL));
-            }
-        }
-    }
-
-    write_if_absent(&config, &workspace_config(None, None)).await?;
     if tokio::fs::symlink_metadata(&build_key).await.is_err() {
         // bind before the await so the !Send ThreadRng isn't held across it
         let key = SigningKey::generate(&mut crate::util::crypto::os_rng());
@@ -331,9 +275,9 @@ pub async fn init_package(
 }
 
 /// Walk up from `start` (inclusive) for the nearest workspace — a directory whose
-/// `.startos` is a provisioned marker (`build-key` or a schema config). The legacy
-/// global `~/.startos` (flat config, no build-key) is intentionally excluded, so it
-/// never trips the nested-workspace guard or misdirects `init-package`.
+/// `.startos` is a provisioned marker (`build-key` or a schema config). `init-package`
+/// scaffolds into whatever this returns, so with nested workspaces it targets the
+/// innermost one. A bare/legacy `.startos` (no build-key, no schema) isn't a marker.
 fn find_workspace_root(start: &Path) -> Result<Option<PathBuf>, Error> {
     let mut dir = start.to_path_buf();
     loop {
@@ -356,34 +300,16 @@ fn find_workspace_root(start: &Path) -> Result<Option<PathBuf>, Error> {
     }
 }
 
-/// Scaffolds a workspace `config.yaml`. `host`/`registry` seed the `default` profile
-/// when migrating from a legacy config; `None` falls back to the placeholder targets.
-fn workspace_config(host: Option<&str>, registry: Option<&str>) -> String {
-    let host = host.unwrap_or("https://dev-vm.local");
-    let registry = registry.unwrap_or("https://alpha-registry-x.start9.com");
-    format!(
-        "schema: 1\nhost:\n  default: {host}\n  prod: https://prodbox.local\nregistry:\n  default: {registry}\n  beta: https://beta-registry.start9.com\n  prod: https://registry.start9.com\n"
-    )
-}
-
-/// Minimal probe: a workspace `config.yaml` is schema-tagged; the legacy flat config
-/// is not, so it fails to deserialize here.
+/// Minimal probe: a provisioned workspace `config.yaml` is schema-tagged; a bare or
+/// legacy flat config is not, so it fails to deserialize here.
 #[derive(Deserialize)]
 struct SchemaProbe {
     #[allow(dead_code)]
     schema: u64,
 }
 
-/// The two fields the legacy flat `~/.startos/config.yaml` carried that map onto a
-/// workspace: a single host URL and a single registry URL.
-#[derive(Deserialize, Default)]
-struct LegacyClientConfig {
-    host: Option<String>,
-    registry: Option<String>,
-}
-
 /// A `.startos` dir counts as a provisioned workspace once it holds a build-key or a
-/// schema-tagged config. The legacy global `~/.startos` matches neither.
+/// schema-tagged config.
 fn startos_dir_is_marker(startos: &Path) -> bool {
     if startos.join(BUILD_KEY_FILE).exists() {
         return true;
@@ -407,8 +333,8 @@ fn is_package_repo(dir: &Path) -> bool {
 }
 
 /// Walk up from `start` (inclusive) for the nearest enclosing package repo, so a
-/// workspace is never initialized inside one. Stops at a real workspace marker — that
-/// boundary is the nested-workspace guard's job.
+/// workspace is never initialized inside one. Stops at a workspace marker: an enclosing
+/// workspace is fine (nesting is allowed) and bounds the walk.
 fn find_enclosing_package_repo(start: &Path) -> Option<PathBuf> {
     let mut dir = start.to_path_buf();
     loop {
@@ -425,103 +351,6 @@ fn find_enclosing_package_repo(start: &Path) -> Option<PathBuf> {
         }
         if !dir.pop() {
             return None;
-        }
-    }
-}
-
-/// True when `root` is the user's home directory, where the global `~/.startos` lives.
-fn is_home_dir(root: &Path) -> bool {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .and_then(|h| std::fs::canonicalize(h).ok())
-        .map(|h| h == root)
-        .unwrap_or(false)
-}
-
-/// The legacy global config dir (`~/.startos`) when it exists and is *not* already a
-/// workspace marker — i.e. a leftover from the pre-workspace start-cli.
-fn legacy_global_startos() -> Option<PathBuf> {
-    let dir = local_config_path()?.parent()?.to_path_buf();
-    (dir.is_dir() && !startos_dir_is_marker(&dir)).then_some(dir)
-}
-
-/// Copy the legacy developer key into the new workspace as its build-key, preserving
-/// the packager's signing identity. No-op if a build-key already exists or there is no
-/// legacy key. The global key is left in place (still used for auth). If a legacy key
-/// exists but can't be read, warn — otherwise the later fresh-key generation would
-/// silently change the workspace's signing identity.
-async fn migrate_build_key(build_key: &Path) -> Result<(), Error> {
-    if build_key.exists() {
-        return Ok(());
-    }
-    let legacy_key = default_developer_key_path();
-    if !legacy_key.exists() {
-        return Ok(());
-    }
-    match load_signing_key(&legacy_key) {
-        Ok(key) => write_developer_key(&key, build_key).await?,
-        Err(_) => eprintln!(
-            "{}",
-            t!(
-                "s9pk.init.legacy-key-unreadable",
-                path = legacy_key.display().to_string()
-            )
-        ),
-    }
-    Ok(())
-}
-
-/// Seed this workspace's config from the legacy flat config's single host/registry
-/// (well-formed URLs only). No-op if a config already exists.
-async fn migrate_config(legacy: &Path, config: &Path) -> Result<(), Error> {
-    if config.exists() {
-        return Ok(());
-    }
-    let legacy_config = std::fs::File::open(legacy.join(CONFIG_FILE))
-        .ok()
-        .and_then(|f| IoFormat::Yaml.from_reader::<_, LegacyClientConfig>(f).ok())
-        .unwrap_or_default();
-    let host = legacy_config
-        .host
-        .as_deref()
-        .filter(|h| Url::parse(h).is_ok());
-    let registry = legacy_config
-        .registry
-        .as_deref()
-        .filter(|r| Url::parse(r).is_ok());
-    tokio::fs::write(config, workspace_config(host, registry))
-        .await
-        .with_ctx(|_| (ErrorKind::Filesystem, config.display().to_string()))?;
-    Ok(())
-}
-
-/// Lenient yes/no parser accepting the affirmatives/negatives of the CLI's locales.
-fn parse_yes_no(s: &str) -> Result<bool, String> {
-    match s.trim().to_ascii_lowercase().as_str() {
-        "y" | "yes" | "j" | "ja" | "o" | "oui" | "s" | "si" | "sí" | "t" | "tak" => Ok(true),
-        "n" | "no" | "nein" | "non" | "nie" => Ok(false),
-        _ => Err(t!("s9pk.init.answer-yes-no").to_string()),
-    }
-}
-
-/// Synchronous y/n prompt on stderr, defaulting to yes on empty input or EOF. Blocking
-/// (not held across an await) so the handler future stays `Send`, matching how the
-/// password prompts read stdin. Callers gate on an interactive terminal first.
-fn prompt_yes_no(prompt: &str) -> bool {
-    use std::io::Write;
-    loop {
-        eprint!("{prompt} ");
-        let _ = std::io::stderr().flush();
-        let mut line = String::new();
-        match std::io::stdin().read_line(&mut line) {
-            Ok(0) | Err(_) => return true,
-            Ok(_) => match line.trim() {
-                "" => return true,
-                answer => match parse_yes_no(answer) {
-                    Ok(choice) => return choice,
-                    Err(msg) => eprintln!("{msg}"),
-                },
-            },
         }
     }
 }
@@ -642,38 +471,17 @@ mod test {
     }
 
     #[test]
-    fn yes_no_parses_locale_variants() {
-        for y in [
-            "y", "Yes", "  YES ", "j", "ja", "o", "oui", "s", "si", "t", "tak",
-        ] {
-            assert_eq!(parse_yes_no(y), Ok(true), "{y}");
-        }
-        for n in ["n", "No", "nein", "non", "nie"] {
-            assert_eq!(parse_yes_no(n), Ok(false), "{n}");
-        }
-        assert!(parse_yes_no("maybe").is_err());
-    }
-
-    #[test]
-    fn workspace_config_default_and_seeded() {
-        let def = workspace_config(None, None);
-        assert!(def.starts_with("schema: 1\n"));
-        assert!(def.contains("  default: https://dev-vm.local\n"));
-        assert!(def.contains("  default: https://alpha-registry-x.start9.com\n"));
-
-        let seeded = workspace_config(Some("https://box.local"), Some("https://reg.example"));
-        assert!(seeded.contains("  default: https://box.local\n"));
-        assert!(seeded.contains("  default: https://reg.example\n"));
-        // both must parse as a full WorkspaceConfig (typed host/registry URL maps),
-        // which is what the runtime actually loads — not merely as schema-tagged YAML.
-        assert!(parses_as_workspace(&def));
-        assert!(parses_as_workspace(&seeded));
-    }
-
-    fn parses_as_workspace(yaml: &str) -> bool {
-        IoFormat::Yaml
-            .from_reader::<_, crate::context::config::WorkspaceConfig>(yaml.as_bytes())
-            .is_ok()
+    fn scaffolded_config_parses_as_workspace() {
+        // the config init-workspace writes must load as a full WorkspaceConfig (typed
+        // host/registry URL maps), which is what the runtime actually reads — not
+        // merely as schema-tagged YAML.
+        assert!(
+            IoFormat::Yaml
+                .from_reader::<_, crate::context::config::WorkspaceConfig>(
+                    WORKSPACE_CONFIG_CONTENTS.as_bytes()
+                )
+                .is_ok()
+        );
     }
 
     #[test]
@@ -689,7 +497,7 @@ mod test {
         assert!(!startos_dir_is_marker(&startos));
 
         // schema config — marker
-        std::fs::write(startos.join(CONFIG_FILE), workspace_config(None, None)).unwrap();
+        std::fs::write(startos.join(CONFIG_FILE), WORKSPACE_CONFIG_CONTENTS).unwrap();
         assert!(startos_dir_is_marker(&startos));
 
         // build-key alone — marker (even with a flat config)
@@ -744,7 +552,7 @@ mod test {
         std::fs::create_dir_all(ws.join(STARTOS_DIR)).unwrap();
         std::fs::write(
             ws.join(STARTOS_DIR).join(CONFIG_FILE),
-            workspace_config(None, None),
+            WORKSPACE_CONFIG_CONTENTS,
         )
         .unwrap();
         let inside = ws.join("pkgs");

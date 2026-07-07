@@ -106,16 +106,14 @@ my-workspace/
 
 The context lives once, at the workspace root — it is never copied into your package repos. Open the workspace in your AI tool and it picks up `AGENTS.md` / `CLAUDE.md` automatically.
 
-### Upgrading from a previous start-cli
+### Nested workspaces and config resolution
 
-Earlier `start-cli` versions kept a single global `~/.startos` directory (your signing key and a flat host/registry config). Packaging is now **per-workspace**: each workspace's `.startos/` holds its own signing key (`build-key`) and named host/registry profiles.
+Workspaces can be nested — running `init-workspace` inside another workspace is fine. When `start-cli` needs a workspace's signing key or targets (building, signing, reading `host`/`registry`), it walks **up** from the current directory and uses the nearest `.startos/`. So an inner workspace transparently overrides an outer one, and settings you don't override are inherited from above — conceptually a deep merge of every `.startos/` on the path, innermost first.
 
-If you already have an old `~/.startos`, `init-workspace` detects it and offers to copy your existing signing key and host/registry targets into the new workspace. Your global `~/.startos` is **left untouched** — it's still used for registry/server auth. Accept the prompt, or run non-interactively (or answer `n`) to skip it and configure `.startos/config.yaml` yourself.
+The one thing `init-workspace` refuses is running **inside a package repo**: a workspace is the directory that *holds* package repos, not a package itself. Run `init-workspace` in a separate directory, then `start-cli s9pk init-package` inside it.
 
-To keep you out of a broken setup, `init-workspace` refuses two locations:
-
-- **Inside a package repo.** A workspace is the *parent* directory that holds your package repos, not a package itself — run `init-workspace` in an empty directory, then `start-cli s9pk init-package` inside it.
-- **Your home directory.** That would collide with the global `~/.startos`; use a subdirectory instead.
+> [!NOTE]
+> There's no automatic migration from an older global `~/.startos`. To reuse a previous signing key, copy it into a workspace yourself: `cp ~/.startos/developer.key.pem <workspace>/.startos/build-key`.
 
 ### Hosts and registries
 

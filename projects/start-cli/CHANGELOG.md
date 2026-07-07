@@ -11,18 +11,17 @@ or the CLI's externally observable behavior.
 
 ## [Unreleased]
 
-- **`s9pk init-workspace` no longer fails for users upgrading from a previous start-cli.**
-  A leftover global `~/.startos` (flat config + developer key from the pre-workspace
-  model) used to trip the "Cannot create a workspace inside an existing one" guard and
-  block workspace creation anywhere under `$HOME`. The nested-workspace check now only
-  treats a *provisioned* `.startos/` (holding a `build-key` or a schema-tagged config)
-  as a workspace, so the legacy global directory is ignored. When one is present,
-  `init-workspace` explains the per-workspace model and offers to copy the existing
-  signing key and host/registry targets into the new workspace — **non-destructively**;
-  the global `~/.startos` is left in place (it still backs registry/server auth). Two
-  wrong locations are now refused with actionable guidance instead of a confusing state:
-  running inside a package repo, and initializing directly in your home directory
-  (which would collide with the global `~/.startos`).
+- **`s9pk init-workspace` no longer fails when a `.startos` exists above the target.**
+  A leftover global `~/.startos` (or any enclosing workspace) used to trip a
+  "Cannot create a workspace inside an existing one" guard and block workspace creation
+  anywhere under it. Nesting is now allowed: `init-workspace` just creates the workspace,
+  paying no attention to outer ones. When building, signing, or reading config, start-cli
+  walks up from the current directory and uses the nearest `.startos/`, so a nested
+  workspace transparently overrides an outer one (conceptually a deep merge of every
+  `.startos/` on the path). The one refusal that remains is running **inside a package
+  repo** — a workspace holds package repos; it isn't one. (There is no automatic
+  migration from an older global `~/.startos`; copy `developer.key.pem` to a workspace's
+  `.startos/build-key` yourself to reuse a signing key.)
 
 ## [1.0.0]
 

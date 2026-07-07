@@ -162,13 +162,6 @@ s9pk.init.invalid-package-name:
   fr_FR: "Impossible de dériver un ID de paquet valide à partir de « %{name} ». Utilisez un nom contenant des lettres ou des chiffres."
   pl_PL: "Nie można utworzyć prawidłowego identyfikatora pakietu z „%{name}”. Użyj nazwy zawierającej litery lub cyfry."
 
-s9pk.init.nested-workspace:
-  en_US: "Cannot create a workspace inside an existing one (found %{path})."
-  de_DE: "Ein Arbeitsbereich kann nicht innerhalb eines bestehenden erstellt werden (gefunden: %{path})."
-  es_ES: "No se puede crear un espacio de trabajo dentro de uno existente (se encontró %{path})."
-  fr_FR: "Impossible de créer un espace de travail à l'intérieur d'un autre (trouvé : %{path})."
-  pl_PL: "Nie można utworzyć obszaru roboczego wewnątrz istniejącego (znaleziono %{path})."
-
 s9pk.init.not-in-workspace:
   en_US: "Not inside a packaging workspace. Run `start-cli s9pk init-workspace` first."
   de_DE: "Nicht innerhalb eines Paketierungs-Arbeitsbereichs. Führe zuerst `start-cli s9pk init-workspace` aus."
@@ -210,55 +203,6 @@ s9pk.init.in-package-repo:
   es_ES: "%{path} es un repositorio de paquete de StartOS, no un espacio de trabajo de empaquetado. Un espacio de trabajo es el directorio superior que contiene tus repositorios de paquetes: ejecuta `init-workspace` en un directorio vacío y luego `start-cli s9pk init-package` dentro. Guía de configuración: %{docs}"
   fr_FR: "%{path} est un dépôt de paquet StartOS, pas un espace de travail d'empaquetage. Un espace de travail est le répertoire parent qui contient vos dépôts de paquets : exécutez `init-workspace` dans un répertoire vide, puis `start-cli s9pk init-package` à l'intérieur. Guide de configuration : %{docs}"
   pl_PL: "%{path} to repozytorium pakietu StartOS, a nie obszar roboczy pakowania. Obszar roboczy to katalog nadrzędny zawierający repozytoria pakietów — uruchom `init-workspace` w pustym katalogu, a następnie `start-cli s9pk init-package` w jego wnętrzu. Przewodnik konfiguracji: %{docs}"
-
-s9pk.init.home-dir-workspace:
-  en_US: "Refusing to create a workspace in your home directory: it would collide with the global `~/.startos` config. Create it in a subdirectory instead, e.g. `start-cli s9pk init-workspace my-workspace`. Setup guide: %{docs}"
-  de_DE: "Ein Arbeitsbereich wird nicht im Home-Verzeichnis erstellt: Er würde mit der globalen `~/.startos`-Konfiguration kollidieren. Erstelle ihn stattdessen in einem Unterverzeichnis, z. B. `start-cli s9pk init-workspace my-workspace`. Einrichtungsanleitung: %{docs}"
-  es_ES: "No se creará un espacio de trabajo en tu directorio de inicio: colisionaría con la configuración global `~/.startos`. Créalo en un subdirectorio, por ejemplo `start-cli s9pk init-workspace my-workspace`. Guía de configuración: %{docs}"
-  fr_FR: "Refus de créer un espace de travail dans votre répertoire personnel : il entrerait en conflit avec la configuration globale `~/.startos`. Créez-le plutôt dans un sous-répertoire, p. ex. `start-cli s9pk init-workspace my-workspace`. Guide de configuration : %{docs}"
-  pl_PL: "Odmowa utworzenia obszaru roboczego w katalogu domowym: kolidowałby z globalną konfiguracją `~/.startos`. Utwórz go w podkatalogu, np. `start-cli s9pk init-workspace my-workspace`. Przewodnik konfiguracji: %{docs}"
-
-s9pk.init.legacy-config-found:
-  en_US: "Found a global `~/.startos` from a previous start-cli (%{path}). Packaging now uses a per-workspace `.startos/` — your signing key and host/registry targets live in each workspace instead of one global directory. Setup guide: %{docs}"
-  de_DE: "Globale `~/.startos` aus einer früheren start-cli-Version gefunden (%{path}). Die Paketierung verwendet jetzt ein `.startos/` pro Arbeitsbereich – dein Signaturschlüssel und deine Host-/Registry-Ziele liegen in jedem Arbeitsbereich statt in einem globalen Verzeichnis. Einrichtungsanleitung: %{docs}"
-  es_ES: "Se encontró un `~/.startos` global de una versión anterior de start-cli (%{path}). El empaquetado ahora usa un `.startos/` por espacio de trabajo: tu clave de firma y tus destinos de host/registro viven en cada espacio de trabajo en lugar de un único directorio global. Guía de configuración: %{docs}"
-  fr_FR: "Un `~/.startos` global d'une version précédente de start-cli a été trouvé (%{path}). L'empaquetage utilise désormais un `.startos/` par espace de travail : votre clé de signature et vos cibles hôte/registre se trouvent dans chaque espace de travail plutôt que dans un répertoire global unique. Guide de configuration : %{docs}"
-  pl_PL: "Znaleziono globalny `~/.startos` z wcześniejszej wersji start-cli (%{path}). Pakowanie używa teraz `.startos/` na obszar roboczy — twój klucz podpisujący oraz cele host/rejestr znajdują się w każdym obszarze roboczym zamiast w jednym globalnym katalogu. Przewodnik konfiguracji: %{docs}"
-
-s9pk.init.migrate-prompt:
-  en_US: "Copy your existing signing key and targets into this workspace? [Y/n]"
-  de_DE: "Vorhandenen Signaturschlüssel und Ziele in diesen Arbeitsbereich kopieren? [J/n]"
-  es_ES: "¿Copiar tu clave de firma y destinos existentes a este espacio de trabajo? [S/n]"
-  fr_FR: "Copier votre clé de signature et vos cibles existantes dans cet espace de travail ? [O/n]"
-  pl_PL: "Skopiować istniejący klucz podpisujący i cele do tego obszaru roboczego? [T/n]"
-
-s9pk.init.migrated:
-  en_US: "Copied your existing signing key and targets into %{path} where present. Your global config at %{legacy} was left unchanged."
-  de_DE: "Vorhandener Signaturschlüssel und Ziele wurden – sofern vorhanden – nach %{path} kopiert. Deine globale Konfiguration unter %{legacy} blieb unverändert."
-  es_ES: "Se copiaron tu clave de firma y destinos existentes a %{path} cuando estaban presentes. Tu configuración global en %{legacy} no se modificó."
-  fr_FR: "Votre clé de signature et vos cibles existantes ont été copiées dans %{path} lorsqu'elles étaient présentes. Votre configuration globale dans %{legacy} n'a pas été modifiée."
-  pl_PL: "Skopiowano istniejący klucz podpisujący i cele do %{path}, jeśli były obecne. Twoja globalna konfiguracja w %{legacy} pozostała niezmieniona."
-
-s9pk.init.migration-skipped:
-  en_US: "Left your global config in place. Configure this workspace's targets in `.startos/config.yaml` — see %{docs}"
-  de_DE: "Globale Konfiguration bleibt bestehen. Konfiguriere die Ziele dieses Arbeitsbereichs in `.startos/config.yaml` – siehe %{docs}"
-  es_ES: "Se mantuvo tu configuración global. Configura los destinos de este espacio de trabajo en `.startos/config.yaml`; consulta %{docs}"
-  fr_FR: "Configuration globale conservée. Configurez les cibles de cet espace de travail dans `.startos/config.yaml` — voir %{docs}"
-  pl_PL: "Pozostawiono globalną konfigurację. Skonfiguruj cele tego obszaru roboczego w `.startos/config.yaml` — zobacz %{docs}"
-
-s9pk.init.legacy-key-unreadable:
-  en_US: "Couldn't read your existing signing key at %{path}; a new signing key will be generated for this workspace."
-  de_DE: "Dein vorhandener Signaturschlüssel unter %{path} konnte nicht gelesen werden; für diesen Arbeitsbereich wird ein neuer Signaturschlüssel generiert."
-  es_ES: "No se pudo leer tu clave de firma existente en %{path}; se generará una nueva clave de firma para este espacio de trabajo."
-  fr_FR: "Impossible de lire votre clé de signature existante à %{path} ; une nouvelle clé de signature sera générée pour cet espace de travail."
-  pl_PL: "Nie można odczytać istniejącego klucza podpisującego w %{path}; dla tego obszaru roboczego zostanie wygenerowany nowy klucz podpisujący."
-
-s9pk.init.answer-yes-no:
-  en_US: "Please answer y or n."
-  de_DE: "Bitte mit j oder n antworten."
-  es_ES: "Por favor responde s o n."
-  fr_FR: "Veuillez répondre par o ou n."
-  pl_PL: "Odpowiedz t lub n."
 
 # setup.rs
 setup.opening-data-drive:

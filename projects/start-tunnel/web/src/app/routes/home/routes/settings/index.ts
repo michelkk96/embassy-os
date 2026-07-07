@@ -124,7 +124,17 @@ import { CHANGE_PASSWORD } from './change-password'
       display: flex;
       flex-direction: column;
       gap: 1rem;
-      max-inline-size: 50rem;
+      max-inline-size: 40rem;
+    }
+
+    // Shrink the redirect table to its content (WAN IP + toggle) instead of the
+    // shared g-table's full width, so the Enabled column hugs the switch. Being
+    // narrower than the card also avoids the sub-pixel horizontal overflow the
+    // full-width table caused inside the card's overflow:auto (a phantom
+    // horizontal scrollbar on mobile).
+    .g-table {
+      width: fit-content;
+      max-width: 100%;
     }
   `,
   imports: [

@@ -4871,6 +4871,27 @@ about.commands-pinhole:
   fr_FR: "Commandes pour gérer les pinholes IPv6"
   pl_PL: "Polecenia do zarządzania pinholes IPv6"
 
+about.commands-http-redirect:
+  en_US: "Commands for managing HTTP→HTTPS redirects"
+  de_DE: "Befehle zur Verwaltung von HTTP→HTTPS-Weiterleitungen"
+  es_ES: "Comandos para gestionar redirecciones HTTP→HTTPS"
+  fr_FR: "Commandes pour gérer les redirections HTTP→HTTPS"
+  pl_PL: "Polecenia do zarządzania przekierowaniami HTTP→HTTPS"
+
+about.list-http-redirects:
+  en_US: "List the port-80 HTTP→HTTPS redirect status of every public IPv4"
+  de_DE: "Den HTTP→HTTPS-Weiterleitungsstatus (Port 80) jeder öffentlichen IPv4 auflisten"
+  es_ES: "Listar el estado de la redirección HTTP→HTTPS (puerto 80) de cada IPv4 pública"
+  fr_FR: "Lister l'état de la redirection HTTP→HTTPS (port 80) de chaque IPv4 publique"
+  pl_PL: "Wyświetl stan przekierowania HTTP→HTTPS (port 80) każdego publicznego adresu IPv4"
+
+about.enable-or-disable-http-redirect:
+  en_US: "Turn the port-80 HTTP→HTTPS redirect on or off for a public IPv4"
+  de_DE: "Die HTTP→HTTPS-Weiterleitung (Port 80) für eine öffentliche IPv4 ein- oder ausschalten"
+  es_ES: "Activar o desactivar la redirección HTTP→HTTPS (puerto 80) de una IPv4 pública"
+  fr_FR: "Activer ou désactiver la redirection HTTP→HTTPS (port 80) pour une IPv4 publique"
+  pl_PL: "Włącz lub wyłącz przekierowanie HTTP→HTTPS (port 80) dla publicznego adresu IPv4"
+
 about.commands-port-forward:
   en_US: "Commands for managing port forwards"
   de_DE: "Befehle zur Verwaltung von Portweiterleitungen"

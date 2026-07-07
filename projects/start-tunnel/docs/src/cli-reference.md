@@ -131,6 +131,22 @@ Enable or disable a port forwarding rule.
 
 Change or clear the label on a port forwarding rule.
 
+## HTTP Redirects
+
+StartTunnel runs an HTTP→HTTPS redirect on port 80 of every public IPv4 it holds, so a plain `http://` request to an exposed service bounces to `https://`. These are **on by default**; each address can be turned off individually. The redirect yields to a port forward — if port 80 on an IP is forwarded, no redirect runs there.
+
+### `start-tunnel http-redirect list`
+
+Show the port-80 redirect status of every public IPv4: whether it is enabled, and whether a port forward already occupies port 80 (in which case the redirect yields).
+
+- `--format` — Output format
+
+### `start-tunnel http-redirect set-enabled <IP>`
+
+Turn the port-80 HTTP→HTTPS redirect on or off for a public IPv4.
+
+- `--enabled` — Enable the redirect; omit the flag to turn it off
+
 ## IPv6 Pinholes
 
 Expose a device's port over IPv6 by opening a firewall pinhole on the device's own global address (GUA — see [IPv6](./ipv6.md)). Unlike an IPv4 forward there is no NAT; a differing internal port turns it into a port-only translation on the same GUA (e.g. an `80 → 443` redirect). The GUA must be an address the tunnel delegates to a client (its subnet needs an IPv6 prefix).

@@ -15,6 +15,9 @@ Port forwarding exposes a device's port to the public Internet. StartTunnel can 
 
 Because each device has its own IPv6 address, two different devices can both publish on the same external port over IPv6 (whereas over IPv4 they share one public address, so external ports must be unique).
 
+> [!NOTE]
+> Port 80 on each public IPv4 is claimed by default by an [HTTP→HTTPS redirect](./http-redirects.md) rather than a forward. A redirect and a forward are mutually exclusive on the same address and port: the forward wins, so forwarding port 80 makes that address's redirect yield. See [HTTP Redirects](./http-redirects.md).
+
 ## Manual and automatic forwards
 
 The `Port Forwards` page shows two tables: **Manual** forwards you added by hand, and **Automatic** forwards opened by connected devices via PCP/UPnP. A row's **External IP** is your VPS's public IPv4 (a v4 forward) or the device's IPv6 GUA (a v6 pinhole). You can enable, disable, or remove either; automatic forwards have no editable label (they're owned by the device that created them) and may be re-created if you remove one while the device still wants it. Manual forwards are persistent — they stay until you delete them. Automatic forwards are lease-based: one that stops being renewed (its device went offline or no longer wants the port) expires and is removed on its own.

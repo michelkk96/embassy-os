@@ -12,6 +12,7 @@ pub mod db;
 pub mod dns;
 pub mod forward;
 pub(crate) mod migrations;
+pub mod redirect;
 pub mod update;
 pub mod web;
 pub mod wg;

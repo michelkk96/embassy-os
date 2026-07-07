@@ -2,6 +2,7 @@
 import type { AnyVerifyingKey } from './AnyVerifyingKey'
 import type { DnsRecords } from './DnsRecords'
 import type { GatewayId } from './GatewayId'
+import type { HttpRedirects } from './HttpRedirects'
 import type { NetworkInterfaceInfo } from './NetworkInterfaceInfo'
 import type { Pinholes6 } from './Pinholes6'
 import type { PortForwards } from './PortForwards'
@@ -25,4 +26,5 @@ export type TunnelDatabase = {
    */
   pinholes6: Pinholes6
   dnsRecords: DnsRecords
+  httpRedirects: HttpRedirects
 }

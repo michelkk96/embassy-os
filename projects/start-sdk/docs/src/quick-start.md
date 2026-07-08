@@ -30,14 +30,14 @@ my-workspace/
 > [!TIP]
 > Already have a package repo? Clone it into the workspace alongside `start-technologies/` and build it the same way.
 
-Make sure Docker is running first (`docker ps` should succeed — see [Environment Setup](./environment-setup.md#docker)), then build:
+Make sure Docker is running first (`docker ps` should succeed — see [Environment Setup](./environment-setup.md#docker)), then build for **your StartOS device's architecture** — use `x86` for a typical Intel/AMD server or VM, or `arm` for a Raspberry Pi or other ARM board:
 
 ```sh
 cd hello-world-startos
-make
+make x86        # or: make arm
 ```
 
-Dependencies were already installed by `init-package`, so this goes straight to building. The first build pulls the service's container image, so it can take a few minutes. `make` produces a `.s9pk` for each architecture (`hello-world_x86_64.s9pk`, `hello-world_aarch64.s9pk`); run `make universal` instead for a single `hello-world.s9pk` that installs on any device. See [Makefile](./makefile.md) for all build targets.
+Dependencies were already installed by `init-package`, so this goes straight to building. The first build pulls the service's container image, so it can take a few minutes. Building a single architecture is the fast path for development; it produces `hello-world_x86_64.s9pk` (or `hello-world_aarch64.s9pk`). Building every architecture (`make`) or one multi-arch package (`make universal`) is slower and only needed when you publish to a registry — see [Makefile](./makefile.md) for all build targets.
 
 ## Install to StartOS
 
@@ -49,16 +49,16 @@ This needs no command-line setup:
 
 1. Open your StartOS device in a browser and log in.
 2. Click **Sideload** in the top navigation bar.
-3. Select the `.s9pk` that matches your device's architecture (`hello-world_x86_64.s9pk` or `hello-world_aarch64.s9pk`) — or, if you ran `make universal`, the single `hello-world.s9pk`, which installs on any device.
+3. Select the `.s9pk` you just built (`hello-world_x86_64.s9pk` or `hello-world_aarch64.s9pk`).
 
 See [Sideloading](/start-os/sideloading.html) for details.
 
 ### Option 2: Install from the command line
 
-Once your workspace `.startos/config.yaml` points `host.default` at your device (see [Hosts and registries](./environment-setup.md#hosts-and-registries)) and you've logged in once with `start-cli auth login`, you can install straight from the package directory:
+Once your workspace `.startos/config.yaml` points `host.default` at your device (see [Hosts and registries](./environment-setup.md#hosts-and-registries)) and you've logged in once with `start-cli auth login`, build and install for your device's architecture in one step:
 
 ```sh
-make install
+make x86 install        # or: make arm install
 ```
 
 See [Makefile — Installation](./makefile.md#installation) for the full setup.

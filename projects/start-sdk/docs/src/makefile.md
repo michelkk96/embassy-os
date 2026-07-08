@@ -111,7 +111,7 @@ The build also needs the tools from [Environment Setup](./environment-setup.md) 
 
 ## Installation
 
-`make install` builds nothing on its own — it uploads the most recently built `.s9pk` to a StartOS device, so build first (e.g. `make` or `make universal`). It resolves the device from your workspace `.startos/config.yaml` (the `host.default` profile) or an explicit `-H`.
+`make install` builds nothing on its own — it uploads the most recently built `.s9pk` to a StartOS device, so build first (for development, just your device's architecture — `make x86` or `make arm`). It resolves the device from your workspace `.startos/config.yaml` (the `host.default` profile) or an explicit `-H`.
 
 1. Point your workspace at the device. Edit `.startos/config.yaml` (at the workspace root, **not** `~/.startos/config.yaml`) so `host.default` is your device's address:
 
@@ -128,12 +128,15 @@ The build also needs the tools from [Environment Setup](./environment-setup.md) 
 
    Enter your StartOS master password when prompted.
 
-3. Build and install:
+3. Build and install for your device's architecture (`x86` or `arm`) — the fast path for development:
 
    ```sh
-   make install                 # installs the most recent build
-   make universal install       # build a universal package, then install it
+   make x86 install       # or: make arm install
    ```
+
+   (`make install` on its own installs the most recent build. Reach for `make universal`
+   only when publishing — building all architectures is slower and unnecessary for local
+   testing.)
 
 > [!NOTE]
 > `make install` talks to the device over HTTPS, so your computer must trust the device's certificate — the same trust you set up to open its web interface. If you haven't, the quickest way to install is to sideload the `.s9pk` through the web interface instead (see [Sideloading](/start-os/sideloading.html)); no login or certificate setup is needed.

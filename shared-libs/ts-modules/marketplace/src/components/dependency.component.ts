@@ -1,7 +1,7 @@
 import { KeyValue } from '@angular/common'
 import { Component, inject, input } from '@angular/core'
 import { RouterModule } from '@angular/router'
-import { i18nPipe, i18nService } from '@start9labs/shared'
+import { i18nPipe, i18nService, LocalizePipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiCell, TuiTitle } from '@taiga-ui/core'
 import { TuiAvatar } from '@taiga-ui/kit'
@@ -20,11 +20,13 @@ import { MarketplacePkgBase } from '../types'
       } @else {
         ({{ 'Required' | i18n }})
       }
-      <span tuiSubtitle>{{ dep().value.description }}</span>
+      @if (dep().value.description; as description) {
+        <span tuiSubtitle>{{ description | localize }}</span>
+      }
     </span>
   `,
   hostDirectives: [TuiCell],
-  imports: [RouterModule, TuiAvatar, i18nPipe, TuiTitle],
+  imports: [RouterModule, TuiAvatar, i18nPipe, LocalizePipe, TuiTitle],
 })
 export class MarketplaceDependencyComponent {
   private readonly i18nService = inject(i18nService)

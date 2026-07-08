@@ -48,7 +48,12 @@ export namespace Mock {
     title: 'Bitcoin',
     icon: BTC_ICON,
     optional: false,
-    description: 'Needed to run',
+    // Localized (Record) form — mirrors what live registries return and
+    // exercises the LocaleString branch that used to render "[object Object]".
+    description: {
+      en_US: 'Needed to run',
+      de_DE: 'Zum Ausführen erforderlich',
+    },
   }
 
   export const ProxyDep: T.DependencyMetadata = {

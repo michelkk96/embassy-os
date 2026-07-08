@@ -139,7 +139,7 @@ The build also needs the tools from [Environment Setup](./environment-setup.md) 
    testing.)
 
 > [!NOTE]
-> `make install` talks to the device over HTTPS, so your computer must trust the device's certificate — the same trust you set up to open its web interface. If you haven't, the quickest way to install is to sideload the `.s9pk` through the web interface instead (see [Sideloading](/start-os/sideloading.html)); no login or certificate setup is needed.
+> `make install` talks to the device over HTTPS, so your computer must trust the device's certificate — the same trust you set up to open its web interface in a browser. If it isn't trusted yet, import the device's root CA into your system trust store; or, for a one-off, sideload the `.s9pk` through the web interface instead (see [Sideloading](/start-os/sideloading.html)), which needs no certificate setup.
 >
 > To install to a device other than `host.default`, run `start-cli` directly with `-H` (a profile name or URL): `start-cli -H prod package install -s <your-package>.s9pk`.
 

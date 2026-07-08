@@ -264,7 +264,7 @@ host:
 ```
 
 > [!TIP]
-> The simplest way to install a package is to upload the `.s9pk` in the StartOS web interface (see [Quick Start](./quick-start.md#install-to-startos)) — that needs no `host` config at all. The `host` entries only matter for installing from the command line with `make install`, which additionally requires logging in once with `start-cli auth login` (it prompts for your StartOS master password).
+> Setting `host.default` lets you install with `make install` — the recommended way to work on a package, since it builds and pushes to your device in one repeatable command. It also requires logging in once with `start-cli auth login` (it prompts for your StartOS master password). If you'd rather not set up the CLI yet, you can sideload the `.s9pk` through the web interface instead — see [Quick Start](./quick-start.md#install-to-startos).
 
 Any `start-cli` command takes `-H`/`--host` and `-r`/`--registry`. Pass a **profile name** to use one of these entries, or a **URL** to target something directly:
 

@@ -11,6 +11,18 @@ or the CLI's externally observable behavior.
 
 ## [Unreleased]
 
+## [1.0.1]
+
+- **`s9pk init-package` initializes a git repository in the new package.** Packages are
+  their own git repos — the template ships a `.gitignore` and GitHub Actions workflows —
+  so `init-package` now runs `git init` in the scaffold. No commit is made; your first
+  commit is yours.
+- **`s9pk pack` no longer requires a committed git repository.** It still stamps the
+  manifest with the repo's commit hash when one exists (suffixed `-modified` if the tree
+  is dirty), but a freshly scaffolded package — a `git init` with no commit yet, or a
+  non-git directory — now builds with the hash simply omitted, instead of failing with
+  `fatal: not a git repository`. The hash appears once you make your first commit. This
+  is what lets a brand-new package build immediately after `init-package`.
 - **`s9pk init-workspace` no longer fails when a `.startos` exists above the target.**
   A leftover global `~/.startos` (or any enclosing workspace) used to trip a
   "Cannot create a workspace inside an existing one" guard and block workspace creation

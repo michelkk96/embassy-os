@@ -713,7 +713,7 @@ pub async fn pack(ctx: CliContext, params: PackParams) -> Result<(), Error> {
     .await?;
 
     let manifest = s9pk.as_manifest_mut();
-    manifest.metadata.git_hash = Some(GitHash::from_path(params.path()).await?);
+    manifest.metadata.git_hash = GitHash::from_path(params.path()).await?;
     if !params.arch.is_empty() {
         let arches: BTreeSet<InternedString> = match manifest.hardware_requirements.arch.take() {
             Some(a) => params

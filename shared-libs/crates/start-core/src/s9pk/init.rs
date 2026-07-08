@@ -258,6 +258,15 @@ pub async fn init_package(
 
     copy_template_interpolated(&template, &dst, &id, &name).await?;
 
+    // A package is its own git repo — initialize one so version-hash stamping and the
+    // shipped CI workflows work. No commit is made; the first commit is the packager's.
+    Command::new("git")
+        .arg("init")
+        .arg("-q")
+        .current_dir(&dst)
+        .invoke(ErrorKind::Git)
+        .await?;
+
     eprintln!("{}", t!("s9pk.init.installing-deps"));
     Command::new("npm")
         .arg("install")

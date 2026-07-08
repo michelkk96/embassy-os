@@ -2,6 +2,9 @@
 
 StartWRT comes pre-installed on Start9 routers. If you need to reinstall or flash a new device, follow the instructions below to create a bootable microSD card and flash the firmware.
 
+> [!NOTE]
+> StartWRT builds are currently available for RISC-V (`riscv64`) only — specifically the SpaceMiT K1 SoC used in the BananaPi BPI-F3. Builds for other CPU architectures are not yet available.
+
 ## Requirements
 
 - A Start9 router (BananaPi BPI-F3)

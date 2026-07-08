@@ -78,7 +78,7 @@ Select your platform:
 1. If using Firefox, Thunderbird, or Librewolf, complete this [final step](#3-mozilla-apps-firefox-thunderbird-librewolf).
 
 {{#endtab }}
-{{#tab name="iOS / iPadOS" }}
+{{#tab name="iOS" }}
 
 > [!Note]
 > Download your Root CA in **Safari**. iOS and iPadOS only install certificate profiles downloaded through Safari — Chrome, Firefox, and other browsers cannot complete this step.

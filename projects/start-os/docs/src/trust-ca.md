@@ -195,6 +195,9 @@ For more background, see Mozilla's [blog post on why they maintain their own roo
 1. Go back to `Menu > Settings > Secret Settings` (at the bottom), and tap "Use third party CA certificates".
 
 {{#endtab }}
+{{#tab name="Linux" }}
+
+{{#tabs global="distro-mozilla" }}
 {{#tab name="Debian / Ubuntu" }}
 
 1.  In the hamburger menu, click "Settings". Search for `security devices` and select "Security Devices..."
@@ -214,6 +217,9 @@ For more background, see Mozilla's [blog post on why they maintain their own roo
 {{#tab name="Arch / Garuda / CentOS / Fedora" }}
 
 No special steps required.
+
+{{#endtab }}
+{{#endtabs }}
 
 {{#endtab }}
 {{#endtabs }}

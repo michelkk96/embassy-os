@@ -92,18 +92,23 @@ This guide applies to Android 13+, GrapheneOS, CalyxOS, and LineageOS.
 1. If using Firefox, you must use [Firefox Beta](https://play.google.com/store/apps/details?id=org.mozilla.firefox_beta), then complete [this final step](#3-mozilla-apps-firefox-thunderbird-librewolf).
 
 {{#endtab }}
+{{#tab name="Linux" }}
+
+First, open a terminal and move into the directory where you downloaded your Root CA (usually `~/Downloads`):
+
+    cd ~/Downloads
+
+Then add the certificate to your system's trust store using the instructions for your distribution:
+
+{{#tabs global="distro" }}
 {{#tab name="Debian / Ubuntu" }}
 
 This should work for most Debian-based systems, such as Debian, Ubuntu, Mint, PopOS etc.
 
-1.  Open a terminal and run:
+1.  Install the required packages:
 
         sudo apt update
         sudo apt install -y ca-certificates p11-kit
-
-1.  Move into the directory where you downloaded your Root CA (usually `~/Downloads`), for example:
-
-        cd ~/Downloads
 
 1.  Add your Root CA to your OS trust store:
 
@@ -114,14 +119,8 @@ This should work for most Debian-based systems, such as Debian, Ubuntu, Mint, Po
 
     If successful, you will see the output `1 added`.
 
-1.  If using Firefox, Thunderbird, or Librewolf, complete this [final step](#3-mozilla-apps-firefox-thunderbird-librewolf).
-
 {{#endtab }}
 {{#tab name="Arch / Garuda" }}
-
-1.  Move into the directory where you downloaded your Root CA (usually `~/Downloads`), for example:
-
-        cd ~/Downloads
 
 1.  Add your Root CA to your OS trust store:
 
@@ -134,17 +133,18 @@ This should work for most Debian-based systems, such as Debian, Ubuntu, Mint, Po
 {{#endtab }}
 {{#tab name="CentOS / Fedora" }}
 
-1.  Move into the directory where you downloaded your Root CA (usually `~/Downloads`), for example:
-
-        cd ~/Downloads
-
 1.  Add your Root CA to your OS trust store:
 
         sudo dnf install ca-certificates
         sudo cp "startwrt-ca.crt" /etc/pki/ca-trust/source/anchors/
         sudo update-ca-trust
 
-    There will be no output if the update-ca-trust command completes successfully.
+    There will be no output if the `update-ca-trust` command completes successfully.
+
+{{#endtab }}
+{{#endtabs }}
+
+If using Firefox, Thunderbird, or Librewolf, complete this [final step](#3-mozilla-apps-firefox-thunderbird-librewolf).
 
 {{#endtab }}
 {{#endtabs }}
@@ -175,6 +175,9 @@ For more background, see Mozilla's [blog post on why they maintain their own roo
 1. Go back to `Menu > Settings > Secret Settings` (at the bottom), and tap "Use third party CA certificates".
 
 {{#endtab }}
+{{#tab name="Linux" }}
+
+{{#tabs global="distro-mozilla" }}
 {{#tab name="Debian / Ubuntu" }}
 
 1.  In the hamburger menu, click "Settings". Search for `security devices` and select "Security Devices..."
@@ -194,6 +197,9 @@ For more background, see Mozilla's [blog post on why they maintain their own roo
 {{#tab name="Arch / Garuda / CentOS / Fedora" }}
 
 No special steps required.
+
+{{#endtab }}
+{{#endtabs }}
 
 {{#endtab }}
 {{#endtabs }}

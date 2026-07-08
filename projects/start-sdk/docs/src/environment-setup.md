@@ -2,6 +2,9 @@
 
 Before building service packages, you need to install several development tools on your workstation. This page lists each prerequisite and how to install it. The final section — [Set Up Your Packaging Workspace](#set-up-your-packaging-workspace) — scaffolds the AI-assisted workspace that all packaging is designed around.
 
+> [!NOTE]
+> The **Linux** examples below install packages with `apt`, for Debian-based distros (Debian, Ubuntu, Mint, PopOS, …). On another distro, use your package manager to install the same packages.
+
 ## StartOS Device
 
 You must have a computer running StartOS to test your packages. Follow the [installation guide](/start-os/installing-startos.html) to install StartOS on a physical device or VM.
@@ -16,7 +19,7 @@ Docker must be **running** when you build a package, and your user must be able 
 
 {{#tabs global="platform"}}
 
-{{#tab name="Linux (Debian-based)"}}
+{{#tab name="Linux"}}
 
 The daemon runs as a service — start it with `sudo systemctl start docker`. By default only root can talk to it, so add your user to the `docker` group once (then **log out and back in**), otherwise every build fails with `permission denied ... /var/run/docker.sock`:
 
@@ -26,7 +29,7 @@ sudo usermod -aG docker $USER
 
 {{#endtab}}
 
-{{#tab name="macOS"}}
+{{#tab name="Mac"}}
 
 Start Docker Desktop; it runs the daemon for you. (Docker Desktop covers Windows too.)
 
@@ -43,7 +46,7 @@ Start Docker Desktop; it runs the daemon for you. (Docker Desktop covers Windows
 
 {{#tabs global="platform"}}
 
-{{#tab name="Linux (Debian-based)"}}
+{{#tab name="Linux"}}
 
 ```sh
 sudo apt install build-essential
@@ -51,7 +54,7 @@ sudo apt install build-essential
 
 {{#endtab}}
 
-{{#tab name="macOS"}}
+{{#tab name="Mac"}}
 
 ```sh
 xcode-select --install
@@ -86,7 +89,7 @@ SquashFS is used to create compressed filesystem images that package your compil
 
 {{#tabs global="platform"}}
 
-{{#tab name="Linux (Debian-based)"}}
+{{#tab name="Linux"}}
 
 ```sh
 sudo apt install squashfs-tools squashfs-tools-ng
@@ -94,7 +97,7 @@ sudo apt install squashfs-tools squashfs-tools-ng
 
 {{#endtab}}
 
-{{#tab name="macOS"}}
+{{#tab name="Mac"}}
 
 Requires [Homebrew](https://brew.sh/):
 
@@ -112,7 +115,7 @@ brew install squashfs
 
 {{#tabs global="platform"}}
 
-{{#tab name="Linux (Debian-based)"}}
+{{#tab name="Linux"}}
 
 ```sh
 sudo apt install curl
@@ -120,7 +123,7 @@ sudo apt install curl
 
 {{#endtab}}
 
-{{#tab name="macOS"}}
+{{#tab name="Mac"}}
 
 Already included.
 
@@ -144,7 +147,7 @@ curl -fsSL https://start9.com/start-cli/install.sh | sh
 
 {{#tabs global="platform"}}
 
-{{#tab name="Linux (Debian-based)"}}
+{{#tab name="Linux"}}
 
 ```sh
 sudo apt install git
@@ -152,7 +155,7 @@ sudo apt install git
 
 {{#endtab}}
 
-{{#tab name="macOS"}}
+{{#tab name="Mac"}}
 
 Installed with the Command Line Tools (`xcode-select --install`, above), or `brew install git`.
 
@@ -166,7 +169,7 @@ The build uses [jq](https://jqlang.github.io/jq/) to read your package's manifes
 
 {{#tabs global="platform"}}
 
-{{#tab name="Linux (Debian-based)"}}
+{{#tab name="Linux"}}
 
 ```sh
 sudo apt install jq
@@ -174,7 +177,7 @@ sudo apt install jq
 
 {{#endtab}}
 
-{{#tab name="macOS"}}
+{{#tab name="Mac"}}
 
 ```sh
 brew install jq

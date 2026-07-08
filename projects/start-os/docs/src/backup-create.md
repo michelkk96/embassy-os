@@ -25,15 +25,17 @@ Back up your server's data to a physical drive or a network folder.
 
 1. Backups are differential — each new backup to the same target overwrites the previous one. To maintain multiple backup points, use multiple backup targets.
 
+1. The backup targets list shows the free space available on each drive and network folder, so you can confirm your backup will fit before you start.
+
 1. Backups taken from a specific system architecture (x86, ARM, RISC-V) are backed up for just that architecture. If restored to another architecture, they will likely need to be reinstalled to run efficiently.
 
 1. The backup format changed. New backups are written to a `StartOSBackupsV2` folder on the target, replacing the older `StartOSBackups` (V1) format. StartOS helps you clean up the obsolete V1 data:
-   - When you select a target that still holds a V1 backup, StartOS warns you before backing up (and refuses if the old folder is too large to leave room for the new one — see below).
-   - After a backup completes, if the target still contains a V1 backup, StartOS raises a notification reminding you it is no longer needed.
-   - On the `Create Backup` page, any target holding **both** a V1 and a V2 backup shows a warning with a **Delete old backup** button. After you confirm, StartOS removes the old `StartOSBackups` folder to reclaim space; your current `StartOSBackupsV2` backup is untouched.
+   - When you select a target that still holds a V1 backup for this server, StartOS warns you before backing up and shows how much free space remains on the target (see below).
+   - After a backup completes, if the target still contains this server's V1 backup, StartOS raises a notification reminding you it is no longer needed.
+   - On the `Create Backup` page, any target holding this server's V1 backup shows a **Delete old backup** button — whether or not a new (V2) backup exists yet. After you confirm, StartOS removes this server's old V1 backup to reclaim space; your current `StartOSBackupsV2` backup — and any backups belonging to other servers that share the target — are untouched. If this server has no current (V2) backup on that target, StartOS asks for an extra confirmation first, since deleting the old backup would leave this server with no backup there.
 
    > [!WARNING]
-   > If the old `StartOSBackups` folder is larger than the free space remaining on the drive, a new backup will not fit and StartOS will not start it. Use the **Delete old backup** button (or remove the `StartOSBackups` folder manually), or choose another drive.
+   > Before backing up, check the free space remaining on the target and make sure your selected services will fit. If space is tight, use the **Delete old backup** button to reclaim the space this server's old backup occupies, or choose another drive.
 
 ## Best Practices
 

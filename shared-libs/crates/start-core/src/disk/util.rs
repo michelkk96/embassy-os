@@ -22,7 +22,6 @@ use crate::disk::mount::guard::GenericMountGuard;
 use crate::hostname::ServerHostname;
 use crate::prelude::*;
 use crate::util::Invoke;
-use crate::util::io::dir_size;
 use crate::util::serde::IoFormat;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -55,51 +54,27 @@ pub struct PartitionInfo {
     pub capacity: u64,
     #[ts(type = "number | null")]
     pub used: Option<u64>,
+    #[ts(type = "number | null")]
+    pub available: Option<u64>,
     pub start_os: BTreeMap<String, StartOsRecoveryInfo>,
-    pub legacy_backup: Option<LegacyBackupInfo>,
+    pub legacy_backup: bool,
     pub guid: Option<InternedString>,
     pub filesystem: Option<String>,
 }
 
-/// A pre-V2 `StartOSBackups` folder found on a backup target. Surfaced so the
-/// UI can warn (or refuse, when it wouldn't fit) before a new V2 backup runs.
-#[derive(Clone, Debug, Deserialize, Serialize, ts_rs::TS)]
-#[ts(export)]
-#[serde(rename_all = "camelCase")]
-pub struct LegacyBackupInfo {
-    #[ts(type = "number")]
-    pub size: u64,
-    #[ts(type = "number")]
-    pub available: u64,
-}
-
-#[instrument(skip_all)]
-pub async fn legacy_backup_info(
-    mountpoint: impl AsRef<Path>,
-) -> Result<Option<LegacyBackupInfo>, Error> {
-    let legacy_dir = mountpoint.as_ref().join(super::LEGACY_BACKUP_DIR_NAME);
-    if !tokio::fs::metadata(&legacy_dir)
-        .await
-        .map(|m| m.is_dir())
-        .unwrap_or(false)
-    {
-        return Ok(None);
-    }
-    let size = dir_size(&legacy_dir, None)
-        .await
-        .with_kind(crate::ErrorKind::Filesystem)?;
-    let available = get_available(mountpoint.as_ref()).await?;
-    Ok(Some(LegacyBackupInfo { size, available }))
-}
-
-/// Whether a pre-V2 `StartOSBackups` folder is present on a mounted target. A
-/// lightweight existence check — unlike [`legacy_backup_info`], it computes
-/// neither the folder size nor the free space.
-pub async fn has_legacy_backup(mountpoint: impl AsRef<Path>) -> bool {
-    tokio::fs::metadata(mountpoint.as_ref().join(super::LEGACY_BACKUP_DIR_NAME))
-        .await
-        .map(|m| m.is_dir())
-        .unwrap_or(false)
+/// Whether this server's pre-V2 `StartOSBackups/<server_id>` backup is present
+/// on a mounted target. Scoped to `server_id` so a target shared by several
+/// servers only flags (and later deletes) this server's own legacy backup.
+pub async fn has_legacy_backup(mountpoint: impl AsRef<Path>, server_id: &str) -> bool {
+    tokio::fs::metadata(
+        mountpoint
+            .as_ref()
+            .join(super::LEGACY_BACKUP_DIR_NAME)
+            .join(server_id),
+    )
+    .await
+    .map(|m| m.is_dir())
+    .unwrap_or(false)
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, ts_rs::TS)]
@@ -336,7 +311,7 @@ pub async fn get_mount_source(mountpoint: impl AsRef<Path>) -> Result<Option<Pat
 }
 
 #[instrument(skip_all)]
-pub async fn list(os: &OsPartitionInfo) -> Result<Vec<DiskInfo>, Error> {
+pub async fn list(os: &OsPartitionInfo, server_id: Option<&str>) -> Result<Vec<DiskInfo>, Error> {
     struct DiskIndex {
         parts: BTreeSet<PathBuf>,
         internal: bool,
@@ -421,7 +396,7 @@ pub async fn list(os: &OsPartitionInfo) -> Result<Vec<DiskInfo>, Error> {
                     disk_info.guid = pi.guid;
                     disk_info.filesystem = pi.filesystem;
                 } else {
-                    let Some(part_info) = part_info(part).await else {
+                    let Some(part_info) = part_info(part, server_id).await else {
                         continue;
                     };
                     disk_info.logicalname = part_info.logicalname.clone();
@@ -448,7 +423,7 @@ pub async fn list(os: &OsPartitionInfo) -> Result<Vec<DiskInfo>, Error> {
                     let part_info = if let Some(g) = disk_guids.get(&part) {
                         lvm_pv_part_info(part, g.clone()).await
                     } else {
-                        let Some(pi) = part_info(part).await else {
+                        let Some(pi) = part_info(part, server_id).await else {
                             continue;
                         };
                         pi
@@ -557,14 +532,15 @@ async fn lvm_pv_part_info(part: PathBuf, guid: Option<InternedString>) -> Partit
         label: None,
         capacity,
         used: None,
+        available: None,
         start_os: BTreeMap::new(),
-        legacy_backup: None,
+        legacy_backup: false,
         guid,
         filesystem,
     }
 }
 
-async fn part_info(part: PathBuf) -> Option<PartitionInfo> {
+async fn part_info(part: PathBuf, server_id: Option<&str>) -> Option<PartitionInfo> {
     let label = get_label(&part)
         .await
         .map_err(|e| {
@@ -620,6 +596,19 @@ async fn part_info(part: PathBuf) -> Option<PartitionInfo> {
             )
         })
         .ok();
+    let available = get_available(mount_guard.path())
+        .await
+        .map_err(|e| {
+            tracing::warn!(
+                "{}",
+                t!(
+                    "disk.util.could-not-get-usage",
+                    part = part.display(),
+                    error = e.source
+                )
+            )
+        })
+        .ok();
     let start_os = match recovery_info(mount_guard.path()).await {
         Ok(a) => a,
         Err(e) => {
@@ -630,11 +619,10 @@ async fn part_info(part: PathBuf) -> Option<PartitionInfo> {
             BTreeMap::new()
         }
     };
-    let legacy_backup = legacy_backup_info(mount_guard.path())
-        .await
-        .map_err(|e| tracing::warn!("could not read legacy backup info: {e}"))
-        .ok()
-        .flatten();
+    let legacy_backup = match server_id {
+        Some(server_id) => has_legacy_backup(mount_guard.path(), server_id).await,
+        None => false,
+    };
     if let Err(e) = mount_guard.unmount().await {
         tracing::error!(
             "{}",
@@ -651,6 +639,7 @@ async fn part_info(part: PathBuf) -> Option<PartitionInfo> {
         label,
         capacity,
         used,
+        available,
         start_os,
         legacy_backup,
         guid: None,

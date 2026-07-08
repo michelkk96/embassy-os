@@ -1,6 +1,11 @@
 import { Component, inject, output } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
-import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
+import {
+  ConvertBytesPipe,
+  DialogService,
+  i18nPipe,
+  TaskService,
+} from '@start9labs/shared'
 import { ISB, T } from '@start9labs/start-core'
 import { TuiButton, TuiDataList, TuiDropdown, TuiIcon } from '@taiga-ui/core'
 import { filter } from 'rxjs'
@@ -34,7 +39,7 @@ const ERROR =
       </button>
     </header>
 
-    <table [appTable]="['Status', 'Name', 'Hostname', 'Path', null]">
+    <table [appTable]="['Status', 'Name', 'Hostname', 'Path', 'Free', null]">
       @for (target of service.cifs(); track $index) {
         <tr
           tabindex="0"
@@ -59,14 +64,23 @@ const ERROR =
           <td>{{ target.entry.hostname }}</td>
           <td>{{ target.entry.path }}</td>
           <td>
+            @if (target.entry.available !== null) {
+              {{ target.entry.available | convertBytes }}
+            } @else {
+              &mdash;
+            }
+          </td>
+          <td>
             <div class="actions">
               @if (
                 type === 'create' &&
                 target.entry.mountable &&
-                target.hasAnyBackup &&
                 target.entry.legacyBackup
               ) {
-                <backup-legacy-warning [id]="target.id" />
+                <backup-legacy-warning
+                  [id]="target.id"
+                  [hasCurrentBackup]="target.hasCurrentBackup"
+                />
               }
               <button
                 tuiIconButton
@@ -97,7 +111,7 @@ const ERROR =
         </tr>
       } @empty {
         <tr>
-          <td colspan="5">
+          <td colspan="6">
             <app-placeholder icon="@tui.folder-x">
               No network folders
             </app-placeholder>
@@ -189,6 +203,7 @@ const ERROR =
     BackupStatusComponent,
     BackupLegacyWarningComponent,
     TableComponent,
+    ConvertBytesPipe,
     i18nPipe,
   ],
 })
@@ -280,7 +295,8 @@ export class BackupNetworkComponent {
       }
 
       const hasAnyBackup = this.service.hasAnyBackup(entry)
-      const added = { id, entry, hasAnyBackup }
+      const hasCurrentBackup = this.service.hasCurrentBackup(entry)
+      const added = { id, entry, hasAnyBackup, hasCurrentBackup }
       this.service.cifs.update(cifs => [added, ...cifs])
     }, 'Testing connectivity to shared folder')
   }

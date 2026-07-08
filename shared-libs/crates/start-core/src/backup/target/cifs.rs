@@ -14,7 +14,7 @@ use crate::db::model::DatabaseModel;
 use crate::disk::mount::filesystem::ReadOnly;
 use crate::disk::mount::filesystem::cifs::Cifs;
 use crate::disk::mount::guard::{GenericMountGuard, TmpMountGuard};
-use crate::disk::util::{LegacyBackupInfo, StartOsRecoveryInfo, legacy_backup_info, recovery_info};
+use crate::disk::util::{StartOsRecoveryInfo, get_available, has_legacy_backup, recovery_info};
 use crate::prelude::*;
 use crate::util::serde::KeyVal;
 
@@ -44,8 +44,10 @@ pub struct CifsBackupTarget {
     path: PathBuf,
     username: String,
     mountable: bool,
+    #[ts(type = "number | null")]
+    available: Option<u64>,
     start_os: BTreeMap<String, StartOsRecoveryInfo>,
-    legacy_backup: Option<LegacyBackupInfo>,
+    legacy_backup: bool,
 }
 
 pub fn cifs<C: Context>() -> ParentHandler<C> {
@@ -104,9 +106,18 @@ pub async fn add(
         username,
         password,
     };
+    let server_id = ctx
+        .db
+        .peek()
+        .await
+        .as_public()
+        .as_server_info()
+        .as_id()
+        .de()?;
     let guard = TmpMountGuard::mount(&cifs, ReadOnly).await?;
     let start_os = recovery_info(guard.path()).await?;
-    let legacy_backup = legacy_backup_info(guard.path()).await?;
+    let available = get_available(guard.path()).await.ok();
+    let legacy_backup = has_legacy_backup(guard.path(), &server_id).await;
     guard.unmount().await?;
     let id = ctx
         .db
@@ -130,6 +141,7 @@ pub async fn add(
             path: cifs.path,
             username: cifs.username,
             mountable: true,
+            available,
             start_os,
             legacy_backup,
         }),
@@ -178,9 +190,18 @@ pub async fn update(
         username,
         password,
     };
+    let server_id = ctx
+        .db
+        .peek()
+        .await
+        .as_public()
+        .as_server_info()
+        .as_id()
+        .de()?;
     let guard = TmpMountGuard::mount(&cifs, ReadOnly).await?;
     let start_os = recovery_info(guard.path()).await?;
-    let legacy_backup = legacy_backup_info(guard.path()).await?;
+    let available = get_available(guard.path()).await.ok();
+    let legacy_backup = has_legacy_backup(guard.path(), &server_id).await;
     guard.unmount().await?;
     ctx.db
         .mutate(|db| {
@@ -210,6 +231,7 @@ pub async fn update(
             path: cifs.path,
             username: cifs.username,
             mountable: true,
+            available,
             start_os,
             legacy_backup,
         }),
@@ -258,20 +280,24 @@ pub fn load(db: &DatabaseModel, id: u32) -> Result<Cifs, Error> {
         .de()
 }
 
-pub async fn list(db: &DatabaseModel) -> Result<Vec<(u32, CifsBackupTarget)>, Error> {
+pub async fn list(
+    db: &DatabaseModel,
+    server_id: &str,
+) -> Result<Vec<(u32, CifsBackupTarget)>, Error> {
     let mut cifs = Vec::new();
     for (id, model) in db.as_private().as_cifs().as_entries()? {
         let mount_info = model.de()?;
         let info = async {
             let guard = TmpMountGuard::mount(&mount_info, ReadOnly).await?;
             let start_os = recovery_info(guard.path()).await?;
-            let legacy_backup = legacy_backup_info(guard.path()).await?;
+            let available = get_available(guard.path()).await.ok();
+            let legacy_backup = has_legacy_backup(guard.path(), server_id).await;
             guard.unmount().await?;
-            Ok::<_, Error>((start_os, legacy_backup))
+            Ok::<_, Error>((start_os, available, legacy_backup))
         }
         .await;
         let mountable = info.is_ok();
-        let (start_os, legacy_backup) = info.ok().unwrap_or_default();
+        let (start_os, available, legacy_backup) = info.ok().unwrap_or_default();
         cifs.push((
             id,
             CifsBackupTarget {
@@ -279,6 +305,7 @@ pub async fn list(db: &DatabaseModel) -> Result<Vec<(u32, CifsBackupTarget)>, Er
                 path: mount_info.path,
                 username: mount_info.username,
                 mountable,
+                available,
                 start_os,
                 legacy_backup,
             },

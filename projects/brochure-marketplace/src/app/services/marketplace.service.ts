@@ -11,6 +11,7 @@ import {
   defaultRegistries,
   Exver,
   i18nPipe,
+  i18nService,
   registryUrl,
   sameUrl,
 } from '@start9labs/shared'
@@ -36,6 +37,7 @@ import {
 } from 'rxjs/operators'
 
 import { ApiService } from './api.service'
+import { Localize, localizePackageRes, localizeRegistryInfo } from './localize'
 
 const { start9, community } = defaultRegistries
 
@@ -51,6 +53,12 @@ export class MarketplaceService extends AbstractMarketplaceService {
   private readonly exver = inject(Exver)
   private readonly storage = inject(WA_LOCAL_STORAGE)
   private readonly i18n = inject(i18nPipe)
+  private readonly i18nService = inject(i18nService)
+
+  // Collapse LocaleString metadata to the active locale as it enters the app —
+  // see localize.ts for why this static site must do it client-side.
+  private readonly localize: Localize = value =>
+    this.i18nService.localize(value)
 
   // Emits the url of a registry that failed to load (unreachable / CORS).
   readonly registryError$ = new Subject<string>()
@@ -155,6 +163,7 @@ export class MarketplaceService extends AbstractMarketplaceService {
 
   fetchInfo$(url: string): Observable<T.RegistryInfo> {
     return from(this.api.getRegistryInfo(url)).pipe(
+      map(info => localizeRegistryInfo(info, this.localize)),
       map(info => ({
         ...info,
         categories: { all: { name: 'All' }, ...info.categories },
@@ -176,8 +185,9 @@ export class MarketplaceService extends AbstractMarketplaceService {
   private fetchPackages$(url: string): Observable<MarketplacePkg[]> {
     return from(this.api.getRegistryPackages(url)).pipe(
       map(packages =>
-        Object.entries(packages).flatMap(([id, pkgInfo]) =>
-          Object.keys(pkgInfo.best).flatMap(version => {
+        Object.entries(packages).flatMap(([id, raw]) => {
+          const pkgInfo = localizePackageRes(raw, this.localize)
+          return Object.keys(pkgInfo.best).flatMap(version => {
             const pkg = this.convertToMarketplacePkg(
               id,
               version,
@@ -185,8 +195,8 @@ export class MarketplaceService extends AbstractMarketplaceService {
               pkgInfo,
             )
             return pkg ? [pkg] : []
-          }),
-        ),
+          })
+        }),
       ),
     )
   }
@@ -201,7 +211,12 @@ export class MarketplaceService extends AbstractMarketplaceService {
       this.api.getRegistryPackage(url, id, version ? `=${version}` : null),
     ).pipe(
       map(pkgInfo =>
-        this.convertToMarketplacePkg(id, version, flavor, pkgInfo),
+        this.convertToMarketplacePkg(
+          id,
+          version,
+          flavor,
+          localizePackageRes(pkgInfo, this.localize),
+        ),
       ),
     )
   }

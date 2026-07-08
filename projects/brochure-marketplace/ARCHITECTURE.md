@@ -34,6 +34,7 @@ src/
       live-api.service.ts      real impl: RPC over HTTP to registries (prod)
       mock-api.service.ts      fixture impl backed by api.fixures.ts (dev)
       marketplace.service.ts   AbstractMarketplaceService impl (registry state)
+      localize.ts              collapses LocaleString metadata to the active locale at ingress
       marketplace.service spec / fixtures / icons / md-sample.md
 ```
 
@@ -45,6 +46,7 @@ src/
    - Default registries (Start9 + Community) come from `@start9labs/shared`'s `defaultRegistries`.
    - Custom registries are persisted in `localStorage` under the `_startos/` prefix and exposed reactively via a `BehaviorSubject`.
    - It fetches registry info + packages through `ApiService` and converts raw registry responses into `MarketplacePkg` objects; fetch failures emit on `registryError$`.
+   - **Localization boundary.** Registries return i18n metadata as `LocaleString` (`string | Record<lang, string>`) and only flatten it to one locale when a request carries a StartOS `device_info` — which this static, hostless site never sends. So `localize.ts` collapses every `LocaleString` field to the active locale here, as data enters the app, mirroring what the StartOS backend does for the embedded UI. Without it the raw `Record` form reaches templates and renders as `[object Object]`. This single boundary (rather than per-template `| localize`) is also where a future in-app language selector would re-localize.
 4. `LiveApiService` talks to registries with JSON-RPC over HTTP (`RELATIVE_URL` = `/rpc/v0`), using `@start9labs/shared`'s `HttpService`; it also proxies static package files (`LICENSE.md`, `instructions.md`). `MockApiService` returns the fixtures instead.
 
 ## UI stack

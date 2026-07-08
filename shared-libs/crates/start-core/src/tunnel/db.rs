@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::net::{SocketAddrV4, SocketAddrV6};
+use std::net::{Ipv4Addr, SocketAddrV4, SocketAddrV6};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -54,6 +54,8 @@ pub struct TunnelDatabase {
     pub pinholes6: Pinholes6,
     #[serde(default)]
     pub dns_records: DnsRecords,
+    #[serde(default)]
+    pub http_redirects: HttpRedirects,
 }
 
 impl TunnelDatabase {
@@ -143,6 +145,9 @@ fn export_bindings_tunnel_db() {
     AddDnsRecordParams::export_all_to("bindings/tunnel").unwrap();
     RemoveDnsRecordParams::export_all_to("bindings/tunnel").unwrap();
     DnsRecordEntry::export_all_to("bindings/tunnel").unwrap();
+    HttpRedirects::export_all_to("bindings/tunnel").unwrap();
+    SetHttpRedirectEnabledParams::export_all_to("bindings/tunnel").unwrap();
+    HttpRedirectStatus::export_all_to("bindings/tunnel").unwrap();
     AddKeyParams::export_all_to("bindings/tunnel").unwrap();
     RemoveKeyParams::export_all_to("bindings/tunnel").unwrap();
     SetPasswordParams::export_all_to("bindings/tunnel").unwrap();
@@ -221,6 +226,18 @@ impl PortForward {
     }
 }
 
+/// Per-IPv4 HTTP→HTTPS redirect state. The tunnel runs a redirect on port 80 of
+/// every public IPv4 by default; this records the addresses where the user has
+/// turned it off (absence = on). The redirect also yields to any port-forward
+/// occupying port 80 on that IP, so the two never fight over the port.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpRedirects {
+    #[serde(default)]
+    #[ts(type = "string[]")]
+    pub disabled: BTreeSet<Ipv4Addr>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
 pub struct PortForwards(pub BTreeMap<SocketAddrV4, PortForward>);
 impl Map for PortForwards {
@@ -286,16 +303,21 @@ impl Pinholes6 {
     /// `[gua.port(), gua.port() + count - 1]`, if any. An exact key match is
     /// excluded (idempotent re-assert / same-port collision, handled by callers).
     pub fn overlapping(&self, gua: SocketAddrV6, count: u16) -> Option<SocketAddrV6> {
+        let ip = *gua.ip();
         let new_lo = gua.port();
         let new_hi = new_lo.saturating_add(count.saturating_sub(1));
-        self.0.iter().find_map(|(key, ph)| {
-            if key.ip() != gua.ip() || *key == gua {
-                return None;
-            }
-            let lo = key.port();
-            let hi = lo.saturating_add(ph.count.max(1).saturating_sub(1));
-            (new_lo <= hi && lo <= new_hi).then_some(*key)
-        })
+        // Pinholes on one GUA never overlap, so only the nearest entry starting
+        // at or before new_hi (skipping an exact re-assert of `gua`) can reach
+        // into [new_lo, new_hi].
+        self.0
+            .range(..=SocketAddrV6::new(ip, new_hi, 0, 0))
+            .rev()
+            .take_while(|(key, _)| key.ip() == &ip)
+            .find(|(key, _)| **key != gua)
+            .and_then(|(key, ph)| {
+                let hi = key.port().saturating_add(ph.count.max(1).saturating_sub(1));
+                (hi >= new_lo).then_some(*key)
+            })
     }
 }
 impl PortForwards {
@@ -305,15 +327,32 @@ impl PortForwards {
     /// re-assert (auto) or a same-port collision (manual); this catches the case
     /// ranges introduce, where two *different* start ports cover shared ports.
     pub fn overlapping(&self, source: SocketAddrV4, count: u16) -> Option<SocketAddrV4> {
+        let ip = *source.ip();
         let new_lo = source.port();
         let new_hi = new_lo.saturating_add(count.saturating_sub(1));
-        self.0.iter().find_map(|(src, pf)| {
-            if src.ip() != source.ip() || *src == source {
-                return None;
-            }
-            let lo = src.port();
-            let hi = lo.saturating_add(pf.port_span().saturating_sub(1));
-            (new_lo <= hi && lo <= new_hi).then_some(*src)
+        // Forwards on one external IP never overlap, so only the nearest entry
+        // starting at or before new_hi (skipping an exact re-assert of `source`)
+        // can reach into [new_lo, new_hi].
+        self.0
+            .range(..=SocketAddrV4::new(ip, new_hi))
+            .rev()
+            .take_while(|(src, _)| src.ip() == &ip)
+            .find(|(src, _)| **src != source)
+            .and_then(|(src, pf)| {
+                let hi = src.port().saturating_add(pf.port_span().saturating_sub(1));
+                (hi >= new_lo).then_some(*src)
+            })
+    }
+
+    /// Whether any forward on `addr`'s IP has a port span covering `addr.port()`.
+    /// Used to keep the port-80 HTTP redirect mutually exclusive with forwards:
+    /// the redirect yields when a forward already occupies the port.
+    pub fn occupied(&self, addr: SocketAddrV4) -> bool {
+        // Only the nearest forward starting at or before `addr` can cover it
+        // (forwards on one IP never overlap).
+        self.0.range(..=addr).next_back().is_some_and(|(src, pf)| {
+            src.ip() == addr.ip()
+                && src.port().saturating_add(pf.port_span().saturating_sub(1)) >= addr.port()
         })
     }
 }
@@ -710,6 +749,41 @@ fn port_forward_overlap_detection() {
     assert_eq!(forwards.overlapping(src("5.6.7.8:8005"), 1), None);
     // The exact same source key is excluded (collision / re-assert, not overlap).
     assert_eq!(forwards.overlapping(src("1.2.3.4:8000"), 10), None);
+}
+
+#[test]
+fn port_forward_occupied_gates_http_redirect() {
+    let dnat = |target: &str, count: u16| PortForward::Dnat {
+        target: target.parse().unwrap(),
+        label: None,
+        enabled: true,
+        count,
+        auto: false,
+    };
+    let src = |s: &str| s.parse::<SocketAddrV4>().unwrap();
+
+    let mut map = BTreeMap::new();
+    map.insert(src("1.2.3.4:80"), dnat("10.0.0.2:80", 1));
+    map.insert(
+        src("5.6.7.8:443"),
+        PortForward::Sni {
+            routes: BTreeMap::new(),
+        },
+    );
+    // A range on 9.9.9.9 spanning 78..=82, which swallows port 80.
+    map.insert(src("9.9.9.9:78"), dnat("10.0.0.2:78", 5));
+    let pf = PortForwards(map);
+
+    // A single-port forward exactly on :80 occupies it.
+    assert!(pf.occupied(src("1.2.3.4:80")));
+    // A range that covers 80 occupies it.
+    assert!(pf.occupied(src("9.9.9.9:80")));
+    // An IP whose only forward is on 443 leaves :80 free for the redirect.
+    assert!(!pf.occupied(src("5.6.7.8:80")));
+    // A :80 forward on one IP does not occupy :80 on a different IP.
+    assert!(!pf.occupied(src("2.2.2.2:80")));
+    // A neighboring port outside every span is free.
+    assert!(!pf.occupied(src("9.9.9.9:90")));
 }
 
 #[test]

@@ -559,6 +559,31 @@ export class MockApiService extends ApiService {
     return null
   }
 
+  async setHttpRedirectEnabled(
+    params: T.Tunnel.SetHttpRedirectEnabledParams,
+  ): Promise<null> {
+    await pauseFor(1000)
+
+    const disabled = new Set(mockTunnelData.httpRedirects.disabled)
+    if (params.enabled) {
+      disabled.delete(params.ip)
+    } else {
+      disabled.add(params.ip)
+    }
+    mockTunnelData.httpRedirects.disabled = [...disabled]
+
+    const patch: ReplaceOperation<string[]>[] = [
+      {
+        op: PatchOp.REPLACE,
+        path: `/httpRedirects/disabled`,
+        value: mockTunnelData.httpRedirects.disabled,
+      },
+    ]
+    this.mockRevision(patch)
+
+    return null
+  }
+
   async setSubnetIpv6(params: T.Tunnel.SetSubnetIpv6Params): Promise<null> {
     await pauseFor(1000)
 

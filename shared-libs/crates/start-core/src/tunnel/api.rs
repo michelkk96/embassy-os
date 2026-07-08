@@ -125,6 +125,26 @@ pub fn tunnel_api<C: Context>() -> ParentHandler<C> {
                 .with_about("about.commands-pinhole"),
         )
         .subcommand(
+            "http-redirect",
+            ParentHandler::<C>::new()
+                .subcommand(
+                    "list",
+                    from_fn_async(list_http_redirects)
+                        .with_display_serializable()
+                        .with_about("about.list-http-redirects")
+                        .with_call_remote::<CliContext>(),
+                )
+                .subcommand(
+                    "set-enabled",
+                    from_fn_async(set_http_redirect_enabled)
+                        .with_metadata("sync_db", Value::Bool(true))
+                        .no_display()
+                        .with_about("about.enable-or-disable-http-redirect")
+                        .with_call_remote::<CliContext>(),
+                )
+                .with_about("about.commands-http-redirect"),
+        )
+        .subcommand(
             "restart",
             from_fn_async(restart)
                 .no_display()
@@ -1229,6 +1249,28 @@ pub async fn add_forward(
         )
     })?;
     let source = SocketAddrV4::new(external_ip, external_port);
+
+    // Port 80 is owned by the HTTP→HTTPS redirect (default on per public IPv4).
+    // The redirect and a port-80 forward are mutually exclusive — reject rather
+    // than silently override, so the user disables the redirect first. The
+    // redirect is active on this IP (and thus conflicts) only when it's a public
+    // IPv4 the user hasn't turned off.
+    let covers_80 =
+        external_port <= 80 && 80 <= external_port.saturating_add(count.saturating_sub(1));
+    if covers_80 {
+        let peek = ctx.db.peek().await;
+        let disabled = peek.as_http_redirects().de()?.disabled;
+        let public = crate::tunnel::redirect::public_ipv4s(&peek.as_gateways().de()?);
+        if public.contains(&external_ip) && !disabled.contains(&external_ip) {
+            return Err(Error::new(
+                eyre!(
+                    "port 80 on {external_ip} is used by the HTTP→HTTPS redirect; disable it first (Settings → HTTP Redirect, or `http-redirect set-enabled {external_ip}`)"
+                ),
+                ErrorKind::InvalidRequest,
+            ));
+        }
+    }
+
     if !sni.is_empty() {
         if count > 1 {
             return Err(Error::new(
@@ -1673,6 +1715,82 @@ pub async fn set_pinhole_enabled(
     }: SetPinholeEnabledParams,
 ) -> Result<(), Error> {
     pinhole::set_pinhole_enabled(&ctx, gua, external_port, enabled).await
+}
+
+#[derive(Deserialize, Serialize, Parser, TS)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+pub struct SetHttpRedirectEnabledParams {
+    /// The public IPv4 whose default-on port-80 HTTP→HTTPS redirect to toggle.
+    #[ts(type = "string")]
+    ip: Ipv4Addr,
+    #[arg(long)]
+    enabled: bool,
+}
+
+/// Turn the port-80 HTTP→HTTPS redirect on or off for one public IPv4. The
+/// listener set is reconciled reactively from the db, so the dataplane follows
+/// this write without a restart.
+pub async fn set_http_redirect_enabled(
+    ctx: TunnelContext,
+    SetHttpRedirectEnabledParams { ip, enabled }: SetHttpRedirectEnabledParams,
+) -> Result<(), Error> {
+    // The redirect and a port-80 forward are mutually exclusive: refuse to
+    // enable the redirect while port 80 is forwarded, so the two are never both
+    // active. The user deletes the forward first.
+    if enabled {
+        let forwards = ctx.db.peek().await.as_port_forwards().de()?;
+        if forwards.occupied(SocketAddrV4::new(ip, crate::tunnel::redirect::HTTP_PORT)) {
+            return Err(Error::new(
+                eyre!(
+                    "port 80 on {ip} is forwarded; delete that port forward before enabling the HTTP→HTTPS redirect"
+                ),
+                ErrorKind::InvalidRequest,
+            ));
+        }
+    }
+    ctx.db
+        .mutate(|db| {
+            db.as_http_redirects_mut().mutate(|redirects| {
+                if enabled {
+                    redirects.disabled.remove(&ip);
+                } else {
+                    redirects.disabled.insert(ip);
+                }
+                Ok(())
+            })
+        })
+        .await
+        .result
+}
+
+#[derive(Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpRedirectStatus {
+    #[ts(type = "string")]
+    ip: Ipv4Addr,
+    /// Whether the redirect is on for this IP (default true).
+    enabled: bool,
+    /// Whether a port-forward already occupies port 80 on this IP, in which case
+    /// the redirect yields and does not bind.
+    forwarded: bool,
+}
+
+/// The port-80 HTTP→HTTPS redirect status of every public IPv4 this host holds.
+pub async fn list_http_redirects(ctx: TunnelContext) -> Result<Vec<HttpRedirectStatus>, Error> {
+    let peek = ctx.db.peek().await;
+    let disabled = peek.as_http_redirects().de()?.disabled;
+    let forwards = peek.as_port_forwards().de()?;
+    let gateways = peek.as_gateways().de()?;
+    Ok(crate::tunnel::redirect::public_ipv4s(&gateways)
+        .into_iter()
+        .map(|ip| HttpRedirectStatus {
+            enabled: !disabled.contains(&ip),
+            forwarded: forwards
+                .occupied(SocketAddrV4::new(ip, crate::tunnel::redirect::HTTP_PORT)),
+            ip,
+        })
+        .collect())
 }
 
 #[cfg(test)]

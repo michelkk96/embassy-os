@@ -168,6 +168,14 @@ export class LiveApiService extends ApiService {
     return this.rpcRequest({ method: 'pinhole.set-enabled', params })
   }
 
+  // http redirects
+
+  async setHttpRedirectEnabled(
+    params: T.Tunnel.SetHttpRedirectEnabledParams,
+  ): Promise<null> {
+    return this.rpcRequest({ method: 'http-redirect.set-enabled', params })
+  }
+
   // ipv6
 
   async setSubnetIpv6(params: T.Tunnel.SetSubnetIpv6Params): Promise<null> {

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::process::Command;
@@ -6,6 +7,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use futures::FutureExt;
+use patch_db::json_ptr::ROOT;
 use rpc_toolkit::CliApp;
 use rust_i18n::t;
 use tokio::net::TcpListener;
@@ -111,6 +113,26 @@ async fn inner_main(config: &TunnelConfig) -> Result<Option<bool>, Error> {
         })
         .into();
 
+        // Reconcile the per-IPv4 HTTP→HTTPS redirect listeners on every db
+        // revision: the reactive analogue of the `/webserver` HTTPS block above.
+        let redirect_ctx = ctx.clone();
+        let redirect_thread: NonDetachingJoinHandle<()> = tokio::spawn(async move {
+            let mut listeners: BTreeMap<SocketAddr, NonDetachingJoinHandle<()>> = BTreeMap::new();
+            let mut sub = redirect_ctx.db.subscribe(ROOT.to_owned()).await;
+            loop {
+                if let Err(e) =
+                    crate::tunnel::redirect::reconcile(&redirect_ctx, &mut listeners).await
+                {
+                    tracing::error!("error reconciling http redirects: {e}");
+                    tracing::debug!("{e:?}");
+                }
+                if sub.recv().await.is_none() {
+                    break;
+                }
+            }
+        })
+        .into();
+
         let mut shutdown_recv = ctx.shutdown.subscribe();
 
         let sig_handler_ctx = ctx;
@@ -149,6 +171,7 @@ async fn inner_main(config: &TunnelConfig) -> Result<Option<bool>, Error> {
 
         sig_handler.wait_for_abort().await.with_kind(ErrorKind::Unknown)?;
         https_thread.wait_for_abort().await.with_kind(ErrorKind::Unknown)?;
+        redirect_thread.wait_for_abort().await.with_kind(ErrorKind::Unknown)?;
 
         Ok::<_, Error>(server)
     }

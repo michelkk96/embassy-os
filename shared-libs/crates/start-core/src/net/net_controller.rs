@@ -295,19 +295,15 @@ struct HostBinds {
     forwards: BTreeMap<u16, (SocketAddrV4, u16, ForwardRequirements, Arc<()>)>,
     vhosts: BTreeMap<(Option<InternedString>, u16), (ProxyTarget, Arc<()>)>,
     private_dns: BTreeMap<InternedString, Arc<()>>,
-    /// Device LAN IPs for which we've asked the upstream gateway to map external
-    /// 80 -> 443 (the HTTP→HTTPS redirect — a pure PortMapController mapping with
-    /// no LAN forward, since StartOS serves 80/443 itself). Tracked so the
-    /// mapping is withdrawn when 443 stops being publicly exposed.
-    redirect_maps: BTreeSet<Ipv4Addr>,
     /// `(GUA, listener port)` upstream firewall pinholes requested for LAN+WAN
     /// GUAs. The host's own GUA is the listener (no DNAT), so this is a pure
     /// PortMapController pinhole. Tracked so it is withdrawn when a GUA leaves
     /// LAN+WAN or its binding goes away.
     gua_pinholes: BTreeSet<(Ipv6Addr, u16)>,
-    /// GUAs we asked the gateway for an 80->443 redirect pinhole on (the v6
-    /// analogue of `redirect_maps`). Tracked so the redirect is withdrawn when
-    /// 443 stops being exposed on that GUA, or 80 becomes a real pinhole.
+    /// GUAs we asked the gateway for an 80->443 redirect pinhole on. Tracked so
+    /// the redirect is withdrawn when 443 stops being exposed on that GUA, or 80
+    /// becomes a real pinhole. There is no IPv4 analogue: over IPv4 the upstream
+    /// gateway (e.g. StartTunnel) serves the port-80 HTTP→HTTPS redirect itself.
     gua_redirect_maps: BTreeSet<Ipv6Addr>,
     /// Non-SSL v6 forwards: `(host GUA, external port) -> (container v6, internal
     /// port, LAN source filter)`. A non-SSL GUA has no host terminator, so its
@@ -729,55 +725,10 @@ impl NetServiceData {
             );
         }
 
-        // Best-effort HTTP→HTTPS redirect: when something is publicly exposed on
-        // 443, ask the upstream gateway(s) to map external 80 -> the host's 443
-        // (PCP/NAT-PMP/UPnP) so plain http:// auto-redirects to https. This is a
-        // pure upstream port-map via PortMapController, NOT an nft LAN forward:
-        // StartOS already listens on 80/443 itself, so there is no container to
-        // DNAT to (unlike a service forward, this is the one case where external
-        // != internal). Best-effort; skipped if 80 is a real forward.
-        let mut redirect_ips: BTreeSet<Ipv4Addr> = BTreeSet::new();
-        if !forwards.contains_key(&80) {
-            let mut redirect_gateways: BTreeSet<GatewayId> = BTreeSet::new();
-            if let Some((_, _, reqs)) = forwards.get(&443) {
-                redirect_gateways.extend(reqs.public_gateways.iter().cloned());
-            }
-            for ((_, port), target) in &vhosts {
-                if *port == 443 {
-                    redirect_gateways.extend(target.public.iter().cloned());
-                }
-            }
-            for gw_id in &redirect_gateways {
-                let Some(info) = net_ifaces.get(gw_id) else {
-                    continue;
-                };
-                let Some(ip_info) = &info.ip_info else {
-                    continue;
-                };
-                let gws = candidate_gateways(info);
-                if gws.is_empty() {
-                    continue;
-                }
-                for subnet in ip_info.subnets.iter() {
-                    if let IpAddr::V4(ip) = subnet.addr() {
-                        if redirect_ips.insert(ip) {
-                            ctrl.port_map.ensure(IpAddr::V4(ip), 80, 443, gws.clone());
-                        }
-                    }
-                }
-            }
-        }
-        // Withdraw redirect maps that no longer apply (443 unexposed, or 80 became
-        // a real forward).
-        let stale: Vec<Ipv4Addr> = binds
-            .redirect_maps
-            .difference(&redirect_ips)
-            .copied()
-            .collect();
-        for ip in stale {
-            ctrl.port_map.remove(IpAddr::V4(ip), 80);
-        }
-        binds.redirect_maps = redirect_ips;
+        // No IPv4 HTTP→HTTPS redirect map is requested: the upstream gateway
+        // (e.g. StartTunnel) serves the port-80 redirect itself. The IPv6
+        // 80->443 redirect pinhole below is still requested — over IPv6 the
+        // gateway has no port-80 listener of its own to do it.
 
         // Public domains are DualStack: the domain vhost already binds and
         // SNI-routes on each gateway's GUA, but the upstream firewall must be
@@ -822,9 +773,9 @@ impl NetServiceData {
             }
         }
 
-        // v6 HTTP→HTTPS redirect: for a GUA exposing 443, also ask the gateway
-        // for an 80->443 redirect pinhole (mirrors redirect_maps). Skipped when
-        // 80 is already a real pinhole on that GUA.
+        // v6 HTTP→HTTPS redirect: for a GUA exposing 443, ask the gateway for an
+        // 80->443 redirect pinhole. Skipped when 80 is already a real pinhole on
+        // that GUA. (No IPv4 equivalent — the gateway redirects port 80 itself.)
         let mut gua_redirects: BTreeSet<Ipv6Addr> = BTreeSet::new();
         for (gua_ip, gws) in &gua_gateways {
             if gua_pinholes.contains(&(*gua_ip, 443))

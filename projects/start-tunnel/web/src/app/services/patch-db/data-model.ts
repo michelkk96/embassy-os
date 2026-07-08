@@ -2,7 +2,12 @@ import { T } from '@start9labs/start-core'
 
 export type TunnelData = Pick<
   T.Tunnel.TunnelDatabase,
-  'wg' | 'portForwards' | 'pinholes6' | 'gateways' | 'dnsRecords'
+  | 'wg'
+  | 'portForwards'
+  | 'pinholes6'
+  | 'gateways'
+  | 'dnsRecords'
+  | 'httpRedirects'
 >
 
 export const mockTunnelData: TunnelData = {
@@ -124,5 +129,8 @@ export const mockTunnelData: TunnelData = {
         dnsServers: [],
       },
     },
+  },
+  httpRedirects: {
+    disabled: [],
   },
 }

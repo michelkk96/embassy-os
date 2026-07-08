@@ -248,6 +248,12 @@ pub(super) async fn apply_peer_forward_range(
     count: u16,
     protocol_label: &str,
 ) -> Result<(), u16> {
+    // Port 80 is reserved for the tunnel's HTTP→HTTPS redirect; never
+    // automatically create a forward that would take it (PCP/UPnP alike).
+    let lo = source.port();
+    if lo <= 80 && 80 <= lo.saturating_add(count.saturating_sub(1)) {
+        return Err(718); // ConflictInMappingEntry — port 80 owned by the redirect
+    }
     match current_forward(ctx, source).await {
         Some(PortForward::Dnat {
             target: t, count: c, ..

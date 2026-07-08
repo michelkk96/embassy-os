@@ -9,14 +9,9 @@ import {
 } from '@angular/forms'
 import { WA_IS_MOBILE } from '@ng-web-apis/platform'
 import { TaskService } from '@start9labs/shared'
-import {
-  TuiContext,
-  tuiMarkControlAsTouchedAndValidate,
-  TuiValueChanges,
-} from '@taiga-ui/cdk'
+import { TuiContext, tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
 import {
   TuiButton,
-  TuiCheckbox,
   TuiDialogContext,
   TuiError,
   TuiIcon,
@@ -31,7 +26,7 @@ import {
   TuiSelect,
   TuiTooltip,
 } from '@taiga-ui/kit'
-import { TuiElasticContainer, TuiForm } from '@taiga-ui/layout'
+import { TuiForm } from '@taiga-ui/layout'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { ApiService } from 'src/app/services/api/api.service'
 
@@ -81,7 +76,6 @@ const IP_VERSION: Record<string, string> = {
           [min]="0"
           [max]="65535"
           [tuiNumberFormat]="{ thousandSeparator: '' }"
-          (tuiValueChanges)="checkShow80()"
         />
       </tui-textfield>
       <tui-error formControlName="externalport" />
@@ -117,7 +111,6 @@ const IP_VERSION: Record<string, string> = {
           [min]="0"
           [max]="65535"
           [tuiNumberFormat]="{ thousandSeparator: '' }"
-          (tuiValueChanges)="checkShow80()"
         />
       </tui-textfield>
       <tui-error formControlName="internalport" />
@@ -167,15 +160,6 @@ const IP_VERSION: Record<string, string> = {
           <tui-icon [tuiTooltip]="hostnameHint" />
         </tui-textfield>
       }
-      <tui-elastic-container>
-        @if (show80 && !isRange) {
-          <label tuiLabel>
-            <input tuiCheckbox type="checkbox" formControlName="also80" />
-            Also forward port 80 to port 443? This is needed for HTTP to HTTPS
-            redirects (recommended)
-          </label>
-        }
-      </tui-elastic-container>
       <footer>
         <button tuiButton [disabled]="form.invalid" (click)="onSave()">
           Save
@@ -199,9 +183,6 @@ const IP_VERSION: Record<string, string> = {
     TuiRadioList,
     TuiSelect,
     TuiForm,
-    TuiCheckbox,
-    TuiValueChanges,
-    TuiElasticContainer,
     TuiTooltip,
     TuiIcon,
     TuiInput,
@@ -210,8 +191,6 @@ const IP_VERSION: Record<string, string> = {
 export class PortForwardsAdd {
   private readonly api = inject(ApiService)
   private readonly tasks = inject(TaskService)
-
-  show80 = false
 
   protected readonly hostnameHint =
     'Only supported for SSL/TLS services — the gateway routes by the TLS SNI, so several hostnames can share one external port. IPv4 only. Leave blank for a plain port forward.'
@@ -235,7 +214,6 @@ export class PortForwardsAdd {
       internalport: [null as number | null, Validators.required],
       ipVersion: ['ipv4' as 'ipv4' | 'ipv6' | 'both'],
       sni: [''],
-      also80: [true],
       count: [
         1,
         [Validators.required, Validators.min(1), Validators.max(65535)],
@@ -267,11 +245,6 @@ export class PortForwardsAdd {
   protected readonly stringify = ({ ip, name }: MappedDevice) =>
     ip ? `${name} (${ip})` : ''
 
-  protected checkShow80() {
-    const { externalport, internalport } = this.form.getRawValue()
-    this.show80 = externalport === 443 && internalport === 443
-  }
-
   protected async onSave() {
     if (this.form.invalid) {
       tuiMarkControlAsTouchedAndValidate(this.form)
@@ -279,16 +252,8 @@ export class PortForwardsAdd {
       return
     }
 
-    const {
-      label,
-      externalport,
-      device,
-      internalport,
-      sni,
-      also80,
-      count,
-      ipVersion,
-    } = this.form.getRawValue()
+    const { label, externalport, device, internalport, sni, count, ipVersion } =
+      this.form.getRawValue()
 
     const isRange = count > 1
     // SNI demux is IPv4-only and per-port; it applies to the v4 side even in
@@ -297,12 +262,6 @@ export class PortForwardsAdd {
     const hostname = isRange || ipVersion === 'ipv6' ? '' : sni.trim()
     const v4 = ipVersion === 'ipv4' || ipVersion === 'both'
     const v6 = ipVersion === 'ipv6' || ipVersion === 'both'
-    const wants80 =
-      !isRange &&
-      !hostname &&
-      externalport === 443 &&
-      internalport === 443 &&
-      also80
 
     this.tasks.run(async () => {
       if (v4) {
@@ -314,14 +273,6 @@ export class PortForwardsAdd {
           sni: hostname ? [hostname] : [],
           count,
         })
-        if (wants80) {
-          await this.api.addForward({
-            externalPort: 80,
-            target: `${device!.ip}:443`,
-            label: `${label} (HTTP redirect)`,
-            sni: [],
-          })
-        }
       }
       if (v6 && device!.ipv6) {
         await this.api.addPinhole({
@@ -332,14 +283,6 @@ export class PortForwardsAdd {
           label,
           count,
         })
-        if (wants80) {
-          await this.api.addPinhole({
-            gua: device!.ipv6,
-            externalPort: 80,
-            internalPort: 443,
-            label: `${label} (HTTP redirect)`,
-          })
-        }
       }
       this.context.$implicit.complete()
     })

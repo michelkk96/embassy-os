@@ -66,6 +66,11 @@ export abstract class ApiService {
   abstract setPinholeEnabled(
     params: T.Tunnel.SetPinholeEnabledParams,
   ): Promise<null> // pinhole.set-enabled
+
+  // http redirects
+  abstract setHttpRedirectEnabled(
+    params: T.Tunnel.SetHttpRedirectEnabledParams,
+  ): Promise<null> // http-redirect.set-enabled
   // ipv6
   abstract setSubnetIpv6(params: T.Tunnel.SetSubnetIpv6Params): Promise<null> // subnet.set-ipv6
   // system

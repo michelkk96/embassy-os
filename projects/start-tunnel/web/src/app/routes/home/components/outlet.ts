@@ -69,6 +69,14 @@ import { UpdateService } from 'src/app/services/update.service'
       tui-scrollbar {
         border-start-start-radius: 1rem;
         padding: 0;
+
+        // Base insets the custom scrollbar by 1.5rem to sit in the
+        // padding-inline-end gutter; mobile drops that gutter (padding: 0), so
+        // the inset would push the scrollbar past the edge and add a phantom
+        // horizontal scroll. Keep it flush on mobile.
+        > ::ng-deep tui-scroll-controls {
+          transform: none;
+        }
       }
     }
 

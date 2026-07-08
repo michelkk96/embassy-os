@@ -30,24 +30,38 @@ my-workspace/
 > [!TIP]
 > Already have a package repo? Clone it into the workspace alongside `start-technologies/` and build it the same way.
 
-## Build the Package
+Make sure Docker is running first (`docker ps` should succeed — see [Environment Setup](./environment-setup.md#docker)), then build:
 
 ```sh
 cd hello-world-startos
 make
 ```
 
-Dependencies were already installed by `init-package`, so this goes straight to building. `make` produces a `.s9pk` for each architecture (`hello-world_x86_64.s9pk`, `hello-world_aarch64.s9pk`); run `make universal` instead for a single `hello-world.s9pk` that installs on any device. See [Makefile](./makefile.md) for all build targets.
+Dependencies were already installed by `init-package`, so this goes straight to building. The first build pulls the service's container image, so it can take a few minutes. `make` produces a `.s9pk` for each architecture (`hello-world_x86_64.s9pk`, `hello-world_aarch64.s9pk`); run `make universal` instead for a single `hello-world.s9pk` that installs on any device. See [Makefile](./makefile.md) for all build targets.
 
 ## Install to StartOS
 
-### Option 1: Sideload via UI
+You need a device running StartOS (from [Environment Setup](./environment-setup.md#startos-device)) on the same network.
 
-Open the `Sideload` tab and upload the `.s9pk` matching your device's architecture.
+### Option 1: Sideload via the web interface (simplest)
 
-### Option 2: Direct Install (Local Network)
+This needs no command-line setup:
 
-See [Installation](./makefile.md#installation).
+1. Open your StartOS device in a browser and log in.
+2. Click **Sideload** in the top navigation bar.
+3. Select the `.s9pk` that matches your device's architecture (`hello-world_x86_64.s9pk` or `hello-world_aarch64.s9pk`) — or, if you ran `make universal`, the single `hello-world.s9pk`, which installs on any device.
+
+See [Sideloading](/start-os/sideloading.html) for details.
+
+### Option 2: Install from the command line
+
+Once your workspace `.startos/config.yaml` points `host.default` at your device (see [Hosts and registries](./environment-setup.md#hosts-and-registries)) and you've logged in once with `start-cli auth login`, you can install straight from the package directory:
+
+```sh
+make install
+```
+
+See [Makefile — Installation](./makefile.md#installation) for the full setup.
 
 ## Next Steps
 

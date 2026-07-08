@@ -12,6 +12,13 @@ You must have a computer running StartOS to test your packages. Follow the [inst
 
 Follow the [official Docker installation guide](https://docs.docker.com/engine/install/) for your platform.
 
+> [!IMPORTANT]
+> Docker must be **running** when you build a package, and your user must be able to use it.
+> - **macOS / Windows:** start Docker Desktop; it runs the daemon for you.
+> - **Linux:** the daemon runs as a service (`sudo systemctl start docker`). By default only root can talk to it, so add your user to the `docker` group once: `sudo usermod -aG docker $USER`, then **log out and back in**. (Otherwise every build fails with `permission denied ... /var/run/docker.sock`.)
+>
+> Confirm it works with `docker run --rm hello-world` before continuing.
+
 ## Make
 
 [Make](https://www.gnu.org/software/make/) is a build automation tool used to execute build scripts defined in Makefiles and coordinate the packaging workflow (building and installing s9pk binaries to StartOS).
@@ -32,14 +39,20 @@ xcode-select --install
 
 [Node.js](https://nodejs.org/en/) is required for compiling TypeScript code used in StartOS package configurations.
 
-The recommended installation method is [nvm](https://github.com/nvm-sh/nvm):
+The recommended installation method is [nvm](https://github.com/nvm-sh/nvm). If you don't already have `nvm`, install it, then **close and reopen your terminal** (or `source ~/.bashrc` / `source ~/.zshrc`) so the `nvm` command is available:
+
+```sh
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+```
+
+Then install and select Node.js v22:
 
 ```sh
 nvm install 22
 nvm use 22
 ```
 
-You can also download Node.js directly from [nodejs.org](https://nodejs.org/).
+Alternatively, download Node.js v22 (or newer) directly from [nodejs.org](https://nodejs.org/) — make sure `node --version` reports v22+ afterward.
 
 ## SquashFS
 
@@ -57,6 +70,18 @@ sudo apt install squashfs-tools squashfs-tools-ng
 brew install squashfs
 ```
 
+## cURL
+
+[cURL](https://curl.se/) downloads the `start-cli` installer script in the next step. It is pre-installed on macOS and most Linux systems; install it if missing.
+
+**Linux (Debian-based)**:
+
+```sh
+sudo apt install curl
+```
+
+**macOS**: already included.
+
 ## Start CLI
 
 [start-cli](https://github.com/Start9Labs/start-technologies) is the core development toolkit for building StartOS packages. It provides package validation, s9pk file creation, and development workflow management.
@@ -67,20 +92,53 @@ Install using the automated installer script:
 curl -fsSL https://start9.com/start-cli/install.sh | sh
 ```
 
+## Git
+
+[Git](https://git-scm.com/) is used by `start-cli s9pk init-workspace` to fetch the packaging guide, and to keep it up to date afterward.
+
+**Linux (Debian-based)**:
+
+```sh
+sudo apt install git
+```
+
+**macOS**: installed with the Command Line Tools (`xcode-select --install`, above), or `brew install git`.
+
+## jq
+
+[jq](https://jqlang.github.io/jq/) is used by the build to read your package's manifest when it prints the build summary. `make` fails without it.
+
+**Linux (Debian-based)**:
+
+```sh
+sudo apt install jq
+```
+
+**macOS**:
+
+```sh
+brew install jq
+```
+
 ## Verification
 
 After installation, verify all tools are available:
 
 ```sh
 docker --version
+docker run --rm hello-world   # confirms the daemon is running and you have access
 make --version
-node --version
+node --version                # must be v22 or newer
+npm --version
 mksquashfs -version
+git --version
+curl --version
+jq --version
 start-cli --version
 ```
 
 > [!TIP]
-> If any command is not found, revisit the installation steps for that tool and ensure it is on your system PATH.
+> If any command is not found, revisit the installation steps for that tool and ensure it is on your system PATH. If `docker run --rm hello-world` fails, re-read the Docker note above (the daemon must be running, and on Linux your user must be in the `docker` group).
 
 ## Set Up Your Packaging Workspace
 
@@ -132,7 +190,17 @@ registry:
   prod: https://registry.start9.com
 ```
 
-The `registry` entries are Start9's, pre-filled; edit the `host` entries to point at your own boxes.
+The `registry` entries are Start9's, pre-filled — you only need them if you plan to **publish** a package, so you can ignore them while testing locally. The `host` entries are the StartOS devices you install to; edit `host.default` to point at your own box.
+
+Your device's address is shown in the StartOS web interface (it looks like `https://adjective-noun.local`, or use its IP such as `https://192.168.1.100`). Set it as `host.default`, for example:
+
+```yaml
+host:
+  default: https://adjective-noun.local
+```
+
+> [!TIP]
+> The simplest way to install a package is to upload the `.s9pk` in the StartOS web interface (see [Quick Start](./quick-start.md#install-to-startos)) — that needs no `host` config at all. The `host` entries only matter for installing from the command line with `make install`, which additionally requires logging in once with `start-cli auth login` (it prompts for your StartOS master password).
 
 Any `start-cli` command takes `-H`/`--host` and `-r`/`--registry`. Pass a **profile name** to use one of these entries, or a **URL** to target something directly:
 

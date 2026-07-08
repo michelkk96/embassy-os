@@ -104,6 +104,22 @@ sudo apt install git
 
 **macOS**: installed with the Command Line Tools (`xcode-select --install`, above), or `brew install git`.
 
+## jq
+
+The build uses [jq](https://jqlang.github.io/jq/) to read your package's manifest and print the build summary, so it must be installed.
+
+**Linux (Debian-based)**:
+
+```sh
+sudo apt install jq
+```
+
+**macOS**:
+
+```sh
+brew install jq
+```
+
 ## Verification
 
 After installation, verify all tools are available:
@@ -117,6 +133,7 @@ npm --version
 mksquashfs -version
 git --version
 curl --version
+jq --version
 start-cli --version
 ```
 

@@ -106,6 +106,8 @@ check-deps:
 		(echo "Error: npm not found. Install Node.js and npm. See https://docs.start9.com/packaging/environment-setup.html" && exit 1)
 	@command -v git >/dev/null || \
 		(echo "Error: git not found. Install git. See https://docs.start9.com/packaging/environment-setup.html" && exit 1)
+	@command -v jq >/dev/null || \
+		(echo "Error: jq not found. Install jq. See https://docs.start9.com/packaging/environment-setup.html" && exit 1)
 
 check-init:
 	@if [ ! -f ~/.startos/developer.key.pem ]; then \

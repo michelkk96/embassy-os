@@ -55,7 +55,7 @@ Before concluding the SDK can't do what you need — or working around a limitat
 
 ## Read the monorepo source only when the guide can't answer
 
-Your workspace's `start-technologies/` is a sparse checkout of the Start9 monorepo, so the full **SDK source** (`projects/start-sdk/lib`) and **StartOS source** (`projects/start-os`, and the shared core in `shared-libs/`) are there when you need them — past the recipes, reference pages, real packages, and the installed `@start9labs/start-sdk` types.
+Your workspace's `start-technologies/` is a sparse checkout of the Start9 monorepo — by default only the packaging guide (`projects/start-sdk/docs`) is materialized, but the full **SDK source** (`projects/start-sdk/lib`) and **StartOS source** (`projects/start-os`, and the shared core in `shared-libs/`) are one command away when you need them — past the recipes, reference pages, real packages, and the installed `@start9labs/start-sdk` types.
 
 This is a **last resort, not a starting point.** Drop into the source only to answer a specific question those layers can't — exactly what an SDK call does, how an OS effect behaves — and read the one file that settles it instead of browsing. Fetch a path that isn't checked out with `git -C start-technologies sparse-checkout add <path>`.
 

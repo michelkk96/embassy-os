@@ -37,13 +37,14 @@ All registry operations go through `start-cli registry` (or `start-cli s9pk publ
 start-cli registry --registry https://my-registry.example.com index
 ```
 
-If you'll be running many commands against the same registry, set the URL once via `~/.startos/config.yaml`:
+If you're working inside a packaging workspace, add the registry to its `.startos/config.yaml` under `registry:` as a named profile, then refer to it with `-r <name>`:
 
 ```yaml
-registry-url: https://my-registry.example.com
+registry:
+  default: https://my-registry.example.com
 ```
 
-…and drop the flag.
+Now `start-cli registry -r default index` works, and because it's named `default` you can drop the flag entirely (`-r` uses the `default` profile when omitted). Outside a workspace, keep passing `--registry <url>` on each command.
 
 ## 5. Smoke-test
 

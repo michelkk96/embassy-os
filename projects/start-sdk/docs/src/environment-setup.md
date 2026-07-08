@@ -12,50 +12,121 @@ You must have a computer running StartOS to test your packages. Follow the [inst
 
 Follow the [official Docker installation guide](https://docs.docker.com/engine/install/) for your platform.
 
+Docker must be **running** when you build a package, and your user must be able to use it:
+
+{{#tabs global="platform"}}
+
+{{#tab name="Linux (Debian-based)"}}
+
+The daemon runs as a service — start it with `sudo systemctl start docker`. By default only root can talk to it, so add your user to the `docker` group once (then **log out and back in**), otherwise every build fails with `permission denied ... /var/run/docker.sock`:
+
+```sh
+sudo usermod -aG docker $USER
+```
+
+{{#endtab}}
+
+{{#tab name="macOS"}}
+
+Start Docker Desktop; it runs the daemon for you. (Docker Desktop covers Windows too.)
+
+{{#endtab}}
+
+{{#endtabs}}
+
+> [!TIP]
+> Confirm it works with `docker run --rm hello-world` before continuing.
+
 ## Make
 
 [Make](https://www.gnu.org/software/make/) is a build automation tool used to execute build scripts defined in Makefiles and coordinate the packaging workflow (building and installing s9pk binaries to StartOS).
 
-**Linux (Debian-based)**:
+{{#tabs global="platform"}}
+
+{{#tab name="Linux (Debian-based)"}}
 
 ```sh
 sudo apt install build-essential
 ```
 
-**macOS**:
+{{#endtab}}
+
+{{#tab name="macOS"}}
 
 ```sh
 xcode-select --install
 ```
 
+{{#endtab}}
+
+{{#endtabs}}
+
 ## Node.js v22 (Latest LTS)
 
 [Node.js](https://nodejs.org/en/) is required for compiling TypeScript code used in StartOS package configurations.
 
-The recommended installation method is [nvm](https://github.com/nvm-sh/nvm):
+The recommended installation method is [nvm](https://github.com/nvm-sh/nvm). If you don't already have `nvm`, install it, then **close and reopen your terminal** (or `source ~/.bashrc` / `source ~/.zshrc`) so the `nvm` command is available:
+
+```sh
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+```
+
+Then install and select Node.js v22:
 
 ```sh
 nvm install 22
 nvm use 22
 ```
 
-You can also download Node.js directly from [nodejs.org](https://nodejs.org/).
+Alternatively, download Node.js v22 (or newer) directly from [nodejs.org](https://nodejs.org/) — make sure `node --version` reports v22+ afterward.
 
 ## SquashFS
 
 SquashFS is used to create compressed filesystem images that package your compiled service code.
 
-**Linux (Debian-based)**:
+{{#tabs global="platform"}}
+
+{{#tab name="Linux (Debian-based)"}}
 
 ```sh
 sudo apt install squashfs-tools squashfs-tools-ng
 ```
 
-**macOS** (requires [Homebrew](https://brew.sh/)):
+{{#endtab}}
+
+{{#tab name="macOS"}}
+
+Requires [Homebrew](https://brew.sh/):
 
 ```sh
 brew install squashfs
 ```
+
+{{#endtab}}
+
+{{#endtabs}}
+
+## cURL
+
+[cURL](https://curl.se/) downloads the `start-cli` installer script in the next step. It is pre-installed on macOS and most Linux systems; install it if missing.
+
+{{#tabs global="platform"}}
+
+{{#tab name="Linux (Debian-based)"}}
+
+```sh
+sudo apt install curl
+```
+
+{{#endtab}}
+
+{{#tab name="macOS"}}
+
+Already included.
+
+{{#endtab}}
+
+{{#endtabs}}
 
 ## Start CLI
 
@@ -67,20 +138,71 @@ Install using the automated installer script:
 curl -fsSL https://start9.com/start-cli/install.sh | sh
 ```
 
+## Git
+
+[Git](https://git-scm.com/) is used by `start-cli s9pk init-workspace` to fetch the packaging guide, and to keep it up to date afterward.
+
+{{#tabs global="platform"}}
+
+{{#tab name="Linux (Debian-based)"}}
+
+```sh
+sudo apt install git
+```
+
+{{#endtab}}
+
+{{#tab name="macOS"}}
+
+Installed with the Command Line Tools (`xcode-select --install`, above), or `brew install git`.
+
+{{#endtab}}
+
+{{#endtabs}}
+
+## jq
+
+The build uses [jq](https://jqlang.github.io/jq/) to read your package's manifest and print the build summary, so it must be installed.
+
+{{#tabs global="platform"}}
+
+{{#tab name="Linux (Debian-based)"}}
+
+```sh
+sudo apt install jq
+```
+
+{{#endtab}}
+
+{{#tab name="macOS"}}
+
+```sh
+brew install jq
+```
+
+{{#endtab}}
+
+{{#endtabs}}
+
 ## Verification
 
 After installation, verify all tools are available:
 
 ```sh
 docker --version
+docker run --rm hello-world   # confirms the daemon is running and you have access
 make --version
-node --version
+node --version                # must be v22 or newer
+npm --version
 mksquashfs -version
+git --version
+curl --version
+jq --version
 start-cli --version
 ```
 
 > [!TIP]
-> If any command is not found, revisit the installation steps for that tool and ensure it is on your system PATH.
+> If any command is not found, revisit the installation steps for that tool and ensure it is on your system PATH. If `docker run --rm hello-world` fails, re-read the Docker note above (the daemon must be running, and on Linux your user must be in the `docker` group).
 
 ## Set Up Your Packaging Workspace
 
@@ -106,6 +228,17 @@ my-workspace/
 
 The context lives once, at the workspace root — it is never copied into your package repos. Open the workspace in your AI tool and it picks up `AGENTS.md` / `CLAUDE.md` automatically.
 
+### Nested workspaces and config resolution
+
+Workspaces can be nested — running `init-workspace` inside another workspace is fine. When `start-cli` needs a workspace's signing key or targets (building, signing, reading `host`/`registry`), it walks **up** from the current directory and uses the nearest `.startos/`. So an inner workspace transparently overrides an outer one, and settings you don't override are inherited from above — conceptually a deep merge of every `.startos/` on the path, innermost first.
+
+The one thing `init-workspace` refuses is running **inside a package repo**: a workspace is the directory that *holds* package repos, not a package itself. If you already have package repos, run `init-workspace` in the directory that contains them (their parent); building, signing, and publishing then walk up to find the workspace. Starting fresh, run it in a new directory, then `start-cli s9pk init-package` inside it.
+
+Until a workspace exists, `make` / `s9pk pack` / `s9pk publish` fail with a message pointing you to `init-workspace` — packaging is designed around the workspace (and its AI guide), so there is no build-key to sign with until you create one.
+
+> [!NOTE]
+> There's no automatic migration from an older global `~/.startos`. To reuse a previous signing key, copy it into a workspace yourself: `cp ~/.startos/developer.key.pem <workspace>/.startos/build-key`.
+
 ### Hosts and registries
 
 The `.startos/config.yaml` created with the workspace defines named **host** targets (your StartOS boxes) and **registry** targets:
@@ -121,7 +254,17 @@ registry:
   prod: https://registry.start9.com
 ```
 
-The `registry` entries are Start9's, pre-filled; edit the `host` entries to point at your own boxes.
+The `registry` entries are Start9's, pre-filled — you only need them if you plan to **publish** a package, so you can ignore them while testing locally. The `host` entries are the StartOS devices you install to; edit `host.default` to point at your own box.
+
+Your device's address is shown in the StartOS web interface (it looks like `https://adjective-noun.local`, or use its IP such as `https://192.168.1.100`). Set it as `host.default`, for example:
+
+```yaml
+host:
+  default: https://adjective-noun.local
+```
+
+> [!TIP]
+> Setting `host.default` lets you install with `make install` — the recommended way to work on a package, since it builds and pushes to your device in one repeatable command. It also requires logging in once with `start-cli auth login` (it prompts for your StartOS master password). If you'd rather not set up the CLI yet, you can sideload the `.s9pk` through the web interface instead — see [Quick Start](./quick-start.md#install-to-startos).
 
 Any `start-cli` command takes `-H`/`--host` and `-r`/`--registry`. Pass a **profile name** to use one of these entries, or a **URL** to target something directly:
 
@@ -134,7 +277,7 @@ start-cli -H https://my-box.local <command>  # a URL works too
 With no flag, the `default` entry is used. `start-cli` finds this config by walking up from the current directory, so it works anywhere inside the workspace.
 
 > [!NOTE]
-> `make install` and `make publish` read a single `host:` / `registry:` URL from the global `~/.startos/config.yaml` instead of these per-workspace profiles. See [Makefile](./makefile.md).
+> As of `@start9labs/start-sdk` 2.0, `make install` and `make publish` resolve their target through `start-cli` — the workspace `.startos/config.yaml` profiles, or `-H` / `-r`. (Older `s9pk.mk` parsed a single `host:` / `registry:` URL from the global `~/.startos/config.yaml`.) See [Makefile](./makefile.md).
 
 ### Keep it current
 

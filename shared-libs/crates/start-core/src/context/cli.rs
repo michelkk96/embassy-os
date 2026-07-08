@@ -285,10 +285,7 @@ impl CliContext {
                 break;
             }
         }
-        Err(Error::new(
-            eyre!("{}", t!("s9pk.init.not-in-workspace")),
-            ErrorKind::Uninitialized,
-        ))
+        Err(crate::s9pk::init::no_workspace_error())
     }
 
     pub async fn ws_continuation(

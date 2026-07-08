@@ -162,13 +162,6 @@ s9pk.init.invalid-package-name:
   fr_FR: "Impossible de dériver un ID de paquet valide à partir de « %{name} ». Utilisez un nom contenant des lettres ou des chiffres."
   pl_PL: "Nie można utworzyć prawidłowego identyfikatora pakietu z „%{name}”. Użyj nazwy zawierającej litery lub cyfry."
 
-s9pk.init.nested-workspace:
-  en_US: "Cannot create a workspace inside an existing one (found %{path})."
-  de_DE: "Ein Arbeitsbereich kann nicht innerhalb eines bestehenden erstellt werden (gefunden: %{path})."
-  es_ES: "No se puede crear un espacio de trabajo dentro de uno existente (se encontró %{path})."
-  fr_FR: "Impossible de créer un espace de travail à l'intérieur d'un autre (trouvé : %{path})."
-  pl_PL: "Nie można utworzyć obszaru roboczego wewnątrz istniejącego (znaleziono %{path})."
-
 s9pk.init.not-in-workspace:
   en_US: "Not inside a packaging workspace. Run `start-cli s9pk init-workspace` first."
   de_DE: "Nicht innerhalb eines Paketierungs-Arbeitsbereichs. Führe zuerst `start-cli s9pk init-workspace` aus."
@@ -203,6 +196,35 @@ s9pk.init.workspace-ready:
   es_ES: "Espacio de trabajo de empaquetado listo en %{path}. Siguiente: start-cli s9pk init-package \"<Nombre>\"."
   fr_FR: "Espace de travail d'empaquetage prêt à %{path}. Étape suivante : start-cli s9pk init-package \"<Nom>\"."
   pl_PL: "Obszar roboczy pakowania gotowy w %{path}. Następnie: start-cli s9pk init-package \"<Nazwa>\"."
+
+s9pk.init.in-package-repo:
+  en_US: "%{path} is a package repo, not a packaging workspace. A workspace is the directory that *contains* your package repos — run `start-cli s9pk init-workspace` in its parent (%{parent}) instead. Setup guide: %{docs}"
+  de_DE: "%{path} ist ein Paket-Repository, kein Paketierungs-Arbeitsbereich. Ein Arbeitsbereich ist das Verzeichnis, das deine Paket-Repositorys *enthält* – führe `start-cli s9pk init-workspace` stattdessen im übergeordneten Verzeichnis (%{parent}) aus. Einrichtungsanleitung: %{docs}"
+  es_ES: "%{path} es un repositorio de paquete, no un espacio de trabajo de empaquetado. Un espacio de trabajo es el directorio que *contiene* tus repositorios de paquetes: ejecuta `start-cli s9pk init-workspace` en su directorio superior (%{parent}). Guía de configuración: %{docs}"
+  fr_FR: "%{path} est un dépôt de paquet, pas un espace de travail d'empaquetage. Un espace de travail est le répertoire qui *contient* vos dépôts de paquets — exécutez `start-cli s9pk init-workspace` dans son répertoire parent (%{parent}). Guide de configuration : %{docs}"
+  pl_PL: "%{path} to repozytorium pakietu, a nie obszar roboczy pakowania. Obszar roboczy to katalog, który *zawiera* twoje repozytoria pakietów — uruchom `start-cli s9pk init-workspace` w jego katalogu nadrzędnym (%{parent}). Przewodnik konfiguracji: %{docs}"
+
+s9pk.init.no-workspace:
+  en_US: "No packaging workspace found. Building and signing happen inside a workspace, which also gives you the AI packaging guide (AGENTS.md/CLAUDE.md). Run `start-cli s9pk init-workspace` here or in a parent directory, then try again. Setup guide: %{docs}"
+  de_DE: "Kein Paketierungs-Arbeitsbereich gefunden. Bauen und Signieren finden in einem Arbeitsbereich statt, der dir auch den KI-Paketierungsleitfaden (AGENTS.md/CLAUDE.md) bereitstellt. Führe `start-cli s9pk init-workspace` hier oder in einem übergeordneten Verzeichnis aus und versuche es erneut. Einrichtungsanleitung: %{docs}"
+  es_ES: "No se encontró un espacio de trabajo de empaquetado. La compilación y la firma se realizan dentro de un espacio de trabajo, que también te proporciona la guía de empaquetado para IA (AGENTS.md/CLAUDE.md). Ejecuta `start-cli s9pk init-workspace` aquí o en un directorio superior y vuelve a intentarlo. Guía de configuración: %{docs}"
+  fr_FR: "Aucun espace de travail d'empaquetage trouvé. La construction et la signature se font dans un espace de travail, qui vous fournit aussi le guide d'empaquetage pour l'IA (AGENTS.md/CLAUDE.md). Exécutez `start-cli s9pk init-workspace` ici ou dans un répertoire parent, puis réessayez. Guide de configuration : %{docs}"
+  pl_PL: "Nie znaleziono obszaru roboczego pakowania. Budowanie i podpisywanie odbywają się w obszarze roboczym, który udostępnia też przewodnik pakowania dla AI (AGENTS.md/CLAUDE.md). Uruchom `start-cli s9pk init-workspace` tutaj lub w katalogu nadrzędnym, a następnie spróbuj ponownie. Przewodnik konfiguracji: %{docs}"
+
+s9pk.init.no-workspace-in-package-repo:
+  en_US: "No packaging workspace found. %{repo} is a package repo; a workspace is the directory that *contains* your package repos (and provides the AI packaging guide). Create one in its parent, then try again: `cd %{parent} && start-cli s9pk init-workspace`. Setup guide: %{docs}"
+  de_DE: "Kein Paketierungs-Arbeitsbereich gefunden. %{repo} ist ein Paket-Repository; ein Arbeitsbereich ist das Verzeichnis, das deine Paket-Repositorys *enthält* (und den KI-Paketierungsleitfaden bereitstellt). Erstelle einen im übergeordneten Verzeichnis und versuche es erneut: `cd %{parent} && start-cli s9pk init-workspace`. Einrichtungsanleitung: %{docs}"
+  es_ES: "No se encontró un espacio de trabajo de empaquetado. %{repo} es un repositorio de paquete; un espacio de trabajo es el directorio que *contiene* tus repositorios de paquetes (y proporciona la guía de empaquetado para IA). Crea uno en su directorio superior y vuelve a intentarlo: `cd %{parent} && start-cli s9pk init-workspace`. Guía de configuración: %{docs}"
+  fr_FR: "Aucun espace de travail d'empaquetage trouvé. %{repo} est un dépôt de paquet ; un espace de travail est le répertoire qui *contient* vos dépôts de paquets (et fournit le guide d'empaquetage pour l'IA). Créez-en un dans son répertoire parent, puis réessayez : `cd %{parent} && start-cli s9pk init-workspace`. Guide de configuration : %{docs}"
+  pl_PL: "Nie znaleziono obszaru roboczego pakowania. %{repo} to repozytorium pakietu; obszar roboczy to katalog, który *zawiera* twoje repozytoria pakietów (i udostępnia przewodnik pakowania dla AI). Utwórz jeden w jego katalogu nadrzędnym, a następnie spróbuj ponownie: `cd %{parent} && start-cli s9pk init-workspace`. Przewodnik konfiguracji: %{docs}"
+
+# s9pk/v2/pack.rs
+s9pk.pack.git-hash-omitted:
+  en_US: "No git commit found in %{path} — building without a commit hash in the manifest. Commit your work (or check that git is set up) to include it."
+  de_DE: "Kein Git-Commit in %{path} gefunden – der Build enthält keinen Commit-Hash im Manifest. Committe deine Änderungen (oder prüfe, ob git eingerichtet ist), um ihn aufzunehmen."
+  es_ES: "No se encontró ningún commit de git en %{path}; la compilación no incluye un hash de commit en el manifiesto. Haz un commit de tu trabajo (o comprueba que git esté configurado) para incluirlo."
+  fr_FR: "Aucun commit git trouvé dans %{path} — la construction n'inclut pas de hash de commit dans le manifeste. Faites un commit de votre travail (ou vérifiez que git est configuré) pour l'inclure."
+  pl_PL: "Nie znaleziono commita git w %{path} — kompilacja nie zawiera hasha commita w manifeście. Zatwierdź swoją pracę (lub sprawdź, czy git jest skonfigurowany), aby go dołączyć."
 
 # setup.rs
 setup.opening-data-drive:

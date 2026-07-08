@@ -86,7 +86,7 @@ make
 make x86
 make arm
 
-# Install to StartOS server (requires ~/.startos/config.yaml)
+# Install to StartOS server (requires a workspace whose .startos/config.yaml points at your device)
 make install
 
 # Clean build artifacts
@@ -98,36 +98,50 @@ make clean
 You can chain multiple targets in a single invocation:
 
 ```bash
-make clean arm          # Clean, then build ARM package
-make clean x86 install  # Clean, build x86 package, then install
-make clean install      # Clean, build universal, then install
+make clean arm                    # Clean, then build ARM package
+make clean x86 install            # Clean, build x86 package, then install
+make clean universal install      # Clean, build universal, then install
 ```
 
 ## Prerequisites
 
-The build system checks for:
+Building signs the package with your **workspace signing key**, so the package must live inside a packaging workspace. If you haven't created one yet, do that first — see [Environment Setup — Set Up Your Packaging Workspace](./environment-setup.md#set-up-your-packaging-workspace). Running `make` without a workspace fails with a message telling you to run `start-cli s9pk init-workspace`.
 
-- `start-cli` -- StartOS CLI tool
-- `npm` -- Node.js package manager
-- `~/.startos/developer.key.pem` -- Developer key (auto-initialized if missing)
-
-See [Environment Setup](./environment-setup.md) for installation instructions.
+The build also needs the tools from [Environment Setup](./environment-setup.md) — Docker (running), `make`, Node.js/`npm`, `start-cli`, `git`, and `jq`.
 
 ## Installation
 
-To install a package directly to your StartOS server, configure the server address in `~/.startos/config.yaml`:
+`make install` builds nothing on its own — it uploads the most recently built `.s9pk` to a StartOS device, so build first (for development, just your device's architecture — `make x86` or `make arm`). It resolves the device from your workspace `.startos/config.yaml` (the `host.default` profile) or an explicit `-H`.
 
-```yaml
-host: http://your-server.local
-```
+1. Point your workspace at the device. Edit `.startos/config.yaml` (at the workspace root, **not** `~/.startos/config.yaml`) so `host.default` is your device's address:
 
-Then run:
+   ```yaml
+   host:
+     default: https://your-device.local
+   ```
 
-```bash
-make install
-```
+2. Log in once. `start-cli` needs a session on the device:
 
-This builds the package and sideloads it to your device.
+   ```sh
+   start-cli auth login
+   ```
+
+   Enter your StartOS master password when prompted.
+
+3. Build and install for your device's architecture (`x86` or `arm`) — the fast path for development:
+
+   ```sh
+   make x86 install       # or: make arm install
+   ```
+
+   (`make install` on its own installs the most recent build. Reach for `make universal`
+   only when publishing — building all architectures is slower and unnecessary for local
+   testing.)
+
+> [!NOTE]
+> `make install` talks to the device over HTTPS, so your computer must trust the device's certificate — the same trust you set up to open its web interface in a browser. If it isn't trusted yet, import the device's root CA into your system trust store; or, for a one-off, sideload the `.s9pk` through the web interface instead (see [Sideloading](/start-os/sideloading.html)), which needs no certificate setup.
+>
+> To install to a device other than `host.default`, run `start-cli` directly with `-H` (a profile name or URL): `start-cli -H prod package install -s <your-package>.s9pk`.
 
 ### Example Output
 

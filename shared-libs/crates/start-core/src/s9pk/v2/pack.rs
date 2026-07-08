@@ -713,7 +713,18 @@ pub async fn pack(ctx: CliContext, params: PackParams) -> Result<(), Error> {
     .await?;
 
     let manifest = s9pk.as_manifest_mut();
-    manifest.metadata.git_hash = Some(GitHash::from_path(params.path()).await?);
+    manifest.metadata.git_hash = GitHash::from_path(params.path()).await?;
+    // Surface the omission so a genuinely broken/misconfigured git isn't silent; for a
+    // fresh scaffold this doubles as a nudge to make the first commit.
+    if manifest.metadata.git_hash.is_none() {
+        eprintln!(
+            "{}",
+            t!(
+                "s9pk.pack.git-hash-omitted",
+                path = params.path().display().to_string()
+            )
+        );
+    }
     if !params.arch.is_empty() {
         let arches: BTreeSet<InternedString> = match manifest.hardware_requirements.arch.take() {
             Some(a) => params

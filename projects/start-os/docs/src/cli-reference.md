@@ -697,6 +697,14 @@ Set a value in the UI database.
 
 Build, inspect, edit, and publish service packages.
 
+### `start-cli s9pk init-workspace [PATH]`
+
+Initialize a StartOS packaging workspace in PATH (default: the current directory). Clones the packaging guide, writes the agent-context files (`AGENTS.md`, `AGENTS.local.md`, `CLAUDE.md`), and creates a `.startos/` directory holding the workspace signing key and host/registry config. Nesting is allowed; it refuses to run inside a package repo. See [Set Up Your Packaging Workspace](/packaging/environment-setup.html#set-up-your-packaging-workspace).
+
+### `start-cli s9pk init-package <NAME>`
+
+Scaffold a new package from the current workspace's template, using NAME (e.g. `"Hello World"`) as the human-readable package name, then run `npm install`. Must be run inside a workspace.
+
 ### `start-cli s9pk pack [PATH]`
 
 Build an s9pk package from source files.

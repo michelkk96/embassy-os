@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2 — StartOS 0.4.0-beta.10 (2026-07-08)
+
+### Changed
+
+- **`s9pk.mk` checks build tools before packing, not just before `install`.** The `check-deps` target now runs as an order-only prerequisite of the build targets, so a missing `start-cli`, `npm`, `git`, or `jq` fails fast with a clear message instead of surfacing partway through a build. `git` is required because `s9pk pack` embeds the repository's commit hash (`git rev-parse HEAD`) in the manifest; `jq` is required because the post-build summary reads the manifest with it (without it the summary would print blank fields). The "not found" messages now link to the current setup guide (`https://docs.start9.com/packaging/environment-setup.html`) instead of a dead pre-reorg URL.
+
 ## 2.0.1 — StartOS 0.4.0-beta.10 (2026-07-03)
 
 ### Fixed

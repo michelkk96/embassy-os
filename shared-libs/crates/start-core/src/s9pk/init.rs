@@ -12,6 +12,7 @@ use crate::context::CliContext;
 use crate::developer::write_developer_key;
 use crate::prelude::*;
 use crate::util::Invoke;
+use crate::util::serde::IoFormat;
 
 /// Per-workspace state directory, created at the workspace root. Its presence is
 /// the marker that both `init-package` and start-cli walk up from cwd to find;
@@ -33,6 +34,10 @@ registry:
   beta: https://beta-registry.start9.com
   prod: https://registry.start9.com
 "#;
+
+/// Published packaging guide, surfaced when init-workspace refuses to scaffold inside
+/// a package repo.
+const DOCS_URL: &str = "https://docs.start9.com/packaging/environment-setup.html";
 
 /// Default source for the packaging guide (which also carries the package
 /// template). The guide lives in the start-technologies monorepo; the clone is
@@ -93,20 +98,29 @@ pub async fn init_workspace(
         .await
         .with_ctx(|_| (ErrorKind::Filesystem, root.display().to_string()))?;
 
-    // Refuse nesting: a marker strictly above `root` would put a workspace inside a
-    // workspace. A marker at `root` itself is just a re-run, which is allowed.
-    if let Some(outer) = root.parent().map(find_workspace_root).transpose()?.flatten() {
+    // Refuse to turn a package repo into a workspace. A workspace is the *parent*
+    // directory that holds package repos; a `*-startos` package is not one. Point at
+    // the parent, which is where the workspace belongs.
+    if let Some(repo) = find_enclosing_package_repo(&root) {
+        let parent = repo.parent().unwrap_or(repo.as_path());
         return Err(Error::new(
             eyre!(
                 "{}",
                 t!(
-                    "s9pk.init.nested-workspace",
-                    path = outer.display().to_string()
+                    "s9pk.init.in-package-repo",
+                    path = repo.display().to_string(),
+                    parent = parent.display().to_string(),
+                    docs = DOCS_URL
                 )
             ),
             ErrorKind::InvalidRequest,
         ));
     }
+
+    // Nesting is allowed: a workspace inside a workspace is fine. When building,
+    // signing, or reading config, start-cli walks up from the cwd and uses the nearest
+    // `.startos/`, so a nested workspace transparently overrides an outer one — no need
+    // to look at, or refuse, an enclosing workspace here.
 
     // Provision the guide. Clone only when absent — refreshing is the session-start
     // sync's job, not this command's, so an existing checkout is left untouched. A
@@ -156,15 +170,15 @@ pub async fn init_workspace(
     }
     write_if_absent(&root.join("AGENTS.local.md"), AGENTS_LOCAL_STUB).await?;
     write_if_absent(&root.join("CLAUDE.md"), CLAUDE_MD_CONTENTS).await?;
-    // .startos/ is the workspace marker (see find_workspace_root) and holds the
-    // signing key + target config. Written last, so only a fully provisioned
-    // directory counts as a workspace. The build-key is generated once and never
-    // regenerated — overwriting it would change the workspace's signing identity.
+    // .startos/ marks the workspace and holds its signing key + target config. Written
+    // last, so only a fully provisioned directory counts as a workspace.
     let startos = root.join(STARTOS_DIR);
     tokio::fs::create_dir_all(&startos)
         .await
         .with_ctx(|_| (ErrorKind::Filesystem, startos.display().to_string()))?;
     write_if_absent(&startos.join(CONFIG_FILE), WORKSPACE_CONFIG_CONTENTS).await?;
+    // Generated once and never regenerated — overwriting the build-key would change
+    // the workspace's signing identity.
     let build_key = startos.join(BUILD_KEY_FILE);
     if tokio::fs::symlink_metadata(&build_key).await.is_err() {
         // bind before the await so the !Send ThreadRng isn't held across it
@@ -244,6 +258,15 @@ pub async fn init_package(
 
     copy_template_interpolated(&template, &dst, &id, &name).await?;
 
+    // A package is its own git repo — initialize one so version-hash stamping and the
+    // shipped CI workflows work. No commit is made; the first commit is the packager's.
+    Command::new("git")
+        .arg("init")
+        .arg("-q")
+        .current_dir(&dst)
+        .invoke(ErrorKind::Git)
+        .await?;
+
     eprintln!("{}", t!("s9pk.init.installing-deps"));
     Command::new("npm")
         .arg("install")
@@ -263,15 +286,20 @@ pub async fn init_package(
     Ok(())
 }
 
-/// Walk up from `start` (inclusive) for the nearest workspace — a directory
-/// containing a `.startos` dir. (start-cli's own config/key discovery walks up
-/// the same way; the outermost match may be the global `~/.startos`.)
+/// Walk up from `start` (inclusive) for the nearest workspace — a directory whose
+/// `.startos` is a provisioned marker (`build-key` or a schema config). `init-package`
+/// scaffolds into whatever this returns, so with nested workspaces it targets the
+/// innermost one. A bare/legacy `.startos` (no build-key, no schema) isn't a marker.
 fn find_workspace_root(start: &Path) -> Result<Option<PathBuf>, Error> {
     let mut dir = start.to_path_buf();
     loop {
-        match std::fs::metadata(dir.join(STARTOS_DIR)) {
-            Ok(meta) if meta.is_dir() => return Ok(Some(dir)),
-            // Present but not a directory — not a marker; keep walking up.
+        let startos = dir.join(STARTOS_DIR);
+        match std::fs::metadata(&startos) {
+            Ok(meta) if meta.is_dir() && startos_dir_is_marker(&startos) => {
+                return Ok(Some(dir));
+            }
+            // Present but not a provisioned marker (e.g. the legacy global config) —
+            // keep walking up.
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             // EACCES (or any other IO error) on an ancestor — treat as "no
@@ -282,6 +310,87 @@ fn find_workspace_root(start: &Path) -> Result<Option<PathBuf>, Error> {
             return Ok(None);
         }
     }
+}
+
+/// Minimal probe: a provisioned workspace `config.yaml` is schema-tagged; a bare or
+/// legacy flat config is not, so it fails to deserialize here.
+#[derive(Deserialize)]
+struct SchemaProbe {
+    #[allow(dead_code)]
+    schema: u64,
+}
+
+/// A `.startos` dir counts as a provisioned workspace once it holds a build-key or a
+/// schema-tagged config.
+fn startos_dir_is_marker(startos: &Path) -> bool {
+    if startos.join(BUILD_KEY_FILE).exists() {
+        return true;
+    }
+    std::fs::File::open(startos.join(CONFIG_FILE))
+        .ok()
+        .and_then(|f| IoFormat::Yaml.from_reader::<_, SchemaProbe>(f).ok())
+        .is_some()
+}
+
+/// Heuristic for a StartOS package repo: a `package.json` that depends on the
+/// packaging SDK, or the scaffolded `startos/` source layout.
+fn is_package_repo(dir: &Path) -> bool {
+    if let Ok(pkg) = std::fs::read_to_string(dir.join("package.json")) {
+        if pkg.contains("@start9labs/start-sdk") {
+            return true;
+        }
+    }
+    let startos = dir.join("startos");
+    startos.join("manifest").is_dir() || startos.join("index.ts").is_file()
+}
+
+/// Walk up from `start` (inclusive) for the nearest enclosing package repo, so a
+/// workspace is never initialized inside one. Stops at a workspace marker: an enclosing
+/// workspace is fine (nesting is allowed) and bounds the walk.
+fn find_enclosing_package_repo(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.to_path_buf();
+    loop {
+        if is_package_repo(&dir) {
+            return Some(dir);
+        }
+        let startos = dir.join(STARTOS_DIR);
+        if std::fs::metadata(&startos)
+            .map(|m| m.is_dir())
+            .unwrap_or(false)
+            && startos_dir_is_marker(&startos)
+        {
+            return None;
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
+
+/// The error to surface when an s9pk build/sign needs a workspace signing key but none
+/// exists above the cwd. We want packagers to run `init-workspace` (it also brings the
+/// guide + AGENTS.md/CLAUDE.md), so this points the way rather than falling back to any
+/// key. If the cwd is inside a package repo, it names the parent — where the workspace
+/// belongs — so an existing package repo is one `init-workspace` away from building.
+pub(crate) fn no_workspace_error() -> Error {
+    no_workspace_error_at(std::env::current_dir().ok().as_deref())
+}
+
+fn no_workspace_error_at(cwd: Option<&Path>) -> Error {
+    let msg = match cwd.and_then(find_enclosing_package_repo) {
+        Some(repo) => {
+            let parent = repo.parent().unwrap_or(repo.as_path());
+            t!(
+                "s9pk.init.no-workspace-in-package-repo",
+                repo = repo.display().to_string(),
+                parent = parent.display().to_string(),
+                docs = DOCS_URL
+            )
+            .to_string()
+        }
+        None => t!("s9pk.init.no-workspace", docs = DOCS_URL).to_string(),
+    };
+    Error::new(eyre!("{msg}"), ErrorKind::Uninitialized)
 }
 
 /// Normalize a human display name to a candidate package ID: lowercase ASCII
@@ -378,4 +487,138 @@ async fn write_if_absent(path: &Path, contents: &str) -> Result<(), Error> {
             .with_ctx(|_| (ErrorKind::Filesystem, path.display().to_string()))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    /// A fresh, empty temp dir unique to each call (no external crate needed).
+    fn tmp() -> PathBuf {
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "s9pk-init-test-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn scaffolded_config_parses_as_workspace() {
+        // the config init-workspace writes must load as a full WorkspaceConfig (typed
+        // host/registry URL maps), which is what the runtime actually reads — not
+        // merely as schema-tagged YAML.
+        assert!(
+            IoFormat::Yaml
+                .from_reader::<_, crate::context::config::WorkspaceConfig>(
+                    WORKSPACE_CONFIG_CONTENTS.as_bytes()
+                )
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn marker_requires_build_key_or_schema_config() {
+        // empty .startos — not a marker
+        let d = tmp();
+        let startos = d.join(STARTOS_DIR);
+        std::fs::create_dir_all(&startos).unwrap();
+        assert!(!startos_dir_is_marker(&startos));
+
+        // legacy flat config (no schema) — not a marker
+        std::fs::write(startos.join(CONFIG_FILE), "host: https://x\n").unwrap();
+        assert!(!startos_dir_is_marker(&startos));
+
+        // schema config — marker
+        std::fs::write(startos.join(CONFIG_FILE), WORKSPACE_CONFIG_CONTENTS).unwrap();
+        assert!(startos_dir_is_marker(&startos));
+
+        // build-key alone — marker (even with a flat config)
+        let d2 = tmp();
+        let s2 = d2.join(STARTOS_DIR);
+        std::fs::create_dir_all(&s2).unwrap();
+        std::fs::write(s2.join(CONFIG_FILE), "host: https://x\n").unwrap();
+        std::fs::write(s2.join(BUILD_KEY_FILE), "key").unwrap();
+        assert!(startos_dir_is_marker(&s2));
+    }
+
+    #[test]
+    fn detects_package_repo() {
+        let d = tmp();
+        assert!(!is_package_repo(&d));
+
+        std::fs::write(
+            d.join("package.json"),
+            r#"{ "dependencies": { "@start9labs/start-sdk": "2.0.1" } }"#,
+        )
+        .unwrap();
+        assert!(is_package_repo(&d));
+
+        let d2 = tmp();
+        std::fs::create_dir_all(d2.join("startos").join("manifest")).unwrap();
+        assert!(is_package_repo(&d2));
+
+        let d3 = tmp();
+        std::fs::create_dir_all(d3.join("startos")).unwrap();
+        std::fs::write(d3.join("startos").join("index.ts"), "export {}").unwrap();
+        assert!(is_package_repo(&d3));
+    }
+
+    #[test]
+    fn enclosing_package_repo_walks_up_and_stops_at_workspace() {
+        // a package repo with a nested subdir
+        let repo = tmp();
+        std::fs::write(
+            repo.join("package.json"),
+            r#"{ "dependencies": { "@start9labs/start-sdk": "2.0.1" } }"#,
+        )
+        .unwrap();
+        let nested = repo.join("a").join("b");
+        std::fs::create_dir_all(&nested).unwrap();
+        assert_eq!(
+            find_enclosing_package_repo(&nested).and_then(|p| p.canonicalize().ok()),
+            repo.canonicalize().ok()
+        );
+
+        // a workspace marker between the dir and any package repo halts the walk
+        let ws = tmp();
+        std::fs::create_dir_all(ws.join(STARTOS_DIR)).unwrap();
+        std::fs::write(
+            ws.join(STARTOS_DIR).join(CONFIG_FILE),
+            WORKSPACE_CONFIG_CONTENTS,
+        )
+        .unwrap();
+        let inside = ws.join("pkgs");
+        std::fs::create_dir_all(&inside).unwrap();
+        assert_eq!(find_enclosing_package_repo(&inside), None);
+    }
+
+    #[test]
+    fn no_workspace_error_points_at_package_repo_parent() {
+        let repo = tmp();
+        std::fs::write(
+            repo.join("package.json"),
+            r#"{ "dependencies": { "@start9labs/start-sdk": "2.0.1" } }"#,
+        )
+        .unwrap();
+        let sub = repo.join("startos");
+        std::fs::create_dir_all(&sub).unwrap();
+
+        // inside a package repo → the error names the parent (the workspace location)
+        let msg = format!("{}", no_workspace_error_at(Some(&sub)));
+        assert!(
+            msg.contains(&repo.parent().unwrap().display().to_string()),
+            "{msg}"
+        );
+        assert!(msg.contains("init-workspace"), "{msg}");
+
+        // not in a package repo → generic message, still directs to init-workspace
+        let msg = format!("{}", no_workspace_error_at(Some(&tmp())));
+        assert!(msg.contains("init-workspace"), "{msg}");
+    }
 }

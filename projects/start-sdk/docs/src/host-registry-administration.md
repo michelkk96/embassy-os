@@ -2,7 +2,7 @@
 
 Day-to-day registry administration happens through `start-cli registry` from an admin's workstation. This page walks through the common tasks; for full command syntax see the [start-cli registry reference](/start-os/cli-reference.html#registry).
 
-All commands below assume your `start-cli` is pointed at your registry — either via `--registry <url>` on each invocation or via `registry-url` in `~/.startos/config.yaml`. See [Setup](host-registry-setup.md) if you haven't configured that yet.
+All commands below assume your `start-cli` is pointed at your registry — either via `--registry <url>` on each invocation or via a named `registry` profile in your workspace `.startos/config.yaml` (used with `-r <name>`). See [Setup](host-registry-setup.md) if you haven't configured that yet.
 
 ## Signers
 

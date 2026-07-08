@@ -12,28 +12,54 @@ You must have a computer running StartOS to test your packages. Follow the [inst
 
 Follow the [official Docker installation guide](https://docs.docker.com/engine/install/) for your platform.
 
-> [!IMPORTANT]
-> Docker must be **running** when you build a package, and your user must be able to use it.
-> - **macOS / Windows:** start Docker Desktop; it runs the daemon for you.
-> - **Linux:** the daemon runs as a service (`sudo systemctl start docker`). By default only root can talk to it, so add your user to the `docker` group once: `sudo usermod -aG docker $USER`, then **log out and back in**. (Otherwise every build fails with `permission denied ... /var/run/docker.sock`.)
->
+Docker must be **running** when you build a package, and your user must be able to use it:
+
+{{#tabs global="platform"}}
+
+{{#tab name="Linux (Debian-based)"}}
+
+The daemon runs as a service — start it with `sudo systemctl start docker`. By default only root can talk to it, so add your user to the `docker` group once (then **log out and back in**), otherwise every build fails with `permission denied ... /var/run/docker.sock`:
+
+```sh
+sudo usermod -aG docker $USER
+```
+
+{{#endtab}}
+
+{{#tab name="macOS"}}
+
+Start Docker Desktop; it runs the daemon for you. (Docker Desktop covers Windows too.)
+
+{{#endtab}}
+
+{{#endtabs}}
+
+> [!TIP]
 > Confirm it works with `docker run --rm hello-world` before continuing.
 
 ## Make
 
 [Make](https://www.gnu.org/software/make/) is a build automation tool used to execute build scripts defined in Makefiles and coordinate the packaging workflow (building and installing s9pk binaries to StartOS).
 
-**Linux (Debian-based)**:
+{{#tabs global="platform"}}
+
+{{#tab name="Linux (Debian-based)"}}
 
 ```sh
 sudo apt install build-essential
 ```
 
-**macOS**:
+{{#endtab}}
+
+{{#tab name="macOS"}}
 
 ```sh
 xcode-select --install
 ```
+
+{{#endtab}}
+
+{{#endtabs}}
 
 ## Node.js v22 (Latest LTS)
 
@@ -58,29 +84,49 @@ Alternatively, download Node.js v22 (or newer) directly from [nodejs.org](https:
 
 SquashFS is used to create compressed filesystem images that package your compiled service code.
 
-**Linux (Debian-based)**:
+{{#tabs global="platform"}}
+
+{{#tab name="Linux (Debian-based)"}}
 
 ```sh
 sudo apt install squashfs-tools squashfs-tools-ng
 ```
 
-**macOS** (requires [Homebrew](https://brew.sh/)):
+{{#endtab}}
+
+{{#tab name="macOS"}}
+
+Requires [Homebrew](https://brew.sh/):
 
 ```sh
 brew install squashfs
 ```
 
+{{#endtab}}
+
+{{#endtabs}}
+
 ## cURL
 
 [cURL](https://curl.se/) downloads the `start-cli` installer script in the next step. It is pre-installed on macOS and most Linux systems; install it if missing.
 
-**Linux (Debian-based)**:
+{{#tabs global="platform"}}
+
+{{#tab name="Linux (Debian-based)"}}
 
 ```sh
 sudo apt install curl
 ```
 
-**macOS**: already included.
+{{#endtab}}
+
+{{#tab name="macOS"}}
+
+Already included.
+
+{{#endtab}}
+
+{{#endtabs}}
 
 ## Start CLI
 
@@ -96,29 +142,47 @@ curl -fsSL https://start9.com/start-cli/install.sh | sh
 
 [Git](https://git-scm.com/) is used by `start-cli s9pk init-workspace` to fetch the packaging guide, and to keep it up to date afterward.
 
-**Linux (Debian-based)**:
+{{#tabs global="platform"}}
+
+{{#tab name="Linux (Debian-based)"}}
 
 ```sh
 sudo apt install git
 ```
 
-**macOS**: installed with the Command Line Tools (`xcode-select --install`, above), or `brew install git`.
+{{#endtab}}
+
+{{#tab name="macOS"}}
+
+Installed with the Command Line Tools (`xcode-select --install`, above), or `brew install git`.
+
+{{#endtab}}
+
+{{#endtabs}}
 
 ## jq
 
 The build uses [jq](https://jqlang.github.io/jq/) to read your package's manifest and print the build summary, so it must be installed.
 
-**Linux (Debian-based)**:
+{{#tabs global="platform"}}
+
+{{#tab name="Linux (Debian-based)"}}
 
 ```sh
 sudo apt install jq
 ```
 
-**macOS**:
+{{#endtab}}
+
+{{#tab name="macOS"}}
 
 ```sh
 brew install jq
 ```
+
+{{#endtab}}
+
+{{#endtabs}}
 
 ## Verification
 

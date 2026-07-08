@@ -108,11 +108,11 @@ Linux instructions here.
 
 `global="..."` makes a tab group's selection sticky across pages (via `localStorage`, mirrored to a `?<global>=<tab>` URL param). Every group sharing a `global` name **must use identical tab labels** — a stored label not present in a group is silently ignored, so mismatched sets fail to sync. So:
 
-- OS pickers use `global="platform"` with exactly these labels: `Mac`, `Windows`, `Linux`, `iOS`, `Android / Graphene`. Put distro/version specifics in `####` sub-sections within a tab, not in extra tabs.
+- OS pickers use `global="platform"` with exactly these labels: `Mac`, `Windows`, `Linux`, `iOS`, `Android / Graphene`. Keep this set identical across pages and **don't** promote distros to top-level `platform` tabs — that both breaks the sync and desyncs the picker with other pages. Put distro/version specifics _inside_ the `Linux` tab, either as `####` sub-sections or as a nested tab group with its own `global` (e.g. `global="distro"`), and hoist any shared setup above them so it isn't repeated per distro (see the Root CA guide).
 - Anything that isn't a general OS picker (backup targets, cloud providers, …) gets its own `global` — don't overload `platform`.
 - Omit `global` for a one-off, page-local group.
 
-Avoid nesting tabs — use separate sections with single-level tabs instead.
+Keep the outer picker flat: the only sanctioned nesting is a single distro/version sub-group (with its own `global`) inside one platform tab. Don't nest `platform` inside `platform`, or nest more than one level deep.
 
 ### Cross-Book Links
 

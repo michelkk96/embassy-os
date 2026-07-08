@@ -111,58 +111,60 @@ This guide applies to Android 13+, GrapheneOS, CalyxOS, and LineageOS.
 {{#endtab }}
 {{#tab name="Linux" }}
 
-#### Debian / Ubuntu
+First, open a terminal, move into the directory where you downloaded your Root CA (usually `~/Downloads`), and set a variable to the name of the certificate so the commands below can reference it:
+
+    cd ~/Downloads
+    server_name=your-server-name
+
+Replace `your-server-name` with the name of the `.crt` file you downloaded, **without** the `.crt` extension. This is _not_ your server's `.local` address — do **not** include `.local`. For example, a server reached at `sleepy-panda.local` downloads its Root CA as `sleepy-panda.crt`, so you would use `server_name=sleepy-panda`.
+
+Then add the certificate to your system's trust store using the instructions for your distribution:
+
+{{#tabs global="distro" }}
+{{#tab name="Debian / Ubuntu" }}
 
 This should work for most Debian-based systems, such as Debian, Ubuntu, Mint, PopOS etc.
 
-1.  Open a terminal and run:
+1.  Install the required packages:
 
         sudo apt update
         sudo apt install -y ca-certificates p11-kit
 
-1.  Move into the directory where you downloaded your Root CA (usually `~/Downloads`), for example:
+1.  Add your Root CA to your OS trust store:
 
-        cd ~/Downloads
-
-1.  Add your Root CA to your OS trust store. Be certain to replace `your-server-name` with your server's unique hostname on the first line:
-
-        hostname=your-server-name
         sudo mkdir -p /usr/share/ca-certificates/start9
-        sudo cp "${hostname}.crt" /usr/share/ca-certificates/start9/
-        sudo bash -c "echo 'start9/${hostname}.crt' >> /etc/ca-certificates.conf"
+        sudo cp "${server_name}.crt" /usr/share/ca-certificates/start9/
+        sudo bash -c "echo 'start9/${server_name}.crt' >> /etc/ca-certificates.conf"
         sudo update-ca-certificates
 
     If successful, you will see the output `1 added`.
 
-1.  If using Firefox, Thunderbird, or Librewolf, complete this [final step](#3-mozilla-apps-firefox-thunderbird-librewolf).
+{{#endtab }}
+{{#tab name="Arch / Garuda" }}
 
-#### Arch / Garuda
-
-1.  Move into the directory where you downloaded your Root CA (usually `~/Downloads`), for example:
-
-        cd ~/Downloads
-
-1.  Add your Root CA to your OS trust store. Be certain to replace `your-server-name` with your server's unique hostname in the second command:
+1.  Add your Root CA to your OS trust store:
 
         sudo pacman -S ca-certificates
-        sudo cp "your-server-name.crt" /etc/ca-certificates/trust-source/anchors/
+        sudo cp "${server_name}.crt" /etc/ca-certificates/trust-source/anchors/
         sudo update-ca-trust
 
     Despite no output from the last command, you can test your app right away.
 
-#### CentOS / Fedora
+{{#endtab }}
+{{#tab name="CentOS / Fedora" }}
 
-1.  Move into the directory where you downloaded your Root CA (usually `~/Downloads`), for example:
-
-        cd ~/Downloads
-
-1.  Add your Root CA to your OS trust store. Be certain to replace `your-server-name` with your server's unique hostname in the second command:
+1.  Add your Root CA to your OS trust store:
 
         sudo dnf install ca-certificates
-        sudo cp "your-server-name.crt" /etc/pki/ca-trust/source/anchors/
+        sudo cp "${server_name}.crt" /etc/pki/ca-trust/source/anchors/
         sudo update-ca-trust
 
-    There will be no output if the update-ca-trust command completes successfully.
+    There will be no output if the `update-ca-trust` command completes successfully.
+
+{{#endtab }}
+{{#endtabs }}
+
+If using Firefox, Thunderbird, or Librewolf, complete this [final step](#3-mozilla-apps-firefox-thunderbird-librewolf).
 
 {{#endtab }}
 {{#endtabs }}

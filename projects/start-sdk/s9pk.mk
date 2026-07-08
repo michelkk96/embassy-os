@@ -63,12 +63,12 @@ x86 x86_64: arch/x86_64
 arm arm64 aarch64: arch/aarch64
 riscv riscv64: arch/riscv64
 
-$(BASE_NAME).s9pk: $(INGREDIENTS) $(GIT_DEPS)
+$(BASE_NAME).s9pk: $(INGREDIENTS) $(GIT_DEPS) | check-deps
 	@$(MAKE) --no-print-directory ingredients
 	@echo "   Packing '$@'..."
 	start-cli s9pk pack -o $@
 
-$(BASE_NAME)_%.s9pk: $(INGREDIENTS) $(GIT_DEPS)
+$(BASE_NAME)_%.s9pk: $(INGREDIENTS) $(GIT_DEPS) | check-deps
 	@$(MAKE) --no-print-directory ingredients
 	@echo "   Packing '$@'..."
 	start-cli s9pk pack --arch=$* -o $@
@@ -101,9 +101,11 @@ publish: | all
 
 check-deps:
 	@command -v start-cli >/dev/null || \
-		(echo "Error: start-cli not found. Please see https://docs.start9.com/latest/developer-guide/sdk/installing-the-sdk" && exit 1)
+		(echo "Error: start-cli not found. See https://docs.start9.com/packaging/environment-setup.html" && exit 1)
 	@command -v npm >/dev/null || \
-		(echo "Error: npm not found. Please install Node.js and npm." && exit 1)
+		(echo "Error: npm not found. Install Node.js and npm. See https://docs.start9.com/packaging/environment-setup.html" && exit 1)
+	@command -v git >/dev/null || \
+		(echo "Error: git not found. Install git. See https://docs.start9.com/packaging/environment-setup.html" && exit 1)
 
 check-init:
 	@if [ ! -f ~/.startos/developer.key.pem ]; then \

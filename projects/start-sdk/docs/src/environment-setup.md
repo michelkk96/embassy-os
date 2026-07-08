@@ -104,22 +104,6 @@ sudo apt install git
 
 **macOS**: installed with the Command Line Tools (`xcode-select --install`, above), or `brew install git`.
 
-## jq
-
-[jq](https://jqlang.github.io/jq/) is used by the build to read your package's manifest when it prints the build summary. `make` fails without it.
-
-**Linux (Debian-based)**:
-
-```sh
-sudo apt install jq
-```
-
-**macOS**:
-
-```sh
-brew install jq
-```
-
 ## Verification
 
 After installation, verify all tools are available:
@@ -133,7 +117,6 @@ npm --version
 mksquashfs -version
 git --version
 curl --version
-jq --version
 start-cli --version
 ```
 

@@ -332,10 +332,24 @@ jobs:
           REGISTRY="${{ inputs.RELEASE_REGISTRY }}"
           TAG="${{ inputs.TAG || github.ref_name }}"
           GH_URL="${{ github.server_url }}/${{ github.repository }}/releases/download/${TAG}"
+          # add-mirror downloads the whole s9pk to verify every file hash, so on a large
+          # package this is a multi-hundred-MB stream that GitHub's CDN sometimes drops.
+          ATTEMPTS=3
           for s9pk in *.s9pk; do
             if [ -f .gh_release_files ] && grep -qxF "$s9pk" .gh_release_files; then
               echo "Adding GitHub mirror for ${s9pk}..."
-              start-cli --registry "$REGISTRY" registry package add-mirror "$s9pk" "${GH_URL}/${s9pk}"
+              for attempt in $(seq 1 "$ATTEMPTS"); do
+                if start-cli --registry "$REGISTRY" registry package add-mirror "$s9pk" "${GH_URL}/${s9pk}"; then
+                  break
+                fi
+                if [ "$attempt" -eq "$ATTEMPTS" ]; then
+                  echo "::error::add-mirror failed for ${s9pk} after ${ATTEMPTS} attempts"
+                  exit 1
+                fi
+                backoff=$((attempt * 30))
+                echo "::warning::add-mirror failed for ${s9pk} (attempt ${attempt}/${ATTEMPTS}); retrying in ${backoff}s"
+                sleep "$backoff"
+              done
             fi
           done
         shell: bash

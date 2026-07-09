@@ -30,6 +30,10 @@ impl HttpSource {
             .with_kind(ErrorKind::Network)?
             .error_for_status()
             .with_kind(ErrorKind::Network)?;
+        // Range requests are disabled unconditionally: GitHub's release-asset CDN
+        // performs badly under them, and walking an archive's TOC issues many small
+        // reads. `HttpReader::Rangeless` streams the body once and skips forward
+        // instead, pooling open readers by position.
         let range_support = head
             .headers()
             .get(ACCEPT_RANGES)

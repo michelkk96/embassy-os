@@ -430,6 +430,10 @@ export type PluginAddressGroup = {
 export type MappedServiceInterface = T.ServiceInterface & {
   gatewayGroups: GatewayAddressGroup[]
   pluginGroups: PluginAddressGroup[]
-  addSsl: boolean
+  // True when any binding on this interface's host adds SSL, not just this
+  // interface's own binding. A public domain is stored on the host and applies
+  // to every binding on it, so the add-domain form must offer a Certificate
+  // Authority whenever any of those bindings is SSL.
+  anyAddSsl: boolean
   sharedHostNames: string[]
 }

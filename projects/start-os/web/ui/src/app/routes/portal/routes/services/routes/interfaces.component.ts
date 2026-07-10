@@ -137,7 +137,6 @@ export default class ServiceInterfacesRoute {
     return all.sort(tuiDefaultSort).map(iFace => {
       const hostId = iFace.addressInfo.hostId || ''
       const host = hosts[hostId]
-      const binding = host?.bindings[iFace.addressInfo.internalPort]
       const sharedHostNames = all
         .filter(si => si.addressInfo.hostId === hostId && si.id !== iFace.id)
         .map(si => si.name)
@@ -150,7 +149,11 @@ export default class ServiceInterfacesRoute {
         pluginGroups: host
           ? this.interfaceService.getPluginGroups(iFace, host, allPackageData)
           : [],
-        addSsl: !!binding?.options.addSsl,
+        // A public domain applies to the whole host, so the CA selector must
+        // appear whenever any binding on it is SSL — not only this interface's.
+        anyAddSsl: Object.values(host?.bindings ?? {}).some(
+          b => !!b.options.addSsl,
+        ),
         sharedHostNames,
       }
     })
@@ -200,7 +203,9 @@ export default class ServiceInterfacesRoute {
                 range.numberOfPorts,
               ),
               pluginGroups: [],
-              addSsl: false,
+              anyAddSsl: Object.values(host.bindings).some(
+                b => !!b.options.addSsl,
+              ),
               sharedHostNames: [],
               portRange:
                 range.numberOfPorts > 1

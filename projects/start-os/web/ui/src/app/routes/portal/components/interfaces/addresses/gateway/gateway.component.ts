@@ -12,6 +12,7 @@ import { firstValueFrom } from 'rxjs'
 import {
   FormComponent,
   FormContext,
+  FormNote,
 } from 'src/app/routes/portal/components/form.component'
 import { PlaceholderComponent } from 'src/app/routes/portal/components/placeholder.component'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
@@ -202,7 +203,7 @@ export class GatewayComponent {
         default: null,
         patterns: [utils.Patterns.domain],
       }).map(f => f.toLocaleLowerCase()),
-      ...(iface.addSsl
+      ...(iface.anyAddSsl
         ? {
             authority: ISB.Value.select({
               name: this.i18n.transform('Certificate Authority'),
@@ -257,11 +258,16 @@ export class GatewayComponent {
     }, 'Saving')
   }
 
-  private getSharedHostNote(): string {
+  private getSharedHostNote(): FormNote | undefined {
     const names = this.value()?.sharedHostNames
-    if (!names?.length) return ''
+    if (!names?.length) return undefined
 
-    return `${this.i18n.transform('This domain will also apply to')} ${names.join(', ')}`
+    return {
+      text: this.i18n.transform(
+        'Domain will also apply to the following interfaces:',
+      )!,
+      items: names,
+    }
   }
 
   private async savePublicDomain(

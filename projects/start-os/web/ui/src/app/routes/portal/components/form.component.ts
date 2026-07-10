@@ -6,7 +6,7 @@ import {
   tuiMarkControlAsTouchedAndValidate,
   TuiValueChanges,
 } from '@taiga-ui/cdk'
-import { TuiButton, TuiDialogContext } from '@taiga-ui/core'
+import { TuiButton, TuiDialogContext, TuiNotification } from '@taiga-ui/core'
 import { TuiConfirmService } from '@taiga-ui/kit'
 import { injectContext } from '@taiga-ui/polymorpheus'
 import { Operation } from 'fast-json-patch'
@@ -20,12 +20,17 @@ export interface ActionButton<T> {
   link?: string
 }
 
+export interface FormNote {
+  text: string
+  items?: string[]
+}
+
 export interface FormContext<T> {
   spec: IST.InputSpec
   buttons: ActionButton<T>[]
   value?: T
   operations?: Operation[]
-  note?: string
+  note?: FormNote
 }
 
 @Component({
@@ -39,7 +44,16 @@ export interface FormContext<T> {
     >
       <form-group [spec]="spec" />
       @if (note) {
-        <p class="note">{{ note }}</p>
+        <div tuiNotification appearance="warning" class="note">
+          {{ note.text }}
+          @if (note.items?.length) {
+            <ul>
+              @for (item of note.items; track $index) {
+                <li>{{ item }}</li>
+              }
+            </ul>
+          }
+        </div>
       }
       <footer>
         <ng-content />
@@ -69,9 +83,13 @@ export interface FormContext<T> {
   `,
   styles: `
     .note {
-      color: var(--tui-text-secondary);
-      font: var(--tui-typography-body-s);
       margin-top: 1rem;
+    }
+
+    .note ul {
+      margin: 0.25rem 0 0;
+      padding-inline-start: 1.5rem;
+      list-style: disc;
     }
 
     footer {
@@ -92,6 +110,7 @@ export interface FormContext<T> {
     RouterModule,
     TuiValueChanges,
     TuiButton,
+    TuiNotification,
     FormGroupComponent,
   ],
   providers: [InvalidService],
@@ -108,7 +127,7 @@ export class FormComponent<T extends Record<string, any>> implements OnInit {
   @Input() buttons = this.context?.data.buttons || []
   @Input() operations = this.context?.data.operations || []
   @Input() value?: T = this.context?.data.value
-  @Input() note = this.context?.data.note || ''
+  @Input() note = this.context?.data.note
 
   form = new FormGroup({})
 

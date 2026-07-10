@@ -683,7 +683,7 @@ export default {
   774: 'Status portu nie może być określony, gdy usługa nie jest uruchomiona',
   775: 'Ten adres nie będzie działać z Twojej sieci lokalnej z powodu ograniczenia hairpinning routera',
   776: 'Nie znaleziono akcji',
-  777: 'Ta domena będzie również dotyczyć',
+  777: 'Domena będzie również dotyczyć następujących interfejsów:',
   778: 'Wtyczka',
   779: 'Publiczny',
   780: 'Prywatny',

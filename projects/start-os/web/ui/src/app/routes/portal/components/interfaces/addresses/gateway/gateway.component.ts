@@ -202,7 +202,7 @@ export class GatewayComponent {
         default: null,
         patterns: [utils.Patterns.domain],
       }).map(f => f.toLocaleLowerCase()),
-      ...(iface.addSsl
+      ...(iface.anyAddSsl
         ? {
             authority: ISB.Value.select({
               name: this.i18n.transform('Certificate Authority'),

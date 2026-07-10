@@ -171,7 +171,7 @@ import UpdatesComponent from './updates.component'
     }
 
     tui-progress-circle {
-      display: inline-block;
+      display: inline-flex;
       vertical-align: middle;
     }
 

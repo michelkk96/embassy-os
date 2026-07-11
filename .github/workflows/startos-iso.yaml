@@ -352,7 +352,11 @@ jobs:
   deploy:
     name: Deploy
     needs: [image]
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy != 'NONE'
+    # Explicit status check so the skipped PR-only `changes` job can't poison
+    # the implicit success() through the needs chain (actions/runner#2205).
+    if: >-
+      !cancelled() && needs.image.result == 'success'
+      && github.event_name == 'workflow_dispatch' && github.event.inputs.deploy != 'NONE'
     runs-on: ubuntu-latest
     env:
       REGISTRY: >-

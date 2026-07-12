@@ -110,6 +110,11 @@ file tracks notable changes since the move to the monorepo.
 - **Web platform upgraded to Angular 22, TypeScript 6, and Taiga UI 5.11**, with a unified, version-pinned Prettier config enforced in CI.
 - **SDK 2.0.0** ships alongside this release (see [`../start-sdk/CHANGELOG.md`](../start-sdk/CHANGELOG.md)); StartOS 0.4.0-beta.10 is its minimum host version.
 - Backup progress is surfaced as a dialog with a percentage rather than a notification.
+- **Dialogs and alerts no longer steal focus when they open.** `tuiAutoFocus` is
+  gone from every surface that used it — the shared prompt dialog, the refresh
+  alert, the OS-update dialog, the marketplace package drawer, and the setup
+  wizard's password page. On mobile, autofocusing raised the keyboard the
+  instant the sheet appeared, on top of the dialog's own buttons.
 
 ### Fixed
 
@@ -160,6 +165,27 @@ file tracks notable changes since the move to the monorepo.
   through "installing/finalizing". Overall progress now completes only once the
   package is fully installed, so the circle keeps tracking live finalization
   progress until the update finishes.
+- **The UI no longer freezes after you enter your master password.** Creating a
+  backup, restoring a backup, and changing your password each verified the
+  password in the browser, via a _synchronous_ WASM Argon2id call on the main
+  thread. At the parameters StartOS hashes with (64 MiB, t=3) that blocks the
+  tab for seconds on a desktop and 20–25 seconds on a phone, where it reads as
+  a hung browser; creating a backup onto a target whose existing backup used a
+  different password ran it three times over. All three flows now let the server
+  verify — which it already did on every one of these calls, natively, in
+  milliseconds — and the argon2 WASM module is gone from the UI and
+  setup-wizard entirely. A target whose existing backup was encrypted under a
+  different password now comes back as the new `BackupPasswordMismatch` error
+  kind, so the UI still knows to prompt for that original password rather than
+  reporting the master password as wrong.
+- **Backup password prompts no longer autocapitalize, and no longer look like a
+  login to your password manager.** The shared prompt dialog sets
+  `autocapitalize="off"`, so a mobile keyboard stops capitalizing the first
+  character of a password you type into it, and it now submits through its own
+  buttons (or Enter) instead of a `<form>` submit — a browser password manager
+  saw that submit and offered to save your backup encryption password as a
+  saved credential. The setup wizard's **Unlock Backup** prompt gets the same
+  `autocapitalize` treatment.
 
 ### Removed
 

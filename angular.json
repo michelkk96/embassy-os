@@ -33,11 +33,6 @@
                 "output": "assets"
               },
               {
-                "glob": "**/*.wasm",
-                "input": "node_modules/@start9labs/argon2",
-                "output": "assets"
-              },
-              {
                 "glob": "**/*",
                 "input": "node_modules/monaco-editor",
                 "output": "assets/monaco-editor/"
@@ -147,11 +142,6 @@
               {
                 "glob": "**/*",
                 "input": "shared-libs/ts-modules/shared/assets",
-                "output": "assets"
-              },
-              {
-                "glob": "**/*.wasm",
-                "input": "node_modules/@start9labs/argon2",
                 "output": "assets"
               },
               {

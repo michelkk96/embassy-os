@@ -23,6 +23,7 @@ import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
       <input
         tuiInput
         type="password"
+        autocapitalize="off"
         [(ngModel)]="password"
         (keyup.enter)="unlock()"
       />

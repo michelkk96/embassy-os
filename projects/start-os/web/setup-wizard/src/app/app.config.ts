@@ -5,8 +5,6 @@ import {
 } from '@angular/common/http'
 import {
   ApplicationConfig,
-  inject,
-  provideAppInitializer,
   provideZoneChangeDetection,
   signal,
 } from '@angular/core'
@@ -16,8 +14,6 @@ import {
   withDisabledInitialNavigation,
   withPreloading,
 } from '@angular/router'
-import { WA_LOCATION } from '@ng-web-apis/common'
-import initArgon from '@start9labs/argon2'
 import {
   I18N_PROVIDERS,
   provideSetupLogsService,
@@ -72,12 +68,6 @@ export const APP_CONFIG: ApplicationConfig = {
       useValue: version,
     },
     provideHttpClient(withInterceptorsFromDi(), withFetch()),
-    provideAppInitializer(() => {
-      const origin = inject(WA_LOCATION).origin
-      const module_or_path = new URL('/assets/argon2_bg.wasm', origin)
-
-      initArgon({ module_or_path })
-    }),
     tuiTextfieldOptionsProvider({ cleaner: signal(false) }),
   ],
 }

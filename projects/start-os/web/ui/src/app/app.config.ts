@@ -23,8 +23,7 @@ import {
   withRouterConfig,
 } from '@angular/router'
 import { provideServiceWorker } from '@angular/service-worker'
-import { WA_LOCATION, WA_WINDOW } from '@ng-web-apis/common'
-import initArgon from '@start9labs/argon2'
+import { WA_WINDOW } from '@ng-web-apis/common'
 import {
   AbstractMarketplaceService,
   FilterPackagesPipe,
@@ -137,10 +136,7 @@ export const APP_CONFIG: ApplicationConfig = {
     tuiProvide(MARKETPLACE_REGISTRY_ALERTS, MarketplaceAlertsService),
     provideAppInitializer(() => {
       const i18n = inject(i18nService)
-      const origin = inject(WA_LOCATION).origin
-      const module_or_path = new URL('/assets/argon2_bg.wasm', origin)
 
-      initArgon({ module_or_path })
       inject(StorageService).migrate036()
       inject(AuthService).init()
       inject(ClientStorageService).init()

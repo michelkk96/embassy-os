@@ -1,6 +1,5 @@
 import { Component } from '@angular/core'
 import { FormsModule } from '@angular/forms'
-import { TuiAutoFocus } from '@taiga-ui/cdk'
 import { TuiButton, TuiDialogContext, TuiIcon, TuiInput } from '@taiga-ui/core'
 import { TuiPassword } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
@@ -13,46 +12,44 @@ import { i18nKey } from '../i18n/i18n.providers'
     @if (options.warning) {
       <p class="warning">{{ options.warning }}</p>
     }
-    <form (ngSubmit)="submit(value.trim())">
-      <tui-textfield>
-        @if (options.label) {
-          <label tuiLabel>
-            {{ options.label }}
-            @if (options.required !== false && options.label) {
-              <span>*</span>
-            }
-          </label>
-        }
-        <input
-          tuiInput
-          tuiAutoFocus
-          [ngModelOptions]="{ standalone: true }"
-          [(ngModel)]="value"
-          [placeholder]="options.placeholder || ''"
-          [type]="options.useMask ? 'password' : 'text'"
-          [autocomplete]="options.useMask ? 'off' : ''"
-        />
-        @if (options.useMask) {
-          <tui-icon tuiPassword />
-        }
-      </tui-textfield>
-      @if (error) {
-        <p class="error">{{ error }}</p>
+    <tui-textfield>
+      @if (options.label) {
+        <label tuiLabel>
+          {{ options.label }}
+          @if (options.required !== false && options.label) {
+            <span>*</span>
+          }
+        </label>
       }
-      <footer class="g-buttons">
-        <button
-          tuiButton
-          type="button"
-          appearance="secondary"
-          (click)="cancel()"
-        >
-          {{ 'Cancel' | i18n }}
-        </button>
-        <button tuiButton [disabled]="!value && options.required !== false">
-          {{ options.buttonText || ('Submit' | i18n) }}
-        </button>
-      </footer>
-    </form>
+      <input
+        tuiInput
+        autocapitalize="off"
+        [(ngModel)]="value"
+        [placeholder]="options.placeholder || ''"
+        [type]="options.useMask ? 'password' : 'text'"
+        [autocomplete]="options.useMask ? 'off' : ''"
+        (keyup.enter)="submit(value.trim())"
+      />
+      @if (options.useMask) {
+        <tui-icon tuiPassword />
+      }
+    </tui-textfield>
+    @if (error) {
+      <p class="error">{{ error }}</p>
+    }
+    <footer class="g-buttons">
+      <button tuiButton type="button" appearance="secondary" (click)="cancel()">
+        {{ 'Cancel' | i18n }}
+      </button>
+      <button
+        tuiButton
+        type="button"
+        [disabled]="!value && options.required !== false"
+        (click)="submit(value.trim())"
+      >
+        {{ options.buttonText || ('Submit' | i18n) }}
+      </button>
+    </footer>
   `,
   styles: `
     .warning {
@@ -63,15 +60,7 @@ import { i18nKey } from '../i18n/i18n.providers'
       color: var(--tui-status-negative);
     }
   `,
-  imports: [
-    FormsModule,
-    TuiButton,
-    TuiIcon,
-    TuiInput,
-    TuiPassword,
-    TuiAutoFocus,
-    i18nPipe,
-  ],
+  imports: [FormsModule, TuiButton, TuiIcon, TuiInput, TuiPassword, i18nPipe],
 })
 export class PromptModal {
   private readonly context =

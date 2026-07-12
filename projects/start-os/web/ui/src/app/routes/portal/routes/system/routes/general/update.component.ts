@@ -7,7 +7,6 @@ import {
   TaskService,
 } from '@start9labs/shared'
 import { Version } from '@start9labs/start-core'
-import { TuiAutoFocus } from '@taiga-ui/cdk'
 import { TuiButton, TuiDialogContext, TuiScrollbar } from '@taiga-ui/core'
 import { NgDompurifyPipe } from '@taiga-ui/dompurify'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
@@ -26,7 +25,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
         <div safeLinks [innerHTML]="v.notes | markdown | dompurify"></div>
       }
     </tui-scrollbar>
-    <button tuiButton tuiAutoFocus style="float: right;" (click)="update()">
+    <button tuiButton style="float: right;" (click)="update()">
       {{ 'Begin Update' | i18n }}
     </button>
   `,
@@ -43,7 +42,6 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
     MarkdownPipe,
     NgDompurifyPipe,
     SafeLinksDirective,
-    TuiAutoFocus,
     TuiButton,
     TuiScrollbar,
     i18nPipe,

@@ -7,7 +7,7 @@ import {
   Validators,
 } from '@angular/forms'
 import { ErrorService } from '@start9labs/shared'
-import { TuiAutoFocus, TuiValidator } from '@taiga-ui/cdk'
+import { TuiValidator } from '@taiga-ui/cdk'
 import {
   TuiButton,
   TuiDialogContext,
@@ -34,7 +34,6 @@ import { ApiService } from 'src/app/services/api/api.service'
         <label tuiLabel>{{ 'New password' | i18n }}</label>
         <input
           tuiInput
-          tuiAutoFocus
           type="password"
           autocomplete="new-password"
           formControlName="password"
@@ -78,7 +77,6 @@ import { ApiService } from 'src/app/services/api/api.service'
   ],
   imports: [
     ReactiveFormsModule,
-    TuiAutoFocus,
     TuiButton,
     TuiButtonLoading,
     TuiError,

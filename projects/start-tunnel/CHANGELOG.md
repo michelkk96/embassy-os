@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Dialogs no longer steal focus when they open.** The Add Device, Add Subnet,
+  and Change Password dialogs no longer autofocus their first field, which on
+  mobile raised the keyboard the instant the dialog appeared.
+
 ## [1.1.0]
 
 ### Added

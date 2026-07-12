@@ -362,7 +362,6 @@ export default {
   390: 'Nowe hasła nie są zgodne',
   391: 'Nowe hasło musi mieć co najmniej 12 znaków',
   392: 'Nowe hasło musi mieć mniej niż 65 znaków',
-  393: 'Bieżące hasło jest nieprawidłowe',
   394: 'Hasło zostało zmienione',
   395: 'Bieżące hasło',
   396: 'Nowe hasło',

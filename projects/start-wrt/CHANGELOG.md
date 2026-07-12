@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The inbound-rule dialog no longer steals focus when it opens**, which on
+  mobile raised the keyboard the instant the dialog appeared.
+
 ## [1.0.0]
 
 First stable release of StartWRT — Start9's OpenWrt-based router OS for home

@@ -7,7 +7,7 @@ import {
   Validators,
 } from '@angular/forms'
 import { RouterLink } from '@angular/router'
-import { TuiAutoFocus, tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
+import { tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
 import {
   TuiAppearance,
   TuiButton,
@@ -54,7 +54,6 @@ export interface ServerDialogResult {
         <label tuiLabel>{{ 'Label' | i18n }}</label>
         <input
           tuiInput
-          tuiAutoFocus
           [placeholder]="'What to call this VPN connection' | i18n"
           formControlName="label"
         />
@@ -149,7 +148,6 @@ export interface ServerDialogResult {
     TuiAppearance,
     TuiInputNumber,
     TuiNumberFormat,
-    TuiAutoFocus,
     i18nPipe,
   ],
 })

@@ -5,7 +5,6 @@ import { WA_WINDOW } from '@ng-web-apis/common'
 import { i18nPipe } from '@start9labs/shared'
 import { Version } from '@start9labs/start-core'
 import { TuiResponsiveDialog } from '@taiga-ui/addon-mobile'
-import { TuiAutoFocus } from '@taiga-ui/cdk'
 import { TuiButton } from '@taiga-ui/core'
 import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
@@ -33,7 +32,6 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
         </p>
         <button
           tuiButton
-          tuiAutoFocus
           appearance="secondary"
           style="float: right"
           [tuiAppearanceFocus]="false"
@@ -63,7 +61,6 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
         </ul>
         <button
           tuiButton
-          tuiAutoFocus
           appearance="secondary"
           style="float: right"
           [tuiAppearanceFocus]="false"
@@ -74,7 +71,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
       }
     </ng-template>
   `,
-  imports: [TuiResponsiveDialog, TuiButton, TuiAutoFocus, i18nPipe],
+  imports: [TuiResponsiveDialog, TuiButton, i18nPipe],
 })
 export class RefreshAlertComponent {
   private readonly win = inject(WA_WINDOW)

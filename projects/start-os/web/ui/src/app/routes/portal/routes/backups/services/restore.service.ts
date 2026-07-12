@@ -1,6 +1,5 @@
 import { inject, Injectable } from '@angular/core'
 import { Router } from '@angular/router'
-import { verify } from '@start9labs/argon2'
 import { ErrorService, StartOSDiskInfo } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiDialogOptions, TuiDialogService } from '@taiga-ui/core'
@@ -14,7 +13,6 @@ import {
   of,
   switchMap,
   take,
-  tap,
 } from 'rxjs'
 import {
   PROMPT,
@@ -47,10 +45,10 @@ export class BackupsRestoreService {
               data: { servers: Object.values(target.startOs) },
             })
             .pipe(
-              switchMap(({ id, passwordHash }) =>
+              switchMap(({ id }) =>
                 this.dialogs.open<string>(PROMPT, PROMPT_OPTIONS).pipe(
                   exhaustMap(password =>
-                    this.getRecoverData(target.id, id, password, passwordHash),
+                    this.getRecoverData(target.id, id, password),
                   ),
                   take(1),
                   switchMap(data =>
@@ -73,10 +71,8 @@ export class BackupsRestoreService {
     targetId: string,
     serverId: string,
     password: string,
-    hash: string | null,
   ): Observable<RecoverData> {
     return of(password).pipe(
-      tap(() => verify(hash || '', password)),
       switchMap(() => {
         const loader = this.loader.open('Decrypting drive').subscribe()
 

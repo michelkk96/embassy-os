@@ -9,7 +9,6 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { i18nPipe, LocalizePipe } from '@start9labs/shared'
-import { TuiAutoFocus } from '@taiga-ui/cdk'
 import { TuiButtonX, TuiCell, TuiPopup, TuiTitle } from '@taiga-ui/core'
 import { TuiAvatar, TuiDrawer } from '@taiga-ui/kit'
 import { TuiCardLarge, tuiCardOptionsProvider } from '@taiga-ui/layout'
@@ -40,12 +39,7 @@ import { MarketplacePreviewComponent } from './preview.component'
       (click.self)="toggle(false)"
     >
       <marketplace-preview [pkgId]="pkg().id" [controls]="controls()">
-        <button
-          tuiAutoFocus
-          tuiButtonX
-          [tuiAppearanceFocus]="false"
-          (click)="toggle(false)"
-        >
+        <button tuiButtonX [tuiAppearanceFocus]="false" (click)="toggle(false)">
           {{ 'Close' | i18n }}
         </button>
       </marketplace-preview>
@@ -81,7 +75,6 @@ import { MarketplacePreviewComponent } from './preview.component'
     tuiCardOptionsProvider({ space: 'compact', appearance: 'floating' }),
   ],
   imports: [
-    TuiAutoFocus,
     TuiPopup,
     TuiDrawer,
     MarketplacePreviewComponent,

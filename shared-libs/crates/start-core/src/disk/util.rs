@@ -77,6 +77,32 @@ pub async fn has_legacy_backup(mountpoint: impl AsRef<Path>, server_id: &str) ->
     .unwrap_or(false)
 }
 
+/// `unencrypted-metadata.json` as stored on a backup target, and the only place
+/// `password_hash`/`wrapped_key` may live. Together they are exactly what an attacker
+/// needs to crack the password offline and then unwrap the backup's encryption key, so
+/// this type must never be serialized to a client — the API hands out
+/// [`StartOsRecoveryInfo`] instead.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupUnencryptedMetadata {
+    pub hostname: ServerHostname,
+    pub version: exver::Version,
+    pub timestamp: DateTime<Utc>,
+    pub password_hash: Option<String>,
+    pub wrapped_key: Option<String>,
+}
+impl From<BackupUnencryptedMetadata> for StartOsRecoveryInfo {
+    fn from(meta: BackupUnencryptedMetadata) -> Self {
+        Self {
+            hostname: meta.hostname,
+            version: meta.version,
+            timestamp: meta.timestamp,
+        }
+    }
+}
+
+/// The public view of a backup found on a target: enough to identify it, and none of
+/// [`BackupUnencryptedMetadata`]'s key material.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, ts_rs::TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -86,8 +112,6 @@ pub struct StartOsRecoveryInfo {
     pub version: exver::Version,
     #[ts(type = "string")]
     pub timestamp: DateTime<Utc>,
-    pub password_hash: Option<String>,
-    pub wrapped_key: Option<String>,
 }
 
 const DISK_PATH: &str = "/dev/disk/by-path";
@@ -267,16 +291,18 @@ pub async fn recovery_info(
             {
                 res.insert(
                     server_id,
-                    IoFormat::Json.from_slice(
-                        &tokio::fs::read(&backup_unencrypted_metadata_path)
-                            .await
-                            .with_ctx(|_| {
-                                (
-                                    crate::ErrorKind::Filesystem,
-                                    backup_unencrypted_metadata_path.display().to_string(),
-                                )
-                            })?,
-                    )?,
+                    IoFormat::Json
+                        .from_slice::<BackupUnencryptedMetadata>(
+                            &tokio::fs::read(&backup_unencrypted_metadata_path)
+                                .await
+                                .with_ctx(|_| {
+                                    (
+                                        crate::ErrorKind::Filesystem,
+                                        backup_unencrypted_metadata_path.display().to_string(),
+                                    )
+                                })?,
+                        )?
+                        .into(),
                 );
             }
         }

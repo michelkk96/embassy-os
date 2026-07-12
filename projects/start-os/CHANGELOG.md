@@ -198,6 +198,20 @@ file tracks notable changes since the move to the monorepo.
 - **Packages are blocked from port-mapping the gateway (#3306).** Only startd may send UPnP/NAT-PMP/PCP upstream; a dedicated nftables guard table drops these protocols when forwarded from any interface (LXC), so a service can't open ports on the upstream gateway.
 - **Packages are blocked from talking DNS straight to the gateway.** The same guard table now drops DNS (udp/tcp 53) forwarded off the container bridge, so a service can't query a gateway or public resolver directly — its DNS goes through the OS resolver at `10.0.3.1:53`, same as every other lookup.
 - **Dependency/advisory cleanup:** resolved Dependabot alerts across core, web, and container-runtime (#3301); migrated to hickory 0.26 to clear DNS RUSTSEC advisories (#3302); resolved forked-dep RUSTSEC advisories in tokio-tar and async-acme (#3303).
+- **Password hashes and backup key material are no longer sent to the
+  frontend.** `serverInfo.passwordHash` — the master password's argon2 hash —
+  was replicated into the public database, so every authenticated client held
+  offline-cracking material for the master password. Separately, the backup
+  metadata returned by `getBackupTargets`, `setup.cifs.verify`, and the disk
+  listing carried each backup's `passwordHash` **and** its `wrappedKey`: the
+  backup's encryption key sealed under that password, so a client could crack
+  the hash offline and then unwrap the actual backup key. Both existed only to
+  let the browser verify passwords locally, which it no longer does (see
+  _Fixed_). `ServerInfo` drops the field entirely — the real hash stays in the
+  private database — and the on-disk backup metadata is split from its public
+  view, so the API returns only hostname, version, and timestamp. Existing
+  servers are cleaned up automatically: startup deserializes the database
+  through the typed model, which drops the removed key.
 
 ## [0.4.0-beta.9] and earlier
 

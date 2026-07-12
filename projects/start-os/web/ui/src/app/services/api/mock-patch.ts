@@ -224,9 +224,6 @@ export const mockPatchData: DataModel = {
       },
     },
     unreadNotificationCount: 5,
-    // password is asdfasdf
-    passwordHash:
-      '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
     packageVersionCompat: '>=0.3.0 <=0.3.6',
     postInitMigrationTodos: {},
     statusInfo: {

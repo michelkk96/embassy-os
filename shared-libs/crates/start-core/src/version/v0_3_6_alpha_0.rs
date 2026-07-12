@@ -268,8 +268,6 @@ impl VersionT for Version {
             server_info["wifi"] = wifi;
             server_info["unreadNotificationCount"] =
                 db["server-info"]["unread-notification-count"].clone();
-            server_info["passwordHash"] = db["server-info"]["password-hash"].clone();
-
             server_info["pubkey"] = db["server-info"]["pubkey"].clone();
             server_info["caFingerprint"] = db["server-info"]["ca-fingerprint"].clone();
             server_info["ntpSynced"] = db["server-info"]["ntp-synced"].clone();

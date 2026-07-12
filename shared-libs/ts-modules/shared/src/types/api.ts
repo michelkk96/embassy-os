@@ -24,6 +24,4 @@ export type StartOSDiskInfo = {
   hostname: string
   version: string
   timestamp: string
-  passwordHash: string | null
-  wrappedKey: string | null
 }

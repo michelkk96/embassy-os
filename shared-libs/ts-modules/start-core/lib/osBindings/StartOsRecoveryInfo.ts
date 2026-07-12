@@ -5,6 +5,4 @@ export type StartOsRecoveryInfo = {
   hostname: ServerHostname
   version: string
   timestamp: string
-  passwordHash: string | null
-  wrappedKey: string | null
 }

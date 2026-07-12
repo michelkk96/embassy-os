@@ -14,7 +14,7 @@ use crate::disk::BACKUP_DIR_NAME;
 use crate::disk::mount::filesystem::ReadWrite;
 use crate::disk::mount::filesystem::backupfs::BackupFS;
 use crate::disk::mount::guard::SubPath;
-use crate::disk::util::StartOsRecoveryInfo;
+use crate::disk::util::BackupUnencryptedMetadata;
 use crate::prelude::*;
 use crate::util::crypto::{decrypt_slice, encrypt_slice};
 use crate::util::io::AtomicFile;
@@ -26,7 +26,7 @@ pub struct BackupMountGuard<G: GenericMountGuard> {
     encrypted_guard: Option<TmpMountGuard>,
     enc_key: String,
     unencrypted_metadata_path: PathBuf,
-    pub unencrypted_metadata: StartOsRecoveryInfo,
+    pub unencrypted_metadata: BackupUnencryptedMetadata,
     pub metadata: BackupInfo,
 }
 impl<G: GenericMountGuard> BackupMountGuard<G> {
@@ -35,11 +35,11 @@ impl<G: GenericMountGuard> BackupMountGuard<G> {
         backup_disk_path: &Path,
         server_id: &str,
         password: &str,
-    ) -> Result<(StartOsRecoveryInfo, String), Error> {
+    ) -> Result<(BackupUnencryptedMetadata, String), Error> {
         let backup_dir = backup_disk_path.join(BACKUP_DIR_NAME).join(server_id);
         let unencrypted_metadata_path = backup_dir.join("unencrypted-metadata.json");
         let crypt_path = backup_dir.join("crypt");
-        let mut unencrypted_metadata: StartOsRecoveryInfo =
+        let mut unencrypted_metadata: BackupUnencryptedMetadata =
             if tokio::fs::metadata(&unencrypted_metadata_path)
                 .await
                 .is_ok()

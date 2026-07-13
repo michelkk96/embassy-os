@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.0.4 — StartOS 0.4.0-beta.10
+
+### Fixed
+
+- **`Daemons.dynamic` now composes with `setupMain` instead of replacing it.** `main` is always `sdk.setupMain(...)`; what varies is the `DaemonBuildable` you return from it — a static `sdk.Daemons.of(...)` chain, or the reconciler for a runtime-varying daemon set. The OS ABI has always said as much (`ExpectedExports.main` returns a `DaemonBuildable`, and **both** `Daemons` and `DaemonsReconciler` implement it), but two signatures made that composition unwritable: `setupMain` demanded a `Daemons` rather than the ABI's `DaemonBuildable`, and `Daemons.dynamic(fn)` returned a `main` export — burying the `DaemonsReconciler` it constructs inside a closure. The only shape that compiled was the wrong one: replace `main` with `Daemons.dynamic(...)`, then nest `Daemons.of()` inside its builder. Packages adopting dynamic daemons were funnelled straight into it. Now:
+  - **Breaking — `Daemons.dynamic` takes `effects` and returns the reconciler:** `sdk.Daemons.dynamic(effects, fn): DaemonsReconciler` (was `sdk.Daemons.dynamic(fn): main`). Return it from `setupMain`.
+  - `setupMain`'s callback is widened to the ABI: it accepts any `T.DaemonBuildable`.
+
+  Migration — wrap the builder in `setupMain` and pass `effects`:
+
+  ```typescript
+  // before (2.0.0–2.0.3)
+  export const main = sdk.Daemons.dynamic(async ({ effects }) => {
+    return sdk.Daemons.of(effects).addDaemon(...)
+  })
+
+  // after
+  export const main = sdk.setupMain(async ({ effects }) => {
+    return sdk.Daemons.dynamic(effects, async ({ effects }) => {
+      return sdk.Daemons.of(effects).addDaemon(...)
+    })
+  })
+  ```
+
+  Reconcile semantics are unchanged: inside the builder, `constRetry` reruns-and-reconciles rather than firing `effects.restart()`, so a watched-state change touches only the daemons whose `configHash` moved and the service stays `running`. Reported in [#3470](https://github.com/Start9Labs/start-technologies/issues/3470)
+
 ## 2.0.3 — StartOS 0.4.0-beta.10 (2026-07-08)
 
 ### Fixed

@@ -260,21 +260,23 @@ Features:
 
 Internally the builder is record-then-materialize: `.addDaemon()` appends a recorded entry, `Daemons.build()` walks the entries to construct `HealthDaemon`s with correct dependency wiring and runs `updateStatus()`. Side-effects start at `build()`, so the timing is identical to the prior eager builder for `setupMain` users.
 
-**`Daemons.dynamic`** makes the daemon set a reactive function of on-disk state. The builder returns a regular `Daemons.of(...).addDaemon(...)` chain; the reconciler diffs its entries against the running set on every `effects.constRetry` trigger:
+**`Daemons.dynamic`** makes the daemon set a reactive function of on-disk state. `main` is always `setupMain`; `Daemons.dynamic(effects, fn)` returns a `DaemonsReconciler` — a `T.DaemonBuildable`, exactly like a static `Daemons.of(...)` chain — which you return from `setupMain`. The builder `fn` returns a regular `Daemons.of(...).addDaemon(...)` chain; the reconciler diffs its entries against the running set on every `effects.constRetry` trigger. Inside the builder, `constRetry` is bound to a rerun-and-reconcile rather than `effects.restart()`, so a change reconciles in place and the service stays `running`:
 
 ```typescript
-export const main = sdk.Daemons.dynamic(async ({ effects }) => {
-  const { instances } = (await instancesYaml.read().const(effects)) ?? { instances: [] }
-  let daemons = sdk.Daemons.of<Manifest>({ effects })
-  for (const inst of instances) {
-    daemons = daemons.addDaemon(`reg-${inst.id}`, {
-      subcontainer: sdk.SubContainer.of(effects, { imageId: 'reg', sharedRun: true }, mounts, `reg-${inst.id}-sub`),
-      exec: { command: ['start-registryd'] },
-      ready: { display: inst.label, fn: () => sdk.healthCheck.checkPortListening(effects, inst.port, {}) },
-      requires: [],
-    })
-  }
-  return daemons
+export const main = sdk.setupMain(async ({ effects }) => {
+  return sdk.Daemons.dynamic(effects, async ({ effects }) => {
+    const { instances } = (await instancesYaml.read().const(effects)) ?? { instances: [] }
+    let daemons = sdk.Daemons.of<Manifest>({ effects })
+    for (const inst of instances) {
+      daemons = daemons.addDaemon(`reg-${inst.id}`, {
+        subcontainer: sdk.SubContainer.of(effects, { imageId: 'reg', sharedRun: true }, mounts, `reg-${inst.id}-sub`),
+        exec: { command: ['start-registryd'] },
+        ready: { display: inst.label, fn: () => sdk.healthCheck.checkPortListening(effects, inst.port, {}) },
+        requires: [],
+      })
+    }
+    return daemons
+  })
 })
 ```
 

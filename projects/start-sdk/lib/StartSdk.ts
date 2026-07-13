@@ -798,12 +798,15 @@ export class StartSdk<Manifest extends T.SDKManifest> {
        */
       setupInterfaces: setupServiceInterfaces,
       /**
-       * Define the main entrypoint for the service. The provided function should
-       * configure and return a `Daemons` instance describing all long-running processes.
-       * @param fn - Async function that receives `effects` and returns a `Daemons` instance
+       * Define the main entrypoint for the service. `main` is always `setupMain`.
+       * The provided function returns the daemon topology: either a static
+       * `sdk.Daemons.of(effects).addDaemon(...)` chain, or — for a daemon set that
+       * changes at runtime — the reconciler from
+       * `sdk.Daemons.dynamic(effects, fn)`. Both are `T.DaemonBuildable`.
+       * @param fn - Async function that receives `effects` and returns a `Daemons` chain or a `DaemonsReconciler`
        */
       setupMain: (
-        fn: (o: { effects: Effects }) => Promise<Daemons<Manifest, any>>,
+        fn: (o: { effects: Effects }) => Promise<T.DaemonBuildable>,
       ) => setupMain<Manifest>(fn),
       /**
        * Built-in trigger strategies that control how often a health check polls.
@@ -914,19 +917,25 @@ export class StartSdk<Manifest extends T.SDKManifest> {
           return Daemons.of<Manifest>({ effects })
         },
         /**
-         * Build a reactive `main` entrypoint that reconciles its daemon set
-         * against a `Daemons` chain on every `effects.constRetry` trigger.
-         * See {@link Daemons.dynamic} for diff semantics and the rule that
-         * `fn`'s subcontainers must be lazy (`sdk.SubContainer.of(...)`).
+         * Build a reconciler whose daemon set is a function of on-disk state:
+         * it diffs `fn`'s freshly-built `Daemons` chain against the running set
+         * on every `effects.constRetry` trigger, touching only what changed.
          *
+         * Return it from `setupMain` — it is a `T.DaemonBuildable`, just like a
+         * static `sdk.Daemons.of(...)` chain. See {@link Daemons.dynamic} for
+         * diff semantics and the rule that `fn`'s subcontainers must be lazy
+         * (`sdk.SubContainer.of(...)`).
+         *
+         * @param effects The effects context, from `setupMain`
          * @param fn Async builder invoked on startup and on every constRetry
          */
         dynamic(
+          effects: Effects,
           fn: (o: {
             effects: Effects
           }) => Promise<Daemons<Manifest, any>> | Daemons<Manifest, any>,
         ) {
-          return Daemons.dynamic<Manifest>(fn)
+          return Daemons.dynamic<Manifest>(effects, fn)
         },
       },
       SubContainer: {

@@ -316,13 +316,27 @@ export class Daemons<Manifest extends T.SDKManifest, Ids extends string>
    * re-runs that diff to "leave alone"; the reconciler throws at hash time
    * if it sees one.
    *
+   * Return the result from `setupMain` — it is a {@link T.DaemonBuildable},
+   * exactly like a static `Daemons.of(...)` chain:
+   *
+   * ```typescript
+   * export const main = sdk.setupMain(async ({ effects }) => {
+   *   return sdk.Daemons.dynamic(effects, async ({ effects }) => {
+   *     const sites = await storeJson.read((s) => s.sites).const(effects)
+   *     return sdk.Daemons.of(effects).addDaemon(...)
+   *   })
+   * })
+   * ```
+   *
+   * @param effects The effects context, from `setupMain`
    * @param fn Async builder invoked on startup and on every `constRetry`. Must return a `Daemons` in record-mode (not pre-`build()`-ed)
-   * @returns A `main` export compatible with `T.ExpectedExports.main`
+   * @returns A {@link DaemonsReconciler} — a `T.DaemonBuildable` to return from `setupMain`
    */
   static dynamic<Manifest extends T.SDKManifest>(
+    effects: T.Effects,
     fn: DaemonsBuilder<Manifest>,
-  ): T.ExpectedExports.main {
-    return async ({ effects }) => new DaemonsReconciler<Manifest>(effects, fn)
+  ): DaemonsReconciler<Manifest> {
+    return new DaemonsReconciler<Manifest>(effects, fn)
   }
 
   private appendEntry(entry: DaemonEntry<Manifest>): Daemons<Manifest, any> {

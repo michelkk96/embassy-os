@@ -362,7 +362,6 @@ export default {
   390: 'Neue Passwörter stimmen nicht überein',
   391: 'Neues Passwort muss mindestens 12 Zeichen lang sein',
   392: 'Neues Passwort darf höchstens 64 Zeichen haben',
-  393: 'Aktuelles Passwort ist ungültig',
   394: 'Passwort wurde geändert',
   395: 'Aktuelles Passwort',
   396: 'Neues Passwort',

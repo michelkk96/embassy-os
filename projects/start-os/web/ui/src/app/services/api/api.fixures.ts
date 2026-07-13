@@ -1288,10 +1288,6 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
           hostname: 'adjective-noun',
           timestamp: new Date().toISOString(),
           version: '0.4.0',
-          passwordHash:
-            // password is asdfasdf
-            '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-          wrappedKey: '',
         },
       },
       legacyBackup: false,
@@ -1318,10 +1314,6 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
           hostname: 'adjective-noun',
           timestamp: new Date().toISOString(),
           version: '0.4.0',
-          passwordHash:
-            // password is asdfasdf
-            '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-          wrappedKey: '',
         },
       },
       legacyBackup: false,
@@ -1342,10 +1334,6 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
           hostname: 'adjective-noun',
           timestamp: new Date().toISOString(),
           version: '0.4.0',
-          passwordHash:
-            // password is asdfasdf
-            '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-          wrappedKey: '',
         },
       },
       legacyBackup: true,

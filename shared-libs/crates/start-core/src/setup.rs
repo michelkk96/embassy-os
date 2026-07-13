@@ -199,7 +199,6 @@ async fn setup_init(
             }
             account.save(m)?;
             let info = m.as_public_mut().as_server_info_mut();
-            info.as_password_hash_mut().ser(&account.password)?;
             info.as_kiosk_mut()
                 .ser(&Some(kiosk).filter(|_| &*PLATFORM != "raspberrypi"))?;
             if let Some(language) = language.clone() {

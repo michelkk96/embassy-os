@@ -102,6 +102,7 @@ pub enum ErrorKind {
     Smtp = 78,
     SetSysInfo = 79,
     Bios = 80,
+    BackupPasswordMismatch = 81,
 }
 impl ErrorKind {
     pub fn as_str(&self) -> String {
@@ -187,6 +188,7 @@ impl ErrorKind {
             Smtp => t!("error.smtp"),
             SetSysInfo => t!("error.set-sys-info"),
             Bios => t!("error.bios"),
+            BackupPasswordMismatch => t!("error.backup-password-mismatch"),
         }
         .to_string()
     }

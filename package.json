@@ -6,7 +6,7 @@
   "license": "MIT",
   "scripts": {
     "ng": "ng",
-    "check": "npm run check:i18n && npm run check:i18n:tunnel && npm run check:i18n:wrt && npm run check:shared && npm run check:marketplace && npm run check:ui && npm run check:setup && npm run check:brochure && npm run check:wrt",
+    "check": "npm run check:i18n && npm run check:i18n:tunnel && npm run check:i18n:wrt && npm run check:shared && npm run check:marketplace && npm run check:ui && npm run check:setup && npm run check:tunnel && npm run check:brochure && npm run check:wrt",
     "check:shared": "tsc --project shared-libs/ts-modules/shared/tsconfig.json --noEmit --skipLibCheck",
     "check:marketplace": "tsc --project shared-libs/ts-modules/marketplace/tsconfig.json --noEmit --skipLibCheck",
     "check:setup": "tsc --project projects/start-os/web/setup-wizard/tsconfig.json --noEmit --skipLibCheck",
@@ -53,7 +53,6 @@
     "@materia-ui/ngx-monaco-editor": "^6.0.0",
     "@noble/curves": "^1.4.0",
     "@noble/hashes": "^1.4.0",
-    "@start9labs/argon2": "^0.3.0",
     "@start9labs/start-core": "file:shared-libs/ts-modules/start-core/dist",
     "@taiga-ui/addon-charts": "5.11.0",
     "@taiga-ui/addon-commerce": "5.11.0",

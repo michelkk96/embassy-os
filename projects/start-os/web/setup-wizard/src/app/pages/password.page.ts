@@ -14,7 +14,7 @@ import {
   serverNameValidator,
   TaskService,
 } from '@start9labs/shared'
-import { TuiAutoFocus, TuiMapperPipe, TuiValidator } from '@taiga-ui/cdk'
+import { TuiMapperPipe, TuiValidator } from '@taiga-ui/cdk'
 import {
   TuiButton,
   TuiError,
@@ -70,7 +70,6 @@ import { StateService } from '../services/state.service'
         <input
           tuiInput
           type="password"
-          [tuiAutoFocus]="!isFresh"
           maxlength="64"
           formControlName="password"
         />
@@ -115,7 +114,6 @@ import { StateService } from '../services/state.service'
     TuiCardLarge,
     TuiButton,
     TuiError,
-    TuiAutoFocus,
     TuiInput,
     TuiForm,
     TuiPassword,

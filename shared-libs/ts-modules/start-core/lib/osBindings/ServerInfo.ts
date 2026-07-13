@@ -17,7 +17,6 @@ export type ServerInfo = {
   network: NetworkInfo
   statusInfo: ServerStatus
   unreadNotificationCount: number
-  passwordHash: string
   pubkey: string
   caFingerprint: string
   ntpSynced: boolean

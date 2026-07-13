@@ -128,17 +128,11 @@ export class MockApiService extends ApiService {
         hostname: 'adjective-noun',
         version: '0.4.0',
         timestamp: new Date().toISOString(),
-        passwordHash:
-          '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-        wrappedKey: '',
       },
       '9876-5432-1234-5671': {
         hostname: 'adjective-noun',
         version: '0.4.0',
         timestamp: new Date().toISOString(),
-        passwordHash:
-          '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-        wrappedKey: '',
       },
     }
   }
@@ -300,9 +294,6 @@ const MOCK_DISKS: DiskInfo[] = [
             hostname: 'small-server',
             version: '0.4.0',
             timestamp: new Date().toISOString(),
-            passwordHash:
-              '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-            wrappedKey: null,
           },
         },
         guid: 'small-existing-guid',
@@ -349,9 +340,6 @@ const MOCK_DISKS: DiskInfo[] = [
             hostname: 'existing-server',
             version: '0.4.0',
             timestamp: new Date().toISOString(),
-            passwordHash:
-              '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-            wrappedKey: null,
           },
         },
         guid: 'existing-guid',
@@ -378,9 +366,6 @@ const MOCK_DISKS: DiskInfo[] = [
             hostname: 'backup-server',
             version: '0.3.5',
             timestamp: new Date(Date.now() - 86400000).toISOString(),
-            passwordHash:
-              '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-            wrappedKey: '',
           },
         },
         guid: null,

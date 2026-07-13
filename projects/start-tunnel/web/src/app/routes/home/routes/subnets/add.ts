@@ -8,7 +8,7 @@ import {
 import { WA_IS_MOBILE } from '@ng-web-apis/platform'
 import { TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { TuiAutoFocus, tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
+import { tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
 import { TuiButton, TuiDialogContext, TuiError, TuiInput } from '@taiga-ui/core'
 import { TuiChevron, TuiDataListWrapper, TuiSelect } from '@taiga-ui/kit'
 import { TuiForm } from '@taiga-ui/layout'
@@ -53,7 +53,7 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
     <form tuiForm="m" [formGroup]="form">
       <tui-textfield>
         <label tuiLabel>{{ 'Name' | i18n }}</label>
-        <input tuiInput tuiAutoFocus formControlName="name" />
+        <input tuiInput formControlName="name" />
       </tui-textfield>
       <tui-error formControlName="name" />
 
@@ -180,7 +180,6 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
   `,
   imports: [
     ReactiveFormsModule,
-    TuiAutoFocus,
     TuiButton,
     TuiChevron,
     TuiDataListWrapper,

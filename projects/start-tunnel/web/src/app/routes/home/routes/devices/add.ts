@@ -8,7 +8,7 @@ import { WA_IS_MOBILE } from '@ng-web-apis/platform'
 import { TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
-import { TuiAutoFocus, tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
+import { tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
 import {
   TuiButton,
   TuiCheckbox,
@@ -50,7 +50,7 @@ import {
     <form tuiForm="m" [formGroup]="form">
       <tui-textfield>
         <label tuiLabel>{{ 'Name' | i18n }}</label>
-        <input tuiInput tuiAutoFocus formControlName="name" />
+        <input tuiInput formControlName="name" />
       </tui-textfield>
       <tui-error formControlName="name" />
 
@@ -85,7 +85,7 @@ import {
           @if (form.controls.subnet.value?.range) {
             <tui-textfield>
               <label tuiLabel>{{ 'LAN IP' | i18n }}</label>
-              <input tuiInput tuiAutoFocus formControlName="ip" />
+              <input tuiInput formControlName="ip" />
             </tui-textfield>
           }
         </tui-elastic-container>
@@ -149,7 +149,6 @@ import {
   `,
   imports: [
     ReactiveFormsModule,
-    TuiAutoFocus,
     TuiButton,
     TuiCheckbox,
     TuiDataListWrapper,

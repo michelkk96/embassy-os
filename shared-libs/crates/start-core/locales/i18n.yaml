@@ -957,6 +957,13 @@ error.bios:
   fr_FR: "Erreur BIOS/UEFI"
   pl_PL: "Błąd BIOS/UEFI"
 
+error.backup-password-mismatch:
+  en_US: "Backup Password Mismatch"
+  de_DE: "Sicherungspasswort stimmt nicht überein"
+  es_ES: "La Contraseña de la Copia de Seguridad No Coincide"
+  fr_FR: "Mot de Passe de Sauvegarde Non Concordant"
+  pl_PL: "Niezgodne Hasło Kopii Zapasowej"
+
 # disk/main.rs
 disk.main.disk-not-found:
   en_US: "StartOS disk not found."
@@ -1419,6 +1426,13 @@ backup.bulk.failed-message:
   es_ES: "Su copia de seguridad no se pudo completar."
   fr_FR: "Votre sauvegarde n'a pas pu être terminée."
   pl_PL: "Twoja kopia zapasowa nie została ukończona."
+
+backup.bulk.password-mismatch:
+  en_US: "The existing backup on this target was encrypted with a different password. Provide the password that was used to create it."
+  de_DE: "Die vorhandene Sicherung auf diesem Ziel wurde mit einem anderen Passwort verschlüsselt. Geben Sie das Passwort an, mit dem sie erstellt wurde."
+  es_ES: "La copia de seguridad existente en este destino se cifró con una contraseña diferente. Proporcione la contraseña que se usó para crearla."
+  fr_FR: "La sauvegarde existante sur cette cible a été chiffrée avec un mot de passe différent. Fournissez le mot de passe utilisé pour la créer."
+  pl_PL: "Istniejąca kopia zapasowa w tym celu została zaszyfrowana innym hasłem. Podaj hasło, które zostało użyte do jej utworzenia."
 
 backup.bulk.already-backing-up:
   en_US: "Server is already backing up!"

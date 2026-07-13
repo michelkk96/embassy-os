@@ -362,7 +362,6 @@ export default {
   390: 'Las nuevas contraseñas no coinciden',
   391: 'La nueva contraseña debe tener al menos 12 caracteres',
   392: 'La nueva contraseña debe tener menos de 65 caracteres',
-  393: 'La contraseña actual no es válida',
   394: 'Contraseña cambiada',
   395: 'Contraseña actual',
   396: 'Nueva contraseña',

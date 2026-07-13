@@ -362,7 +362,6 @@ export default {
   390: 'Les nouveaux mots de passe ne correspondent pas',
   391: 'Le nouveau mot de passe doit comporter au moins 12 caractères',
   392: 'Le nouveau mot de passe doit comporter moins de 65 caractères',
-  393: 'Le mot de passe actuel est invalide',
   394: 'Mot de passe changé',
   395: 'Mot de passe actuel',
   396: 'Nouveau mot de passe',

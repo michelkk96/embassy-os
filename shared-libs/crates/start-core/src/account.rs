@@ -89,7 +89,6 @@ impl AccountInfo {
         server_info
             .as_pubkey_mut()
             .ser(&self.ssh_key.public_key().to_openssh()?)?;
-        server_info.as_password_hash_mut().ser(&self.password)?;
         db.as_private_mut().as_password_mut().ser(&self.password)?;
         db.as_private_mut()
             .as_ssh_privkey_mut()

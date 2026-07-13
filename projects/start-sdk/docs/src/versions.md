@@ -146,6 +146,27 @@ The deciding question is **does this bump need a migration?**
 
 This keeps `versions/` lean: only versions that a migration upgrades _from_ survive as their own files; everything else is just the latest state of `current.ts`.
 
+### Why Released Versions Don't Need to Be Declared
+
+A released version is **not** a reason to add it to `other`. Only a migration is. This trips people up, so here is the mechanism.
+
+`VersionGraph` does not only add a vertex per version you declare. For every version whose `up` is not `IMPOSSIBLE`, it also synthesizes a **range vertex** — an edge _into_ that version, covering the whole gap beneath it (`<X` if it is the lowest declared version, otherwise `>=prev && <X`). A package with `other: []` and `current` at `1.0.0:3` therefore has a graph of exactly two vertices:
+
+```
+<1.0.0:3  --[up]-->  1.0.0:3
+```
+
+Any installed version below `current` falls inside that range and migrates to `current` **in a single hop**, running `current`'s `up` migration once. This holds whether or not that version was ever declared, and whether or not it was ever released — including versions you shipped as sideloadable `.s9pk`s outside a registry. Most packages in the Start9 registry carry `other: []` and have upgraded across dozens of downstream revisions on exactly this path.
+
+A version earns a declared node **only** when it has its own migration that must run in sequence on the way up. Declaring migration-less versions adds files that must be read, kept compiling, and reasoned about forever, and buys no behavior. Don't do it to record release history — git history of `current.ts` already is that record.
+
+> [!NOTE]
+> A corollary: to make an update reachable for users on a version you shipped elsewhere, you only need `current`'s version string to sort _above_ theirs. You do not need to declare the intervening revisions.
+
+### canMigrateFrom Is Derived, Not Curated
+
+The manifest's `canMigrateFrom` / `canMigrateTo` fields are **computed from the graph** — a reverse/forward search from `current`, which `setupManifest` serializes into the manifest at pack time. They are not something you author, and not something the `other` array exists to feed. Adding versions to `other` to "widen" them is a misconception: `other: []` already yields the widest possible range (`<=current`), via the range vertex above.
+
 ### Upstream Update
 
 When the upstream project releases a new version:

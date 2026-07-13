@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.5 — StartOS 0.4.0-beta.10 (2026-07-13)
+
+### Fixed
+
+- **ExVer range operations no longer ignore the downstream revision.** `compareVersionRangePoints` and `adjacentVersionRangePoints` compared the upstream version twice instead of comparing the downstream on the second pass, so two points that shared an upstream but differed in downstream (`1.0.0:3` vs `1.0.0:15`) collapsed into a single point. Everything built on the truth tables inherited the error — `normalize()` silently dropped the lower of the two, and `intersects()` / `satisfiable()` could answer on a merged point. `=1.0.0:0 || =1.0.0:1` normalized to `=1.0.0:1`.
+
+  The visible consequence was in packed manifests: `canMigrateFrom` / `canMigrateTo` are derived from the version graph and normalized, so any package declaring an `other` version sharing `current`'s upstream advertised a range narrower than the truth (`mempool` at `3.3.1:15` with `other: [3.3.1:3]` shipped `canMigrateFrom: <=3.3.1:3` rather than `<=3.3.1:15`). No upgrade actually broke — StartOS resolves migrations through the version graph rather than gating on this field, and the registry index does not yet populate `sourceVersion` from it — but the manifests were wrong and would have become load-bearing the moment either changed. The Rust implementation derives its point ordering and was never affected.
+
 ## 2.0.4 — StartOS 0.4.0-beta.10
 
 ### Fixed

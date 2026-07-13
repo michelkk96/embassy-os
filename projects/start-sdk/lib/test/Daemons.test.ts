@@ -1,6 +1,7 @@
-import { Daemons, configHash } from '../mainFn/Daemons'
+import { Daemons, DaemonsReconciler, configHash } from '../mainFn/Daemons'
 import { Daemon } from '../mainFn/Daemon'
 import { Mounts } from '../mainFn/Mounts'
+import { setupMain } from '../mainFn'
 import { SubContainer } from '../util/SubContainer'
 import * as T from '@start9labs/start-core/types'
 
@@ -398,5 +399,49 @@ describe('SubContainer.of (lazy) identity', () => {
     const a = SubContainer.of<Manifest>(e, { imageId: 'reg' }, null, 'name')
     const b = SubContainer.of<Manifest>(e, { imageId: 'reg' }, null, 'name')
     expect(a.identity).not.toBe(b.identity)
+  })
+})
+
+// `main` is always `setupMain`; what varies is the `DaemonBuildable` returned
+// from it. Nothing exercised that composition before, which is how
+// `Daemons.dynamic` shipped returning a `main` export instead of the
+// reconciler — making the correct shape unwritable and funnelling packages into
+// replacing `main` with it. These lock the contract. See #3470.
+describe('setupMain composition', () => {
+  const builder = ({ effects }: { effects: T.Effects }) =>
+    Daemons.of<Manifest>({ effects }).addDaemon('reg', {
+      subcontainer: lazy(effects),
+      exec: { command: ['start-registryd'] },
+      ready: baseReady,
+      requires: [],
+    })
+
+  it('Daemons.dynamic returns a DaemonsReconciler, not a main export', () => {
+    const e = fakeEffects()
+    const reconciler = Daemons.dynamic<Manifest>(e, builder)
+    expect(reconciler).toBeInstanceOf(DaemonsReconciler)
+    // A DaemonBuildable — the same shape `Daemons.of(...)` satisfies.
+    expect(typeof reconciler.build).toBe('function')
+    expect(typeof (Daemons.of<Manifest>({ effects: e }) as any).build).toBe(
+      'function',
+    )
+  })
+
+  it('setupMain accepts a static Daemons chain', async () => {
+    const e = fakeEffects()
+    const main = setupMain<Manifest>(async ({ effects }) =>
+      builder({ effects }),
+    )
+    const built = await main({ effects: e } as any)
+    expect(built).toBeInstanceOf(Daemons)
+  })
+
+  it('setupMain accepts a Daemons.dynamic reconciler', async () => {
+    const e = fakeEffects()
+    const main = setupMain<Manifest>(async ({ effects }) =>
+      Daemons.dynamic<Manifest>(effects, builder),
+    )
+    const built = await main({ effects: e } as any)
+    expect(built).toBeInstanceOf(DaemonsReconciler)
   })
 })

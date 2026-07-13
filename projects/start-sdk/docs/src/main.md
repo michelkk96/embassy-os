@@ -51,7 +51,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
 ```
 
 > [!NOTE]
-> For a daemon set that changes at runtime — one per tunnel, site, or account — use `sdk.Daemons.dynamic(async ({ effects }) => …)` as your `main` export instead of `setupMain`. It reconciles the running daemons against a freshly-built list on each config change rather than restarting all of them. See [Create Dynamic Daemons](./recipe-dynamic-daemons.md).
+> `main` is **always** `setupMain`. What you return from it is the daemon topology: the static `sdk.Daemons.of(effects)` chain above, or — for a daemon set that changes at runtime (one per tunnel, site, or account) — `return sdk.Daemons.dynamic(effects, async ({ effects }) => …)`. The reconciler diffs the running daemons against a freshly-built list on each config change instead of restarting them all, and reconciles **in place** rather than restarting the service. Both are a `DaemonBuildable`. See [Create Dynamic Daemons](./recipe-dynamic-daemons.md).
 
 ## SubContainers
 

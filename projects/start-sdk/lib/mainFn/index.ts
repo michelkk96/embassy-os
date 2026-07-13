@@ -1,5 +1,4 @@
 import * as T from '@start9labs/start-core/types'
-import { Daemons } from './Daemons'
 import '@start9labs/start-core/interfaces/ServiceInterfaceBuilder'
 import '@start9labs/start-core/interfaces/Origin'
 
@@ -12,11 +11,16 @@ export const DEFAULT_SIGTERM_TIMEOUT = 60_000
  * 2. We setup all the commands to setup the system
  * 3. We create the health checks
  * 4. We setup the daemons init system
+ *
+ * `fn` returns any {@link T.DaemonBuildable} — a static `Daemons.of(...)` chain,
+ * or the reconciler from `Daemons.dynamic(effects, ...)` for a daemon set that
+ * changes at runtime. `main` is always `setupMain`; the choice of static vs
+ * reactive is what you return from it.
  * @param fn
  * @returns
  */
 export const setupMain = <Manifest extends T.SDKManifest>(
-  fn: (o: { effects: T.Effects }) => Promise<Daemons<Manifest, any>>,
+  fn: (o: { effects: T.Effects }) => Promise<T.DaemonBuildable>,
 ): T.ExpectedExports.main => {
   return async options => {
     const result = await fn(options)

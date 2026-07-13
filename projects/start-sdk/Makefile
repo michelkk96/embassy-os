@@ -1,14 +1,17 @@
 TS_FILES := $(shell git ls-files lib)
 START_CORE := ../../shared-libs/ts-modules/start-core
 START_CORE_DIST := $(START_CORE)/dist
+START_CORE_SRC := $(shell git ls-files $(START_CORE)/lib) $(START_CORE)/package.json
 
-.PHONY: all test clean bundle fmt check-fmt check publish link node_modules
+.PHONY: all test clean clean-dist bundle fmt check-fmt check publish link node_modules
 
 all: bundle
 
 # start-core is an external dependency now: the SDK imports it and bundles its
 # built lib into the published dist so external authors still install one package.
-$(START_CORE_DIST)/package.json:
+# Prerequisites matter here: with none, this only fired when start-core/dist was
+# *missing*, leaving the SDK's dist stale against a rebuilt start-core.
+$(START_CORE_DIST)/package.json: $(START_CORE_SRC)
 	$(MAKE) -C $(START_CORE) dist
 
 test: node_modules
@@ -16,6 +19,9 @@ test: node_modules
 
 clean:
 	rm -rf dist node_modules lib/test/output.ts
+
+clean-dist:
+	rm -rf dist
 
 # Build artifacts only — verification (test/check-fmt) is intentionally NOT a
 # prerequisite so consumers (the OS build) don't re-run the jest suite every
@@ -30,6 +36,10 @@ dist: $(TS_FILES) package.json .npmignore node_modules README.md LICENSE CHANGEL
 	rm -rf dist/node_modules/@start9labs/start-core
 	mkdir -p dist/node_modules/@start9labs
 	rsync -aL $(START_CORE_DIST)/ dist/node_modules/@start9labs/start-core/
+	# The hidden lockfile rsync'd in above records start-core as a `file:` link out to
+	# shared-libs, so `npm publish` resolves the bundled dep through it and emits paths
+	# outside the package root (npm E415) despite the real files being right here.
+	rm -f dist/node_modules/.package-lock.json
 	cp package.json dist/package.json
 	cp .npmignore dist/.npmignore
 	cp README.md dist/README.md
@@ -58,8 +68,12 @@ package-lock.json: package.json $(START_CORE_DIST)/package.json
 node_modules: package-lock.json $(START_CORE_DIST)/package.json
 	npm ci
 
+# Rebuild dist from scratch: it is a directory target, so make's staleness check
+# does not track its contents, and a stale dist packed 2.0.5 as 2.0.4.
 # Prompt for the npm 2FA OTP here (after the build) so it can't expire; OTP=… skips.
-publish: bundle test check-fmt package.json README.md LICENSE CHANGELOG.md
+publish: test check-fmt package.json README.md LICENSE CHANGELOG.md
+	$(MAKE) clean-dist
+	$(MAKE) bundle
 	@otp='$(OTP)'; \
 	if [ -z "$$otp" ] && [ -t 0 ]; then \
 		printf 'npm one-time password (OTP): ' >&2; \

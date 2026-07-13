@@ -420,4 +420,41 @@ describe('ExVer', () => {
       })
     }
   }
+
+  // `tables()` distinguishes points by (upstream, downstream, side). Ranges that
+  // differ only in the downstream revision are the case that regressed: they
+  // collapsed into one another, so `normalize()` silently dropped the lower.
+  describe('downstream revisions are distinct points', () => {
+    const eq = (v: string) => VersionRange.anchor('=', ExtendedVersion.parse(v))
+
+    test('normalize preserves a union of same-upstream downstream revisions', () => {
+      const union = eq('1.0.0:0').or(eq('1.0.0:1')).normalize()
+
+      expect(union.satisfiedBy(ExtendedVersion.parse('1.0.0:0'))).toEqual(true)
+      expect(union.satisfiedBy(ExtendedVersion.parse('1.0.0:1'))).toEqual(true)
+      expect(union.satisfiedBy(ExtendedVersion.parse('1.0.0:2'))).toEqual(false)
+    })
+
+    test('normalize preserves the whole span below a downstream revision', () => {
+      // The shape a VersionGraph produces for `other: [1.0.0:3]`, current 1.0.0:15.
+      const reachable = VersionRange.none()
+        .or(eq('1.0.0:15'))
+        .or(
+          VersionRange.anchor('>=', ExtendedVersion.parse('1.0.0:3')).and(
+            VersionRange.anchor('<', ExtendedVersion.parse('1.0.0:15')),
+          ),
+        )
+        .or(eq('1.0.0:3'))
+        .or(VersionRange.anchor('<', ExtendedVersion.parse('1.0.0:3')))
+        .normalize()
+
+      for (const v of ['1.0.0:0', '1.0.0:3', '1.0.0:4', '1.0.0:14', '1.0.0:15'])
+        expect(reachable.satisfiedBy(ExtendedVersion.parse(v))).toEqual(true)
+    })
+
+    test('intersects distinguishes downstream revisions', () => {
+      expect(eq('1.0.0:0').intersects(eq('1.0.0:1'))).toEqual(false)
+      expect(eq('1.0.0:1').intersects(eq('1.0.0:1'))).toEqual(true)
+    })
+  })
 })

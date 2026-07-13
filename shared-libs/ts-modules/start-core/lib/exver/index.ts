@@ -191,7 +191,7 @@ function compareVersionRangePoints(
   if (up != 0) {
     return up
   }
-  let down = a.upstream.compareForSort(b.upstream)
+  let down = a.downstream.compareForSort(b.downstream)
   if (down != 0) {
     return down
   }
@@ -212,7 +212,7 @@ function adjacentVersionRangePoints(
   if (up != 0) {
     return false
   }
-  let down = a.upstream.compareForSort(b.upstream)
+  let down = a.downstream.compareForSort(b.downstream)
   if (down != 0) {
     return false
   }

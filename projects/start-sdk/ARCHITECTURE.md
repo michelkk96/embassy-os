@@ -413,7 +413,7 @@ sdk.trigger.statusTrigger(30_000, { starting: 5_000, failure: 5_000 })
 
 ## Build Pipeline
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed build instructions, make targets, and development workflow.
+See [AGENTS.md](AGENTS.md) for detailed build instructions, make targets, and development workflow.
 
 At a high level: `@start9labs/start-core` builds first (Peggy generates the ExVer parser, TypeScript compiles it in strict mode to its own `dist/`), then the SDK compiles in strict mode to `dist/`, hand-written `.js`/`.d.ts` pairs are copied into the output, and `node_modules` (including the bundled `@start9labs/start-core`) are bundled for self-contained distribution.
 
@@ -472,6 +472,6 @@ The manifest type flows through the entire SDK via generics. When you call `Star
 ## Further reading
 
 - [README.md](README.md) — overview and quickstart
-- [CONTRIBUTING.md](CONTRIBUTING.md) — build, test, and contribution workflow
+- [AGENTS.md](AGENTS.md) — build, test, release, and contribution workflow
 - [AGENTS.md](AGENTS.md) — agent/dev instructions (`CLAUDE.md` is a one-line `@AGENTS.md` import)
 - [Packaging docs](https://docs.start9.com/packaging) — the developer-facing reference (mdbook in `docs/`)

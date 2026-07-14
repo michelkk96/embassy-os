@@ -41,6 +41,20 @@ start-os-squashfs: results/$(BASENAME).squashfs
 results/$(BASENAME).$(IMAGE_TYPE) results/$(BASENAME).squashfs: $(IMAGE_RECIPE_SRC) results/$(BASENAME).deb
 	ARCH=$(ARCH) ./projects/start-os/build/image-recipe/run-local-build.sh "results/$(BASENAME).deb"
 
+# The OTA payload legacy (0.3.5.1) boxes pull via their frozen rsync updater: the
+# 0.4.0 base squashfs repackaged onto the published 0.3.5.1 rootfs. See
+# projects/start-os/build/assemble-migration-payload.sh.
+MIGRATION_FROM_TAG := v0.3.5.1
+
+start-os-migration-squashfs: results/$(BASENAME).migration.squashfs
+
+results/$(BASENAME).migration.squashfs: results/$(BASENAME).squashfs projects/start-os/build/assemble-migration-payload.sh projects/start-os/build/lib/scripts/migration-update-grub
+	@if [ "$(PLATFORM)" = raspberrypi ]; then >&2 echo "migration payload: raspberrypi has no in-place migration — reflash required (#3443)"; exit 1; fi
+	mkdir -p results/migration-base
+	gh release download $(MIGRATION_FROM_TAG) --repo Start9Labs/start-technologies \
+		--pattern 'startos-*_$(PLATFORM).iso' --dir results/migration-base --clobber
+	docker run --rm -v "$(CURDIR)":/w -w /w -e OWNER_UID="$$(id -u)" -e OWNER_GID="$$(id -g)" start9/build-env bash -euc 'apt-get update -qq && apt-get install -yq --no-install-recommends xorriso && projects/start-os/build/assemble-migration-payload.sh --arch $(ARCH) --new-squashfs results/$(BASENAME).squashfs --old-image "$$(ls -1 results/migration-base/startos-*_$(PLATFORM).iso | head -n1)" --out $@'
+
 # For creating os images. DO NOT USE
 start-os-install: $(STARTOS_TARGETS)
 	$(call mkdir,$(DESTDIR)/usr/bin)

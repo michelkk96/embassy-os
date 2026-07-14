@@ -38,7 +38,7 @@ dist/package.json: $(TS_FILES) package.json .npmignore node_modules README.md LI
 	rsync -aL $(START_CORE_DIST)/ dist/node_modules/@start9labs/start-core/
 	# Point the bundled dep at its in-tarball copy so npm never resolves start-core
 	# out of tree (the source spec is a file: link out to shared-libs).
-	node -e "const fs=require('fs'),d=JSON.parse(fs.readFileSync('package.json','utf8'));d.dependencies['@start9labs/start-core']='file:./node_modules/@start9labs/start-core';fs.writeFileSync('dist/package.json',JSON.stringify(d,null,2)+'\n')"
+	jq '.dependencies["@start9labs/start-core"]="file:./node_modules/@start9labs/start-core"' package.json > dist/package.json
 	cp .npmignore dist/.npmignore
 	cp README.md dist/README.md
 	cp LICENSE dist/LICENSE

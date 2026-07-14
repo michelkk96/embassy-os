@@ -96,7 +96,7 @@ The packaging docs cover:
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for environment setup, building from source, testing, and development workflow.
+See [AGENTS.md](AGENTS.md) for environment setup, building from source, testing, releasing, and development workflow.
 
 ## Architecture
 

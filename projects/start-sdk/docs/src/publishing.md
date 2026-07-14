@@ -14,9 +14,8 @@ If you want your package on Start9's official community registry, the current fl
 
 The community registries, in promotion order:
 
-- **community-alpha** — <https://community-alpha-registry-x.start9.com> — receives every PR-merge build automatically
-- **community-beta** — <https://community-beta-registry.start9.com> — promoted from alpha on your request
-- **community** (production) — <https://community-registry.start9.com> — promoted from beta on your request
+- **community-beta** — <https://community-beta-registry.start9.com> — receives every PR-merge build automatically
+- **community** (production) — <https://community-registry.start9.com> — promoted from beta on your go-ahead
 
 ### Initial Submission
 
@@ -29,18 +28,18 @@ The community registries, in promotion order:
 Once your fork exists inside Start9-Community:
 
 1. **Open a PR** against the fork with your changes.
-2. **Merge** — when Start9 merges the PR, a workflow automatically builds, tags, and deploys the package to **community-alpha**. You don't run any publish commands yourself; the automation handles it.
-3. **Promote to beta** — when you're ready for wider testing, email <submissions@start9.com> or open an issue on the fork. Start9 promotes the current alpha build to **community-beta**.
-4. **Promote to production** — when the beta has soaked and you're ready to ship broadly, same signal (email or issue). Start9 promotes to **community**.
+2. **Merge** — when Start9 merges the PR, a workflow automatically builds, tags, and deploys the package to **community-beta**. You don't run any publish commands yourself; the automation handles it.
+3. **Test the beta build.** This is where a release soaks: install it from community-beta, exercise it, and give other users a chance to.
+4. **Promote to production** — when you're ready to ship broadly, email <submissions@start9.com> or open an issue on the fork. Start9 promotes the current beta build to **community**. The go-ahead is yours to give, not Start9's.
 
-Every subsequent change or version bump is another PR through the same cycle — merge publishes to alpha, email/issue promotes onward.
+Every subsequent change or version bump is another PR through the same cycle — merge publishes to beta, email/issue promotes onward.
 
 > [!NOTE]
 > The email / issue loop is clunky — we know. A developer portal with self-service submission management and one-click promotion is actively being built. Until it ships, email and issues are how the pipeline is operated.
 
 ## Pre-Publish Checklist
 
-Before publishing to your own registry — or before opening / updating a PR on the Start9-Community fork — walk through this. For community submissions, these checks must pass **before** you open the PR: the merge triggers the build, and anything wrong will ship directly to community-alpha.
+Before publishing to your own registry — or before opening / updating a PR on the Start9-Community fork — walk through this. For community submissions, these checks must pass **before** you open the PR: the merge triggers the build, and anything wrong will ship directly to community-beta.
 
 1. **Tag convention followed.** Your version tag matches [Git Tag Conventions](./versions.md#git-tag-conventions).
 2. **All checks pass.** `tsc --noEmit`, tests, and the pack step must be green.

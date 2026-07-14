@@ -3,16 +3,17 @@ START_CORE := ../../shared-libs/ts-modules/start-core
 START_CORE_DIST := $(START_CORE)/dist
 START_CORE_SRC := $(shell git ls-files $(START_CORE)/lib) $(START_CORE)/package.json
 
-.PHONY: all test clean clean-dist bundle fmt check-fmt check publish link node_modules
+.DELETE_ON_ERROR:
+
+.PHONY: all test clean bundle fmt check-fmt check publish link
 
 all: bundle
 
-# start-core is an external dependency now: the SDK imports it and bundles its
-# built lib into the published dist so external authors still install one package.
-# Prerequisites matter here: with none, this only fired when start-core/dist was
-# *missing*, leaving the SDK's dist stale against a rebuilt start-core.
+# Prereqs so a rebuilt start-core restales the SDK dist; touch after because start-core's
+# build regenerates a tracked source (exver.ts) without bumping dist (else it rebuilds every time).
 $(START_CORE_DIST)/package.json: $(START_CORE_SRC)
 	$(MAKE) -C $(START_CORE) dist
+	touch $(START_CORE_DIST)/package.json
 
 test: node_modules
 	npm test
@@ -20,27 +21,24 @@ test: node_modules
 clean:
 	rm -rf dist node_modules lib/test/output.ts
 
-clean-dist:
-	rm -rf dist
-
 # Build artifacts only — verification (test/check-fmt) is intentionally NOT a
 # prerequisite so consumers (the OS build) don't re-run the jest suite every
 # build. CI and `publish` run test/check-fmt explicitly.
-bundle: dist
-	touch dist
+bundle: dist/package.json
 
-dist: $(TS_FILES) package.json .npmignore node_modules README.md LICENSE CHANGELOG.md s9pk.mk tsconfig.base.json eslint.config.base.mjs lint.mjs $(START_CORE_DIST)/package.json
+# The sentinel is dist/package.json, not the dist/ dir: make can't see content
+# changes under a directory target, so a stale dist/ once published 2.0.5 as 2.0.4.
+dist/package.json: $(TS_FILES) package.json .npmignore node_modules README.md LICENSE CHANGELOG.md s9pk.mk tsconfig.base.json eslint.config.base.mjs lint.mjs $(START_CORE_DIST)/package.json
 	rm -rf dist
 	npm run tsc
-	rsync -ac node_modules dist/
+	# Don't stage npm's hidden lockfile: it pins start-core to an out-of-tree path.
+	rsync -ac --exclude=.package-lock.json node_modules dist/
 	rm -rf dist/node_modules/@start9labs/start-core
 	mkdir -p dist/node_modules/@start9labs
 	rsync -aL $(START_CORE_DIST)/ dist/node_modules/@start9labs/start-core/
-	# The hidden lockfile rsync'd in above records start-core as a `file:` link out to
-	# shared-libs, so `npm publish` resolves the bundled dep through it and emits paths
-	# outside the package root (npm E415) despite the real files being right here.
-	rm -f dist/node_modules/.package-lock.json
-	cp package.json dist/package.json
+	# Point the bundled dep at its in-tarball copy so npm never resolves start-core
+	# out of tree (the source spec is a file: link out to shared-libs).
+	node -e "const fs=require('fs'),d=JSON.parse(fs.readFileSync('package.json','utf8'));d.dependencies['@start9labs/start-core']='file:./node_modules/@start9labs/start-core';fs.writeFileSync('dist/package.json',JSON.stringify(d,null,2)+'\n')"
 	cp .npmignore dist/.npmignore
 	cp README.md dist/README.md
 	cp LICENSE dist/LICENSE
@@ -49,7 +47,7 @@ dist: $(TS_FILES) package.json .npmignore node_modules README.md LICENSE CHANGEL
 	cp tsconfig.base.json dist/tsconfig.base.json
 	cp eslint.config.base.mjs dist/eslint.config.base.mjs
 	cp lint.mjs dist/lint.mjs
-	touch dist
+	touch dist/package.json
 
 full-bundle: bundle
 
@@ -62,18 +60,18 @@ fmt: node_modules
 check-fmt: node_modules
 	npx prettier "**/*.ts" --check
 
+# Touch after install: npm may leave these no newer than their prereqs, so without
+# it make reruns npm every build (node_modules was also .PHONY, forcing npm ci always).
 package-lock.json: package.json $(START_CORE_DIST)/package.json
 	npm i
+	touch package-lock.json
 
 node_modules: package-lock.json $(START_CORE_DIST)/package.json
 	npm ci
+	touch node_modules
 
-# Rebuild dist from scratch: it is a directory target, so make's staleness check
-# does not track its contents, and a stale dist packed 2.0.5 as 2.0.4.
 # Prompt for the npm 2FA OTP here (after the build) so it can't expire; OTP=… skips.
-publish: test check-fmt package.json README.md LICENSE CHANGELOG.md
-	$(MAKE) clean-dist
-	$(MAKE) bundle
+publish: bundle test check-fmt package.json README.md LICENSE CHANGELOG.md
 	@otp='$(OTP)'; \
 	if [ -z "$$otp" ] && [ -t 0 ]; then \
 		printf 'npm one-time password (OTP): ' >&2; \

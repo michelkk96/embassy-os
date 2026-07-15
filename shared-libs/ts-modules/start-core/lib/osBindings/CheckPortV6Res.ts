@@ -5,8 +5,4 @@
  * box's own address), so there is no hairpinning. Queried separately from
  * [`CheckPortRes`] so the IPv4 and IPv6 checks can run independently.
  */
-export type CheckPortV6Res = {
-  ip: string
-  openExternally: boolean
-  openInternally: boolean
-}
+export type CheckPortV6Res = { ip: string; openExternally: boolean }

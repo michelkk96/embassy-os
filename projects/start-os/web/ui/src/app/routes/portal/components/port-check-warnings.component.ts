@@ -7,14 +7,6 @@ import { T } from '@start9labs/start-core'
   template: `
     @let res = result();
     @if (res) {
-      @if (!res.openInternally) {
-        <p class="g-warning">
-          {{
-            'Port status cannot be determined while service is not running'
-              | i18n
-          }}
-        </p>
-      }
       @if (res.openExternally && !res.hairpinning) {
         <p class="g-warning">
           {{

@@ -1,4 +1,11 @@
-exclude = ["**/node_modules/**", "**/target/**", "**/dist/**"]
+# Excludes filter matches but don't prune taplo's walk — bare `taplo fmt` hangs
+# on openwrt/'s symlink loops, so the npm scripts pass a `git ls-files` list.
+exclude = [
+  "**/node_modules/**",
+  "**/target/**",
+  "**/dist/**",
+  "projects/start-wrt/openwrt/**",
+]
 include = ["**/*.toml"]
 
 [formatting]

@@ -10,12 +10,10 @@ import { TuiIcon, TuiLoader } from '@taiga-ui/core'
     } @else {
       @let res = result();
       @if (res) {
-        @if (!res.openInternally) {
-          <tui-icon class="g-warning" icon="@tui.alert-triangle" />
-        } @else if (!res.openExternally) {
-          <tui-icon class="g-negative" icon="@tui.x" />
-        } @else {
+        @if (res.openExternally) {
           <tui-icon class="g-positive" icon="@tui.check" />
+        } @else {
+          <tui-icon class="g-negative" icon="@tui.x" />
         }
       } @else {
         <tui-icon class="g-secondary" icon="@tui.minus" />

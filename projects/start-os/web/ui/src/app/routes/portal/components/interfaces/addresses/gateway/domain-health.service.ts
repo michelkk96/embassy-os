@@ -132,10 +132,7 @@ export class DomainHealthService {
         .checkPort({ gateway: gatewayId, port })
         .catch((): null => null)
 
-      const portOk =
-        !!portResult?.openInternally &&
-        !!portResult?.openExternally &&
-        !!portResult?.hairpinning
+      const portOk = !!portResult?.openExternally && !!portResult?.hairpinning
 
       if (!portOk) {
         setTimeout(

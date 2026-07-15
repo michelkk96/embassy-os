@@ -16,7 +16,10 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
 import { TitleDirective } from 'src/app/services/title.service'
 import { getManifest } from 'src/app/utils/get-package-data'
 
-type NavItem = { title: i18nKey; icon: string; link: string }
+// `exact` gates routerLinkActive: the dashboard ('./') must match exactly or it
+// would light up on every sub-route; `interfaces` is inexact so it stays active
+// on its detail sub-pages (interfaces/:id). Leaf routes are exact.
+type NavItem = { title: i18nKey; icon: string; link: string; exact: boolean }
 
 @Component({
   template: `
@@ -51,12 +54,12 @@ type NavItem = { title: i18nKey; icon: string; link: string }
           </span>
         </header>
         <nav>
-          @for (item of nav(); track $index) {
+          @for (item of nav; track $index) {
             <a
               tuiCell
               tuiAppearance="action-grayscale"
               routerLinkActive="active"
-              [routerLinkActiveOptions]="{ exact: true }"
+              [routerLinkActiveOptions]="{ exact: item.exact }"
               [routerLink]="item.link"
             >
               <tui-icon [icon]="item.icon" />
@@ -191,25 +194,34 @@ export class ServiceOutletComponent {
   private readonly router = inject(Router)
   private readonly params = inject(ActivatedRoute).paramMap
 
-  protected readonly nav = computed<NavItem[]>(() => {
-    const items: NavItem[] = [
-      { title: 'dashboard', icon: '@tui.layout-dashboard', link: './' },
-      { title: 'interfaces', icon: '@tui.monitor', link: 'interfaces' },
-    ]
-
-    items.push(
-      { title: 'actions & config', icon: '@tui.cog', link: 'actions' },
-      {
-        title: 'instructions',
-        icon: '@tui.book-open-text',
-        link: 'instructions',
-      },
-      { title: 'logs', icon: '@tui.scroll-text', link: 'logs' },
-      { title: 'about', icon: '@tui.info', link: 'about' },
-    )
-
-    return items
-  })
+  protected readonly nav: NavItem[] = [
+    {
+      title: 'dashboard',
+      icon: '@tui.layout-dashboard',
+      link: './',
+      exact: true,
+    },
+    {
+      title: 'interfaces',
+      icon: '@tui.monitor',
+      link: 'interfaces',
+      exact: false,
+    },
+    {
+      title: 'instructions',
+      icon: '@tui.book-open-text',
+      link: 'instructions',
+      exact: true,
+    },
+    { title: 'logs', icon: '@tui.scroll-text', link: 'logs', exact: true },
+    { title: 'about', icon: '@tui.info', link: 'about', exact: true },
+    {
+      title: 'actions & config',
+      icon: '@tui.cog',
+      link: 'actions',
+      exact: true,
+    },
+  ]
 
   protected readonly service = toSignal(
     this.router.events.pipe(

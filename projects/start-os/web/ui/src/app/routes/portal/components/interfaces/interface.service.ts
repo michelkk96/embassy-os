@@ -1,7 +1,9 @@
 import { inject, Injectable } from '@angular/core'
 import { T, utils } from '@start9labs/start-core'
+import { tuiDefaultSort } from '@taiga-ui/cdk'
 import { ConfigService } from 'src/app/services/config.service'
 import { GatewayPlus } from 'src/app/services/gateway.service'
+import { PackageDataEntry } from 'src/app/services/patch-db/data-model'
 import {
   PrimaryStatus,
   renderPkgStatus,
@@ -106,6 +108,105 @@ function getAddressType(h: T.HostnameInfo): string {
 })
 export class InterfaceService {
   private readonly config = inject(ConfigService)
+
+  // The package's service interfaces, mapped for display: single-port
+  // interfaces first (reached host -> binding -> interface), then port ranges
+  // (host -> bindingRange -> interface, carrying a `portRange` span).
+  getServiceInterfaces(
+    pkg: PackageDataEntry,
+    gateways: GatewayPlus[],
+    allPackageData?: Record<string, PackageDataEntry>,
+  ): MappedServiceInterface[] {
+    const { hosts } = pkg
+
+    const all = Object.values(hosts).flatMap(host =>
+      Object.values(host.bindings).flatMap(binding =>
+        Object.values(binding.interfaces),
+      ),
+    )
+
+    const single = all
+      .sort(tuiDefaultSort)
+      .map<MappedServiceInterface>(iFace => {
+        const hostId = iFace.addressInfo.hostId || ''
+        const host = hosts[hostId]
+        const sharedHostNames = all
+          .filter(si => si.addressInfo.hostId === hostId && si.id !== iFace.id)
+          .map(si => si.name)
+
+        return {
+          ...iFace,
+          gatewayGroups: host
+            ? this.getGatewayGroups(iFace, host, gateways)
+            : [],
+          pluginGroups: host
+            ? this.getPluginGroups(iFace, host, allPackageData)
+            : [],
+          // A public domain applies to the whole host, so the CA selector must
+          // appear whenever any binding on it is SSL — not only this interface's.
+          anyAddSsl: Object.values(host?.bindings ?? {}).some(
+            b => !!b.options.addSsl,
+          ),
+          // This interface's own binding: gates whether port/firewall tests are
+          // meaningful while the service is stopped (see MappedServiceInterface).
+          addSsl:
+            !!host?.bindings[iFace.addressInfo.internalPort]?.options.addSsl,
+          sharedHostNames,
+        }
+      })
+
+    const ranges = Object.entries(hosts)
+      .flatMap(([hostId, host]) =>
+        Object.entries(host.bindingRanges)
+          .filter(([, range]) => range.interface)
+          .map<MappedServiceInterface>(([key, range]) => {
+            const iface = range.interface!
+            const internalStartPort = Number(key)
+            const end = range.externalStartPort + range.numberOfPorts - 1
+            // Representative addressInfo: `internalPort` is the range's internal
+            // start port (its key in bindingRanges) so the per-address toggle
+            // and add-domain effects target the range; `scheme` prefixes URLs.
+            const addressInfo: T.AddressInfo = {
+              username: null,
+              hostId,
+              internalPort: internalStartPort,
+              scheme: iface.scheme,
+              sslScheme: null,
+              suffix: '',
+            }
+
+            return {
+              id: iface.id,
+              name: iface.name,
+              description: iface.description,
+              masked: false,
+              type: 'api',
+              addressInfo,
+              gatewayGroups: this.getRangeGatewayGroups(
+                addressInfo,
+                range.addresses,
+                host,
+                gateways,
+                range.numberOfPorts,
+              ),
+              pluginGroups: [],
+              anyAddSsl: Object.values(host.bindings).some(
+                b => !!b.options.addSsl,
+              ),
+              // Port ranges are always non-SSL (bound directly by the service).
+              addSsl: false,
+              sharedHostNames: [],
+              portRange:
+                range.numberOfPorts > 1
+                  ? `${range.externalStartPort}-${end}`
+                  : `${range.externalStartPort}`,
+            }
+          }),
+      )
+      .sort((a, b) => a.addressInfo.internalPort - b.addressInfo.internalPort)
+
+    return [...single, ...ranges]
+  }
 
   getGatewayGroups(
     serviceInterface: T.ServiceInterface,
@@ -435,5 +536,29 @@ export type MappedServiceInterface = T.ServiceInterface & {
   // to every binding on it, so the add-domain form must offer a Certificate
   // Authority whenever any of those bindings is SSL.
   anyAddSsl: boolean
+  // Whether this interface's own binding is SSL-terminated by the OS reverse
+  // proxy. When true the OS (always up) owns the external port, so port-forward
+  // and firewall reachability can be tested even while the service is stopped;
+  // when false the service binds the port directly, so those tests are only
+  // meaningful while it is running.
+  addSsl: boolean
   sharedHostNames: string[]
+  // Present only for a port-range interface: the external port span shown as a
+  // badge (e.g. "8000-8010").
+  portRange?: string
+}
+
+// The tuiBadge appearance for a service interface's type, shared by the
+// interfaces list and the interface detail header.
+export function getInterfaceBadgeAppearance(
+  type: T.ServiceInterfaceType = 'ui',
+): string {
+  switch (type) {
+    case 'ui':
+      return 'positive'
+    case 'api':
+      return 'info'
+    case 'p2p':
+      return 'negative'
+  }
 }

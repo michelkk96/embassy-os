@@ -1,77 +1,44 @@
 import { UpperCasePipe } from '@angular/common'
 import { Component, computed, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
+import { RouterLink } from '@angular/router'
 import { getPkgId, i18nPipe } from '@start9labs/shared'
-import { T } from '@start9labs/start-core'
-import { tuiDefaultSort } from '@taiga-ui/cdk'
-import { TuiTitle } from '@taiga-ui/core'
-import { TuiAccordion, TuiBadge } from '@taiga-ui/kit'
+import { TuiCell, TuiIcon, TuiTitle } from '@taiga-ui/core'
+import { TuiBadge } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { PlaceholderComponent } from 'src/app/routes/portal/components/placeholder.component'
-import { InterfaceComponent } from 'src/app/routes/portal/components/interfaces/interface.component'
 import {
+  getInterfaceBadgeAppearance,
   InterfaceService,
-  MappedServiceInterface,
 } from 'src/app/routes/portal/components/interfaces/interface.service'
 import { GatewayService } from 'src/app/services/gateway.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
-import { getInstalledBaseStatus } from 'src/app/services/pkg-status-rendering.service'
-
-// A port-range interface renders like a single-port interface (same per-gateway
-// address card) plus its external port span shown in the header.
-type MappedRangeInterface = MappedServiceInterface & { portRange: string }
 
 @Component({
   template: `
     @if (pkg()) {
-      @if (interfaces().length || ranges().length) {
-        <tui-accordion [closeOthers]="false">
-          @for (iface of interfaces(); track iface.id) {
-            <button [tuiAccordion]="single()">
-              <span tuiTitle>
-                <b>
-                  {{ iface.name }}
-                  <span tuiBadge [appearance]="getAppearance(iface.type)">
-                    <b>{{ iface.type | uppercase }}</b>
-                  </span>
-                </b>
-                @if (iface.description) {
-                  <span tuiSubtitle>{{ iface.description }}</span>
-                }
-              </span>
-            </button>
-            <tui-expand>
-              <service-interface
-                [packageId]="pkgId"
-                [value]="iface"
-                [isRunning]="isRunning()"
-              />
-            </tui-expand>
-          }
-          @for (range of ranges(); track range.id) {
-            <button [tuiAccordion]="single()">
-              <span tuiTitle>
-                <b>
-                  {{ range.name }}
-                  <span tuiBadge appearance="info"><b>API</b></span>
+      @if (interfaces().length) {
+        @for (iface of interfaces(); track iface.id) {
+          <a tuiCell [routerLink]="iface.id">
+            <span tuiTitle>
+              <b>
+                {{ iface.name }}
+                <span tuiBadge [appearance]="getAppearance(iface.type)">
+                  {{ iface.type | uppercase }}
+                </span>
+                @if (iface.portRange) {
                   <span tuiBadge appearance="neutral">
-                    {{ range.portRange }}
+                    {{ iface.portRange }}
                   </span>
-                </b>
-                @if (range.description) {
-                  <span tuiSubtitle>{{ range.description }}</span>
                 }
-              </span>
-            </button>
-            <tui-expand>
-              <service-interface
-                [packageId]="pkgId"
-                [value]="range"
-                [isRunning]="isRunning()"
-              />
-            </tui-expand>
-          }
-        </tui-accordion>
+              </b>
+              @if (iface.description) {
+                <span tuiSubtitle>{{ iface.description }}</span>
+              }
+            </span>
+            <tui-icon icon="@tui.chevron-right" />
+          </a>
+        }
       } @else {
         <app-placeholder icon="@tui.monitor-x">
           {{ 'No service interfaces' | i18n }}
@@ -80,11 +47,13 @@ type MappedRangeInterface = MappedServiceInterface & { portRange: string }
     }
   `,
   styles: `
-    [tuiAccordion] {
-      block-size: auto;
-      min-block-size: var(--tui-height-l);
-      padding-block: 0.75rem;
-      white-space: normal;
+    [tuiCell] {
+      border-radius: 0;
+      box-shadow: inset 0 -1px var(--tui-background-neutral-1);
+    }
+
+    [tuiCell]:last-child {
+      box-shadow: none;
     }
 
     [tuiBadge] {
@@ -94,10 +63,11 @@ type MappedRangeInterface = MappedServiceInterface & { portRange: string }
   host: { class: 'g-subpage' },
   providers: [GatewayService],
   imports: [
-    TuiAccordion,
-    TuiBadge,
+    RouterLink,
+    TuiCell,
+    TuiIcon,
     TuiTitle,
-    InterfaceComponent,
+    TuiBadge,
     PlaceholderComponent,
     i18nPipe,
     UpperCasePipe,
@@ -108,123 +78,19 @@ export default class ServiceInterfacesRoute {
   private readonly gatewayService = inject(GatewayService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
 
-  readonly pkgId = getPkgId()
-  readonly pkg = toSignal(this.patch.watch$('packageData', this.pkgId))
-  readonly allPackageData = toSignal(this.patch.watch$('packageData'))
-  readonly isRunning = computed((pkg = this.pkg()) =>
-    pkg ? getInstalledBaseStatus(pkg.statusInfo) === 'running' : false,
-  )
+  readonly pkg = toSignal(this.patch.watch$('packageData', getPkgId()))
+  private readonly allPackageData = toSignal(this.patch.watch$('packageData'))
 
-  readonly single = computed(
-    () => this.interfaces().length + this.ranges().length === 1,
-  )
-
-  // Single-port service interfaces, reached host -> binding -> interface.
-  readonly interfaces = computed<MappedServiceInterface[]>(() => {
+  readonly interfaces = computed(() => {
     const pkg = this.pkg()
-    if (!pkg) return []
-
-    const { hosts } = pkg
-    const gateways = this.gatewayService.gateways() || []
-    const allPackageData = this.allPackageData()
-
-    const all = Object.values(hosts).flatMap(host =>
-      Object.values(host.bindings).flatMap(binding =>
-        Object.values(binding.interfaces),
-      ),
-    )
-
-    return all.sort(tuiDefaultSort).map(iFace => {
-      const hostId = iFace.addressInfo.hostId || ''
-      const host = hosts[hostId]
-      const sharedHostNames = all
-        .filter(si => si.addressInfo.hostId === hostId && si.id !== iFace.id)
-        .map(si => si.name)
-
-      return {
-        ...iFace,
-        gatewayGroups: host
-          ? this.interfaceService.getGatewayGroups(iFace, host, gateways)
-          : [],
-        pluginGroups: host
-          ? this.interfaceService.getPluginGroups(iFace, host, allPackageData)
-          : [],
-        // A public domain applies to the whole host, so the CA selector must
-        // appear whenever any binding on it is SSL — not only this interface's.
-        anyAddSsl: Object.values(host?.bindings ?? {}).some(
-          b => !!b.options.addSsl,
-        ),
-        sharedHostNames,
-      }
-    })
+    return pkg
+      ? this.interfaceService.getServiceInterfaces(
+          pkg,
+          this.gatewayService.gateways() || [],
+          this.allPackageData(),
+        )
+      : []
   })
 
-  // Port-range interfaces, reached host -> bindingRange -> interface. They reuse
-  // the single-port per-gateway address card (non-SSL), driven by the range's
-  // own `addresses`; the external port span is shown in the header.
-  readonly ranges = computed<MappedRangeInterface[]>(() => {
-    const pkg = this.pkg()
-    if (!pkg) return []
-
-    const gateways = this.gatewayService.gateways() || []
-
-    return Object.entries(pkg.hosts)
-      .flatMap(([hostId, host]) =>
-        Object.entries(host.bindingRanges)
-          .filter(([, range]) => range.interface)
-          .map(([key, range]) => {
-            const iface = range.interface!
-            const internalStartPort = Number(key)
-            const end = range.externalStartPort + range.numberOfPorts - 1
-            // Representative addressInfo: `internalPort` is the range's internal
-            // start port (its key in bindingRanges) so the per-address toggle
-            // and add-domain effects target the range; `scheme` prefixes URLs.
-            const addressInfo: T.AddressInfo = {
-              username: null,
-              hostId,
-              internalPort: internalStartPort,
-              scheme: iface.scheme,
-              sslScheme: null,
-              suffix: '',
-            }
-
-            return {
-              id: iface.id,
-              name: iface.name,
-              description: iface.description,
-              masked: false,
-              type: 'api' as const,
-              addressInfo,
-              gatewayGroups: this.interfaceService.getRangeGatewayGroups(
-                addressInfo,
-                range.addresses,
-                host,
-                gateways,
-                range.numberOfPorts,
-              ),
-              pluginGroups: [],
-              anyAddSsl: Object.values(host.bindings).some(
-                b => !!b.options.addSsl,
-              ),
-              sharedHostNames: [],
-              portRange:
-                range.numberOfPorts > 1
-                  ? `${range.externalStartPort}-${end}`
-                  : `${range.externalStartPort}`,
-            }
-          }),
-      )
-      .sort((a, b) => a.addressInfo.internalPort - b.addressInfo.internalPort)
-  })
-
-  getAppearance(type: T.ServiceInterfaceType = 'ui'): string {
-    switch (type) {
-      case 'ui':
-        return 'positive'
-      case 'api':
-        return 'info'
-      case 'p2p':
-        return 'negative'
-    }
-  }
+  protected readonly getAppearance = getInterfaceBadgeAppearance
 }

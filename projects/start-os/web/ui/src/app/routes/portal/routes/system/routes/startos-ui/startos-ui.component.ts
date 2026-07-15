@@ -91,6 +91,7 @@ export default class StartOsUiComponent {
         this.allPackageData(),
       ),
       anyAddSsl: true,
+      addSsl: true,
       sharedHostNames: [],
     }
   })

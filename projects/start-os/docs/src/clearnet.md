@@ -43,7 +43,7 @@ If your gateway is your home router, you are revealing the approximate location 
 
 1. Click "Save".
 
-1. StartOS will automatically test your DNS record and port forwarding. If both pass, the domain is ready to use. If either test fails, a setup modal will appear showing the failing tests with instructions to remedy and the ability to re-test.
+1. StartOS automatically tests your DNS record and port forwarding — plus the IPv6 firewall when your gateway has a GUA. If everything passes, the domain is ready to use. Otherwise a setup modal appears showing what still needs attention, with instructions and the ability to re-test each check.
 
 ## Set Up DNS Records
 

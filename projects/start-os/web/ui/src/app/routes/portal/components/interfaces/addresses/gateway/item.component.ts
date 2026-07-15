@@ -324,62 +324,14 @@ export class GatewayItemComponent {
     const iface = this.value()
     if (!iface) return
 
-    const enabled = !addr.enabled
-    const params = {
-      internalPort: iface.addressInfo.internalPort,
-      address: addr.hostnameInfo,
-      enabled,
-      package: this.packageId(),
-      host: iface.addressInfo.hostId,
-    }
-
     this.toggling.set(true)
-    await this.tasks.run(async () => {
-      if (this.packageId()) {
-        // A range spans >1 port and lives in a separate subtree, so it has its
-        // own endpoint; a single-port binding is exactly 1.
-        if (addr.count > 1) {
-          await this.api.pkgBindingSetRangeAddressEnabled(params)
-        } else {
-          await this.api.pkgBindingSetAddressEnabled(params)
-        }
-      } else {
-        await this.api.serverBindingSetAddressEnabled({
-          internalPort: 80,
-          address: addr.hostnameInfo,
-          enabled,
-        })
-      }
-
-      if (enabled) {
-        const kind = addr.hostnameInfo.metadata.kind
-        if (kind === 'public-domain' && addr.hostnameInfo.port !== null) {
-          await this.domainHealth.checkPublicDomain(
-            addr.hostnameInfo.hostname,
-            this.gatewayId(),
-            addr.hostnameInfo.port,
-            addr.count,
-          )
-        } else if (kind === 'private-domain') {
-          await this.domainHealth.checkPrivateDomain(
-            this.gatewayId(),
-            addr.hostnameInfo.hostname,
-          )
-        } else if (
-          kind === 'ipv4' &&
-          addr.access === 'public' &&
-          addr.hostnameInfo.port !== null &&
-          // A port range spans many ports; a single-port reachability check
-          // would be misleading, so don't auto-test it on enable.
-          addr.count === 1
-        ) {
-          await this.domainHealth.checkPortForward(
-            this.gatewayId(),
-            addr.hostnameInfo.port,
-          )
-        }
-      }
-    }, 'Saving')
+    await this.domainHealth.setAddressEnabled(
+      !addr.enabled,
+      addr,
+      iface,
+      this.packageId(),
+      this.gatewayId(),
+    )
     this.toggling.set(false)
   }
 

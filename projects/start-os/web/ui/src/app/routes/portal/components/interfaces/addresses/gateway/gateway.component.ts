@@ -284,23 +284,36 @@ export class GatewayComponent {
     }
 
     return this.tasks.run(async () => {
-      let res
-      if (this.packageId()) {
-        res = await this.api.pkgAddPublicDomain({
-          ...params,
-          package: this.packageId(),
-          host: iface?.addressInfo.hostId || '',
-        })
-      } else {
-        res = await this.api.osUiAddPublicDomain(params)
-      }
+      // Watch the service across the add request: adding a domain can restart
+      // it, which fails the backend's port/firewall probes for a reason
+      // unrelated to the user's network (see DomainHealthService).
+      const watch = this.domainHealth.watchServiceStatus(this.packageId())
+      try {
+        let res
+        if (this.packageId()) {
+          res = await this.api.pkgAddPublicDomain({
+            ...params,
+            package: this.packageId(),
+            host: iface?.addressInfo.hostId || '',
+          })
+        } else {
+          res = await this.api.osUiAddPublicDomain(params)
+        }
 
-      await this.domainHealth.checkPublicDomain(
-        fqdn,
-        gatewayId,
-        res,
-        this.count(),
-      )
+        await this.domainHealth.checkPublicDomain(
+          fqdn,
+          gatewayId,
+          res,
+          this.count(),
+          {
+            packageId: this.packageId(),
+            addSsl: iface?.addSsl ?? false,
+            watch,
+          },
+        )
+      } finally {
+        watch.stop()
+      }
     }, 'Saving')
   }
 }

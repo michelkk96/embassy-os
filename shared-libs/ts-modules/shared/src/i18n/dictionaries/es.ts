@@ -679,7 +679,6 @@ export default {
   771: 'Fin del juego',
   772: 'Pulsa cualquier tecla o toca para empezar',
   773: 'Pulsa cualquier tecla o toca para jugar de nuevo',
-  774: 'El estado del puerto no se puede determinar mientras el servicio no está en ejecución',
   775: 'Esta dirección no funcionará desde tu red local debido a una limitación de hairpinning del router',
   776: 'Acción no encontrada',
   777: 'El dominio también se aplicará a las siguientes interfaces:',
@@ -801,4 +800,5 @@ export default {
   905: 'Este destino no tiene ninguna otra copia de seguridad',
   906: 'No hay una copia de seguridad actual (V2) para este servidor en este destino, así que eliminar la antigua (V1) dejará a este servidor sin ninguna copia de seguridad aquí. ¿Continuar?',
   907: 'Eliminar de todos modos',
+  908: 'El servicio debe estar en ejecución para realizar esta prueba. Estado actual:',
 } satisfies i18n

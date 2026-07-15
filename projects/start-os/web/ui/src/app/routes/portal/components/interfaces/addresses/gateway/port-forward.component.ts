@@ -1,20 +1,28 @@
 import { Component, computed, inject, signal } from '@angular/core'
+import { toSignal } from '@angular/core/rxjs-interop'
 import { ErrorService, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton, TuiDialogContext } from '@taiga-ui/core'
-import { TuiButtonLoading } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
-import { PortCheckIconComponent } from 'src/app/routes/portal/components/port-check-icon.component'
-import { PortCheckWarningsComponent } from 'src/app/routes/portal/components/port-check-warnings.component'
-import { TableComponent } from 'src/app/routes/portal/components/table.component'
+import { PatchDB } from 'patch-db-client'
+import { of } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
+import { DataModel } from 'src/app/services/patch-db/data-model'
+import { renderPkgStatus } from 'src/app/services/pkg-status-rendering.service'
 import { formatPortRange } from 'src/app/utils/format-port-range'
-import { DnsGateway } from './dns.component'
+import { DnsGateway } from './domain-validation.component'
+import {
+  PortCheckField,
+  PortCheckTestComponent,
+} from './port-check-test.component'
+import { TestStatusNoteComponent } from './test-status-note.component'
 
 export type PortForwardValidationData = {
   gateway: DnsGateway
   port: number
   count: number
+  packageId: string
+  addSsl: boolean
   initialResults?: { portResult: T.CheckPortRes | null }
 }
 
@@ -30,70 +38,21 @@ export type PortForwardValidationData = {
       {{ 'create this port forwarding rule' | i18n }}
     </p>
 
-    @let portRes = portResult();
+    <port-check-test
+      [fields]="portFields"
+      [testable]="!isRange"
+      [result]="portResult()"
+      [warningResult]="portResult()"
+      [loading]="loading()"
+      [disabled]="testDisabled()"
+      (test)="testPort()"
+    />
 
-    <div class="desktop">
-      <table
-        [class.range-table]="isRange"
-        [appTable]="
-          isRange
-            ? ['External Range', 'Internal Range']
-            : [null, 'External Port', 'Internal Port', null]
-        "
-      >
-        <tr>
-          @if (!isRange) {
-            <td class="status">
-              <port-check-icon [result]="portRes" [loading]="loading()" />
-            </td>
-          }
-          <td>{{ portDisplay }}</td>
-          <td>{{ portDisplay }}</td>
-          @if (!isRange) {
-            <td>
-              <button
-                tuiButton
-                size="s"
-                [loading]="loading()"
-                (click)="testPort()"
-              >
-                {{ 'Test' | i18n }}
-              </button>
-            </td>
-          }
-        </tr>
-      </table>
-    </div>
-    <div class="mobile">
-      <div class="card">
-        @if (!isRange) {
-          <div class="card-status">
-            <port-check-icon [result]="portRes" [loading]="loading()" />
-          </div>
-        }
-        <div class="card-fields">
-          <div class="field">
-            <span class="field-label">
-              {{ (isRange ? 'External Range' : 'External Port') | i18n }}
-            </span>
-            <span>{{ portDisplay }}</span>
-          </div>
-          <div class="field">
-            <span class="field-label">
-              {{ (isRange ? 'Internal Range' : 'Internal Port') | i18n }}
-            </span>
-            <span>{{ portDisplay }}</span>
-          </div>
-        </div>
-        @if (!isRange) {
-          <button tuiButton size="s" [loading]="loading()" (click)="testPort()">
-            {{ 'Test' | i18n }}
-          </button>
-        }
-      </div>
-    </div>
-
-    <port-check-warnings [result]="portRes" />
+    @if (!isRange && testDisabled()) {
+      @if (pkg(); as p) {
+        <test-status-note [pkg]="p" />
+      }
+    }
 
     @if (!isManualMode) {
       <footer class="g-buttons padding-top">
@@ -124,97 +83,47 @@ export type PortForwardValidationData = {
       margin-top: 0.5rem;
     }
 
-    tui-icon {
-      font-size: 1.3rem;
-      vertical-align: text-bottom;
-    }
-
-    .status {
-      width: 3.2rem;
-    }
-
     .padding-top {
       padding-top: 2rem;
-    }
-
-    td:last-child {
-      text-align: end;
-    }
-
-    // A range table has no status/Test columns, so its last cell is the
-    // internal-range value — keep it left-aligned with its header.
-    .range-table td:last-child {
-      text-align: start;
     }
 
     footer {
       margin-top: 1.5rem;
     }
-
-    .mobile {
-      display: none;
-    }
-
-    .card {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      padding: 1rem;
-      border: 1px solid var(--tui-border-normal);
-      border-radius: var(--tui-radius-l);
-      margin-top: 1rem;
-    }
-
-    .card-status {
-      flex-shrink: 0;
-      width: 1.5rem;
-      text-align: center;
-    }
-
-    .card-fields {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .field {
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    .field-label {
-      color: var(--tui-text-secondary);
-      font: var(--tui-typography-body-s);
-
-      &::after {
-        content: ':';
-      }
-    }
-
-    :host-context(tui-root._mobile) {
-      .desktop {
-        display: none;
-      }
-
-      .mobile {
-        display: block;
-      }
-    }
   `,
   imports: [
     TuiButton,
     i18nPipe,
-    TableComponent,
-    TuiButtonLoading,
-    PortCheckIconComponent,
-    PortCheckWarningsComponent,
+    TestStatusNoteComponent,
+    PortCheckTestComponent,
   ],
 })
 export class PortForwardValidationComponent {
   private readonly errorService = inject(ErrorService)
   private readonly api = inject(ApiService)
+  private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
 
   readonly context =
     injectContext<TuiDialogContext<void, PortForwardValidationData>>()
+
+  // The package's live status, or undefined for an OS interface (empty id). It
+  // gates the tests and drives the status shown while a test is unavailable.
+  protected readonly pkg = toSignal(
+    this.context.data.packageId
+      ? this.patch.watch$('packageData', this.context.data.packageId)
+      : of(undefined),
+  )
+  protected readonly status = computed(() => {
+    const pkg = this.pkg()
+    return pkg ? renderPkgStatus(pkg).primary : 'running'
+  })
+
+  // A non-SSL binding is served directly by the service, so its port forward
+  // can't be reached while the service is stopped. An SSL binding is fronted by
+  // the always-up OS reverse proxy, so it stays testable.
+  readonly testDisabled = computed(
+    () => this.status() !== 'running' && !this.context.data.addSsl,
+  )
 
   // A port range forwards a span of ports and can't be tested a port at a time.
   readonly isRange = this.context.data.count > 1
@@ -222,6 +131,16 @@ export class PortForwardValidationComponent {
     this.context.data.port,
     this.context.data.count,
   )
+
+  readonly portFields: readonly PortCheckField[] = this.isRange
+    ? [
+        { label: 'External Range', value: this.portDisplay },
+        { label: 'Internal Range', value: this.portDisplay },
+      ]
+    : [
+        { label: 'External Port', value: this.portDisplay },
+        { label: 'Internal Port', value: this.portDisplay },
+      ]
 
   readonly loading = signal(false)
   readonly portResult = signal<T.CheckPortRes | undefined>(undefined)

@@ -1,18 +1,26 @@
 import { Component, computed, inject, signal } from '@angular/core'
+import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { ErrorService, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton, TuiDialogContext } from '@taiga-ui/core'
 import { TuiButtonLoading, TuiSwitch } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
+import { PatchDB } from 'patch-db-client'
+import { of } from 'rxjs'
 import { CheckIconComponent } from 'src/app/routes/portal/components/check-icon.component'
-import { PortCheckIconComponent } from 'src/app/routes/portal/components/port-check-icon.component'
-import { PortCheckWarningsComponent } from 'src/app/routes/portal/components/port-check-warnings.component'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
+import { DataModel } from 'src/app/services/patch-db/data-model'
+import { renderPkgStatus } from 'src/app/services/pkg-status-rendering.service'
 import { formatPortRange } from 'src/app/utils/format-port-range'
 import { dnsAllPass, getGua, getLanIpv4, portAllPass } from 'src/app/utils/gua'
 import { parse } from 'tldts'
+import {
+  PortCheckField,
+  PortCheckTestComponent,
+} from './port-check-test.component'
+import { TestStatusNoteComponent } from './test-status-note.component'
 
 export type DnsGateway = T.NetworkInterfaceInfo & {
   id: string
@@ -24,6 +32,8 @@ export type DomainValidationData = {
   gateway: DnsGateway
   port: number
   count: number
+  packageId: string
+  addSsl: boolean
   initialResults?: {
     dns: T.QueryDnsRes | null
     portResult: T.CheckPortRes | null
@@ -150,75 +160,15 @@ export type DomainValidationData = {
       }}
     </p>
 
-    @let portRes = portResult();
-
-    <div class="desktop">
-      <table
-        [class.range-table]="isRange"
-        [appTable]="
-          isRange
-            ? ['External Range', 'Internal Range']
-            : [null, 'External', 'Internal', null]
-        "
-      >
-        <tr>
-          @if (!isRange) {
-            <td class="status">
-              <port-check-icon [result]="portRes" [loading]="portLoading()" />
-            </td>
-          }
-          <td>{{ externalAddr }}</td>
-          <td>{{ internalAddr }}</td>
-          @if (!isRange) {
-            <td>
-              <button
-                tuiButton
-                size="s"
-                [loading]="portLoading()"
-                (click)="testPort()"
-              >
-                {{ 'Test' | i18n }}
-              </button>
-            </td>
-          }
-        </tr>
-      </table>
-    </div>
-    <div class="mobile">
-      <div class="card">
-        @if (!isRange) {
-          <div class="card-status">
-            <port-check-icon [result]="portRes" [loading]="portLoading()" />
-          </div>
-        }
-        <div class="card-fields">
-          <div class="field">
-            <span class="field-label">
-              {{ (isRange ? 'External Range' : 'External') | i18n }}
-            </span>
-            <span>{{ externalAddr }}</span>
-          </div>
-          <div class="field">
-            <span class="field-label">
-              {{ (isRange ? 'Internal Range' : 'Internal') | i18n }}
-            </span>
-            <span>{{ internalAddr }}</span>
-          </div>
-        </div>
-        @if (!isRange) {
-          <button
-            tuiButton
-            size="s"
-            [loading]="portLoading()"
-            (click)="testPort()"
-          >
-            {{ 'Test' | i18n }}
-          </button>
-        }
-      </div>
-    </div>
-
-    <port-check-warnings [result]="portRes" />
+    <port-check-test
+      [fields]="portFields"
+      [testable]="!isRange"
+      [result]="portResult()"
+      [warningResult]="portResult()"
+      [loading]="portLoading()"
+      [disabled]="testDisabled()"
+      (test)="testPort()"
+    />
 
     @if (!isRange && gua) {
       <h2>{{ 'IPv6 Firewall' | i18n }}</h2>
@@ -229,53 +179,19 @@ export type DomainValidationData = {
         }}
       </p>
 
-      <div class="desktop">
-        <table [appTable]="[null, 'Address', null]">
-          <tr>
-            <td class="status">
-              <port-check-icon
-                [result]="portV6Result() || undefined"
-                [loading]="portV6Loading()"
-              />
-            </td>
-            <td>{{ ipv6Addr }}</td>
-            <td>
-              <button
-                tuiButton
-                size="s"
-                [loading]="portV6Loading()"
-                (click)="testPortV6()"
-              >
-                {{ 'Test' | i18n }}
-              </button>
-            </td>
-          </tr>
-        </table>
-      </div>
-      <div class="mobile">
-        <div class="card">
-          <div class="card-status">
-            <port-check-icon
-              [result]="portV6Result() || undefined"
-              [loading]="portV6Loading()"
-            />
-          </div>
-          <div class="card-fields">
-            <div class="field">
-              <span class="field-label">{{ 'Address' | i18n }}</span>
-              <span>{{ ipv6Addr }}</span>
-            </div>
-          </div>
-          <button
-            tuiButton
-            size="s"
-            [loading]="portV6Loading()"
-            (click)="testPortV6()"
-          >
-            {{ 'Test' | i18n }}
-          </button>
-        </div>
-      </div>
+      <port-check-test
+        [fields]="firewallFields"
+        [result]="portV6Result()"
+        [loading]="portV6Loading()"
+        [disabled]="testDisabled()"
+        (test)="testPortV6()"
+      />
+    }
+
+    @if (!isRange && testDisabled()) {
+      @if (pkg(); as p) {
+        <test-status-note [pkg]="p" />
+      }
     }
 
     @if (!isManualMode) {
@@ -324,12 +240,6 @@ export type DomainValidationData = {
 
     td:last-child {
       text-align: end;
-    }
-
-    // The port-forwarding range table has no status/Test columns, so its last
-    // cell is the internal-range value — keep it left-aligned with its header.
-    .range-table td:last-child {
-      text-align: start;
     }
 
     footer {
@@ -393,18 +303,40 @@ export type DomainValidationData = {
     FormsModule,
     TuiButtonLoading,
     CheckIconComponent,
-    PortCheckIconComponent,
-    PortCheckWarningsComponent,
+    TestStatusNoteComponent,
+    PortCheckTestComponent,
   ],
 })
 export class DomainValidationComponent {
   private readonly errorService = inject(ErrorService)
   private readonly api = inject(ApiService)
+  private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
 
   ddns = false
 
   readonly context =
     injectContext<TuiDialogContext<void, DomainValidationData>>()
+
+  // The package's live status, or undefined for an OS interface (empty id). It
+  // gates the port/firewall tests and drives the status shown while they are
+  // unavailable. DNS resolution does not depend on it, so its Test always stays
+  // on. The OS UI carries its own packageId but stays testable via addSsl.
+  protected readonly pkg = toSignal(
+    this.context.data.packageId
+      ? this.patch.watch$('packageData', this.context.data.packageId)
+      : of(undefined),
+  )
+  protected readonly status = computed(() => {
+    const pkg = this.pkg()
+    return pkg ? renderPkgStatus(pkg).primary : 'running'
+  })
+
+  // A non-SSL binding is served directly by the service, so its port forward /
+  // firewall can't be reached while the service is stopped. An SSL binding is
+  // fronted by the always-up OS reverse proxy, so it stays testable.
+  readonly testDisabled = computed(
+    () => this.status() !== 'running' && !this.context.data.addSsl,
+  )
 
   readonly domain =
     parse(this.context.data.fqdn).domain || this.context.data.fqdn
@@ -428,6 +360,19 @@ export class DomainValidationComponent {
   readonly externalAddr = this.socketAddr(this.wanIp)
   readonly internalAddr = this.socketAddr(this.lanIpv4)
   readonly ipv6Addr = this.gua ? `[${this.gua}]:${this.portDisplay}` : ''
+
+  readonly portFields: readonly PortCheckField[] = this.isRange
+    ? [
+        { label: 'External Range', value: this.externalAddr },
+        { label: 'Internal Range', value: this.internalAddr },
+      ]
+    : [
+        { label: 'External', value: this.externalAddr },
+        { label: 'Internal', value: this.internalAddr },
+      ]
+  readonly firewallFields: readonly PortCheckField[] = [
+    { label: 'Address', value: this.ipv6Addr },
+  ]
 
   readonly dnsLoading = signal(false)
   readonly portLoading = signal(false)

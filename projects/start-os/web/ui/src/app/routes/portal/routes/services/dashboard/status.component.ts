@@ -4,6 +4,7 @@ import { TuiIcon, TuiLoader } from '@taiga-ui/core'
 import { getProgressText } from 'src/app/routes/portal/routes/services/pipes/install-progress.pipe'
 import { PackageDataEntry } from 'src/app/services/patch-db/data-model'
 import {
+  getStatusColor,
   PrimaryRendering,
   renderPkgStatus,
 } from 'src/app/services/pkg-status-rendering.service'
@@ -79,25 +80,7 @@ export class StatusComponent {
     ].includes(primary),
   )
 
-  readonly color = computed(({ primary } = this.status()) => {
-    switch (primary) {
-      case 'running':
-        return 'var(--tui-status-positive)'
-      case 'task-required':
-        return 'var(--tui-status-warning)'
-      case 'error':
-        return 'var(--tui-status-negative)'
-      case 'installing':
-      case 'updating':
-      case 'stopping':
-      case 'starting':
-      case 'backing-up':
-      case 'restarting':
-      case 'removing':
-      case 'restoring':
-        return 'var(--tui-status-info)'
-      case 'stopped':
-        return 'var(--tui-text-secondary)'
-    }
-  })
+  readonly color = computed(({ primary } = this.status()) =>
+    getStatusColor(primary),
+  )
 }

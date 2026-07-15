@@ -30,8 +30,7 @@ import { TuiIcon, TuiLoader } from '@taiga-ui/core'
 })
 export class PortCheckIconComponent {
   // Accepts either a full IPv4 check or the IPv6 sub-result — both carry the
-  // openInternally/openExternally fields this reads.
-  readonly result =
-    input<Pick<T.CheckPortRes, 'openInternally' | 'openExternally'>>()
+  // openExternally field this reads.
+  readonly result = input<Pick<T.CheckPortRes, 'openExternally'>>()
   readonly loading = input(false)
 }

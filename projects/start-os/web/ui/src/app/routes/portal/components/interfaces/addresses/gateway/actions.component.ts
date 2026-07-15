@@ -250,32 +250,13 @@ export class GatewayActionsComponent {
     const iface = this.value()
     if (!iface) return
 
-    const enabled = !addr.enabled
-    const params = {
-      internalPort: iface.addressInfo.internalPort,
-      address: addr.hostnameInfo,
-      enabled,
-      package: this.packageId(),
-      host: iface.addressInfo.hostId,
-    }
-
-    this.tasks.run(async () => {
-      if (this.packageId()) {
-        // A range spans >1 port and lives in a separate subtree, so it has its
-        // own endpoint; a single-port binding is exactly 1.
-        if (addr.count > 1) {
-          await this.api.pkgBindingSetRangeAddressEnabled(params)
-        } else {
-          await this.api.pkgBindingSetAddressEnabled(params)
-        }
-      } else {
-        await this.api.serverBindingSetAddressEnabled({
-          internalPort: 80,
-          address: addr.hostnameInfo,
-          enabled,
-        })
-      }
-    }, 'Saving')
+    await this.domainHealth.setAddressEnabled(
+      !addr.enabled,
+      addr,
+      iface,
+      this.packageId(),
+      this.gatewayId(),
+    )
   }
 
   showDnsValidation() {
@@ -286,6 +267,7 @@ export class GatewayActionsComponent {
       this.gatewayId(),
       port,
       this.address().count,
+      { packageId: this.packageId(), addSsl: this.value()?.addSsl ?? false },
     )
   }
 
@@ -303,6 +285,7 @@ export class GatewayActionsComponent {
       this.gatewayId(),
       port,
       this.address().count,
+      { packageId: this.packageId(), addSsl: this.value()?.addSsl ?? false },
     )
   }
 

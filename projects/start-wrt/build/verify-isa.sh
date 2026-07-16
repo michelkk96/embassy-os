@@ -16,31 +16,26 @@ if [ ! -f "$BINARY" ]; then
     exit 1
 fi
 
-OBJDUMP=""
-for candidate in \
-    "${RISCV_OBJDUMP:-}" \
-    riscv64-linux-gnu-objdump \
-    riscv64-openwrt-linux-musl-objdump \
-    riscv64-unknown-linux-musl-objdump; do
-    if [ -n "$candidate" ] && command -v "$candidate" >/dev/null 2>&1; then
-        OBJDUMP="$candidate"
-        break
+# Disassembly runs in the same start9/cargo-zigbuild container the cross-build
+# uses (its llvm-objdump targets riscv64), so the host needs no riscv binutils.
+# Set RISCV_OBJDUMP to a native riscv64-capable objdump to skip docker.
+#
+# The decoder follows the binary's ELF arch attributes (like GNU objdump), so
+# this check catches exactly its target: compiler-emitted instructions from a
+# misconfigured RUSTFLAGS/-mcpu, which always carry matching attributes. Do
+# NOT force extensions on via --mattr to "see more": deps ship hand-written
+# runtime-dispatched asm (e.g. vendored OpenSSL's RVV routines) whose inline
+# constant tables then decode as banned mnemonics — false positives — while
+# the asm itself stays out of the attributes and out of this check's scope.
+disassemble() {
+    if [ -n "${RISCV_OBJDUMP:-}" ]; then
+        "$RISCV_OBJDUMP" -d -M no-aliases "$BINARY"
+    else
+        docker run --rm -v "$(realpath "$BINARY")":/verify/binary:ro \
+            start9/cargo-zigbuild \
+            sh -c 'set -- /usr/lib/llvm-*/bin/llvm-objdump; exec "$1" -d -M no-aliases /verify/binary'
     fi
-done
-if [ -z "$OBJDUMP" ]; then
-    # Script-relative so the fallback works from any cwd (the build runs from
-    # the monorepo root, where a bare openwrt/ would miss projects/start-wrt/).
-    for f in "$(dirname "$0")/../openwrt"/staging_dir/toolchain-riscv64*/bin/*-objdump; do
-        if [ -x "$f" ]; then
-            OBJDUMP="$f"
-            break
-        fi
-    done
-fi
-if [ -z "$OBJDUMP" ]; then
-    echo "ERROR: no riscv64 objdump found (install binutils-riscv64-linux-gnu or set RISCV_OBJDUMP)" >&2
-    exit 1
-fi
+}
 
 # RVA23-only instructions that SIGILL on K1:
 #   Zicond:  czero.eqz, czero.nez
@@ -61,12 +56,24 @@ BANNED_RE='\b(czero\.(eqz|nez)|fli\.[sdhq]|fround(nx)?\.[sdhq]|fmaxm\.[sdhq]|fmi
 # detecting those catches any vectorised code.
 VSET_RE='\bvset(i?vli|vl)\b'
 
-echo "==> Verifying $(basename "$BINARY") against K1 ISA (via $(basename "$OBJDUMP"))..."
+echo "==> Verifying $(basename "$BINARY") against K1 ISA (via ${RISCV_OBJDUMP:-containerized llvm-objdump})..."
 
-# Disassemble once; scan the text for both failure classes.
+# Disassemble once; scan the text for both failure classes. Decoder warnings
+# on stderr are suppressed unless the disassembly itself fails — then it's
+# the docker/objdump error we need.
 DISASM="$(mktemp)"
-trap 'rm -f "$DISASM"' EXIT
-"$OBJDUMP" -d -M no-aliases "$BINARY" 2>/dev/null > "$DISASM"
+trap 'rm -f "$DISASM" "$DISASM.err"' EXIT
+if ! disassemble 2>"$DISASM.err" > "$DISASM"; then
+    cat "$DISASM.err" >&2
+    echo "ERROR: disassembly of $BINARY failed" >&2
+    exit 1
+fi
+
+# An empty disassembly would vacuously pass both scans below.
+if [ ! -s "$DISASM" ]; then
+    echo "ERROR: disassembly of $BINARY produced no output" >&2
+    exit 1
+fi
 
 FOUND=$(grep -oE "$BANNED_RE" "$DISASM" | sort -u || true)
 if [ -n "$FOUND" ]; then

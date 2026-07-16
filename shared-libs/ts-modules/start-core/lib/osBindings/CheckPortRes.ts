@@ -4,5 +4,6 @@ export type CheckPortRes = {
   ip: string
   port: number
   openExternally: boolean
+  openInternally: boolean
   hairpinning: boolean
 }

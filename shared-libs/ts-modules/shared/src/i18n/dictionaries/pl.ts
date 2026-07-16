@@ -679,6 +679,7 @@ export default {
   771: 'Koniec gry',
   772: 'Naciśnij dowolny klawisz lub dotknij, aby rozpocząć',
   773: 'Naciśnij dowolny klawisz lub dotknij, aby zagrać ponownie',
+  774: 'Status portu nie może być określony, gdy usługa nie jest uruchomiona',
   775: 'Ten adres nie będzie działać z Twojej sieci lokalnej z powodu ograniczenia hairpinning routera',
   776: 'Nie znaleziono akcji',
   777: 'Domena będzie również dotyczyć następujących interfejsów:',

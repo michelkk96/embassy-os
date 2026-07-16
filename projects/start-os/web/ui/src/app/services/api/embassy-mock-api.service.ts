@@ -556,6 +556,7 @@ export class MockApiService extends ApiService {
       ip: '0.0.0.0',
       port: params.port,
       openExternally: true,
+      openInternally: false,
       hairpinning: true,
     }
   }
@@ -568,6 +569,7 @@ export class MockApiService extends ApiService {
     return {
       ip: '::',
       openExternally: true,
+      openInternally: false,
     }
   }
 
@@ -1621,6 +1623,7 @@ export class MockApiService extends ApiService {
         ip: '0.0.0.0',
         port: 443,
         openExternally: false,
+        openInternally: false,
         hairpinning: false,
       },
       portV6: null,
@@ -1765,6 +1768,7 @@ export class MockApiService extends ApiService {
         ip: '0.0.0.0',
         port: 443,
         openExternally: false,
+        openInternally: false,
         hairpinning: false,
       },
       portV6: null,

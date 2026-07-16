@@ -569,6 +569,7 @@ pub struct CheckPortRes {
     pub ip: Ipv4Addr,
     pub port: u16,
     pub open_externally: bool,
+    pub open_internally: bool,
     pub hairpinning: bool,
 }
 
@@ -581,6 +582,7 @@ pub struct CheckPortRes {
 pub struct CheckPortV6Res {
     pub ip: Ipv6Addr,
     pub open_externally: bool,
+    pub open_internally: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -618,6 +620,21 @@ pub async fn check_port(
         )
     })?;
 
+    let internal_ips = ip_info
+        .subnets
+        .iter()
+        .map(|i| i.addr())
+        .filter(|a| a.is_ipv4())
+        .map(|a| SocketAddr::new(a, port))
+        .collect::<Vec<_>>();
+
+    let open_internally = tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio::net::TcpStream::connect(&*internal_ips),
+    )
+    .await
+    .map_or(false, |r| r.is_ok());
+
     let local_ipv4 = ip_info
         .subnets
         .iter()
@@ -648,6 +665,7 @@ pub async fn check_port(
                 ip,
                 port,
                 open_externally: true,
+                open_internally,
                 hairpinning,
             });
         }
@@ -700,6 +718,7 @@ pub async fn check_port(
         ip,
         port,
         open_externally,
+        open_internally,
         hairpinning,
     })
 }
@@ -756,6 +775,13 @@ async fn check_gua_port(
         return Ok(None);
     };
 
+    let open_internally = tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio::net::TcpStream::connect(SocketAddr::new(IpAddr::V6(gua), port)),
+    )
+    .await
+    .map_or(false, |r| r.is_ok());
+
     if let Ok(Some(_)) = tokio::time::timeout(
         Duration::from_secs(2),
         port_map.mapped_external_ip(IpAddr::V6(gua), port),
@@ -765,6 +791,7 @@ async fn check_gua_port(
         return Ok(Some(CheckPortV6Res {
             ip: gua,
             open_externally: true,
+            open_internally,
         }));
     }
 
@@ -800,6 +827,7 @@ async fn check_gua_port(
     Ok(Some(CheckPortV6Res {
         ip: gua,
         open_externally,
+        open_internally,
     }))
 }
 

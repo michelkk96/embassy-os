@@ -45,8 +45,8 @@ export function dnsAllPass(
 
 /**
  * Whether the port is reachable for every family the gateway offers: IPv4 open
- * externally + hairpinning, and (if a GUA exists) the v6 port open externally.
- * v6 is NAT-free, so it has no hairpinning requirement.
+ * internally + externally + hairpinning, and (if a GUA exists) the v6 port open
+ * internally + externally. v6 is NAT-free, so it has no hairpinning requirement.
  */
 export function portAllPass(
   port: T.CheckPortRes | null | undefined,
@@ -54,7 +54,7 @@ export function portAllPass(
   gua: string | null,
 ): boolean {
   if (!port) return false
-  const v4Ok = port.openExternally && port.hairpinning
-  const v6Ok = !gua || !!portV6?.openExternally
+  const v4Ok = port.openInternally && port.openExternally && port.hairpinning
+  const v6Ok = !gua || (!!portV6?.openInternally && !!portV6?.openExternally)
   return v4Ok && v6Ok
 }

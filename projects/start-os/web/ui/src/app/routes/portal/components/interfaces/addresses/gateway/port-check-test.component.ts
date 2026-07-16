@@ -156,7 +156,8 @@ export class PortCheckTestComponent {
   // A port range is display-only — no reachability probe, hence no status icon
   // or Test button; its columns keep their range headers.
   readonly testable = input(true)
-  readonly result = input<Pick<T.CheckPortRes, 'openExternally'>>()
+  readonly result =
+    input<Pick<T.CheckPortRes, 'openExternally' | 'openInternally'>>()
   // When set, shows the hairpinning warning — IPv4 forwarding only; the IPv6
   // firewall has none.
   readonly warningResult = input<T.CheckPortRes>()

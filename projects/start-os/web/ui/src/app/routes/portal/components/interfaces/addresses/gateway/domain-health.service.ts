@@ -299,7 +299,10 @@ export class DomainHealthService {
         portResult = null
       }
 
-      const portOk = !!portResult?.openExternally && !!portResult?.hairpinning
+      const portOk =
+        !!portResult?.openInternally &&
+        !!portResult?.openExternally &&
+        !!portResult?.hairpinning
 
       if (!portOk) {
         setTimeout(

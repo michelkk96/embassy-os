@@ -2,8 +2,13 @@ import { Component, computed, inject, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { ErrorService, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { TuiButton, TuiDialogContext } from '@taiga-ui/core'
-import { TuiButtonLoading, TuiSwitch } from '@taiga-ui/kit'
+import { TuiButton, TuiDialogContext, TuiLabel } from '@taiga-ui/core'
+import {
+  TuiButtonLoading,
+  TuiSwitch,
+  tuiSwitchOptionsProvider,
+} from '@taiga-ui/kit'
+import { TuiHeader } from '@taiga-ui/layout'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { CheckIconComponent } from 'src/app/routes/portal/components/check-icon.component'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
@@ -44,105 +49,64 @@ export type DomainValidationData = {
     @let gatewayName =
       context.data.gateway.name || context.data.gateway.ipInfo.name;
 
-    <h2>{{ 'DNS' | i18n }}</h2>
+    <h3 tuiHeader="h6">{{ 'DNS' | i18n }}</h3>
     <p>
       {{ 'In your domain registrar for' | i18n }} {{ domain }},
       {{ (gua ? 'create these DNS records' : 'create this DNS record') | i18n }}
     </p>
 
     @if (context.data.gateway.ipInfo.deviceType !== 'wireguard') {
-      <label>
-        IP
-        <input
-          type="checkbox"
-          tuiSwitch
-          [(ngModel)]="ddns"
-          (ngModelChange)="dnsResult.set(undefined)"
-        />
-        {{ 'Dynamic DNS' | i18n }}
-      </label>
+      <p>
+        <label tuiLabel>
+          IP
+          <input
+            type="checkbox"
+            tuiSwitch
+            [style.margin-inline.rem]="0.5"
+            [showIcons]="false"
+            [(ngModel)]="ddns"
+            (ngModelChange)="dnsResult.set(undefined)"
+          />
+          {{ 'Dynamic DNS' | i18n }}
+        </label>
+      </p>
     }
 
-    <div class="desktop">
-      <table [appTable]="[null, 'Type', 'Host', 'Value', null]">
-        <tr>
-          <td class="status">
-            <check-icon [pass]="dnsV4Pass()" [loading]="dnsLoading()" />
-          </td>
-          <td>{{ ddns ? 'ALIAS' : 'A' }}</td>
-          <td>*</td>
-          <td>{{ ddns ? '[DDNS Address]' : wanIp }}</td>
-          <td>
-            <button
-              tuiButton
-              size="s"
-              [loading]="dnsLoading()"
-              (click)="testDns()"
-            >
-              {{ 'Test' | i18n }}
-            </button>
-          </td>
-        </tr>
-        @if (gua) {
-          <tr>
-            <td class="status">
-              <check-icon [pass]="dnsV6Pass()" [loading]="dnsLoading()" />
-            </td>
-            <td>AAAA</td>
-            <td>*</td>
-            <td>{{ gua }}</td>
-            <td></td>
-          </tr>
-        }
-      </table>
-    </div>
-    <div class="mobile">
-      <div class="card">
-        <div class="card-status">
+    <table [appTable]="[null, 'Type', 'Host', 'Value', null]">
+      <tr>
+        <td>
           <check-icon [pass]="dnsV4Pass()" [loading]="dnsLoading()" />
-        </div>
-        <div class="card-fields">
-          <div class="field">
-            <span class="field-label">{{ 'Type' | i18n }}</span>
-            <span>{{ ddns ? 'ALIAS' : 'A' }}</span>
-          </div>
-          <div class="field">
-            <span class="field-label">{{ 'Host' | i18n }}</span>
-            <span>*</span>
-          </div>
-          <div class="field">
-            <span class="field-label">{{ 'Value' | i18n }}</span>
-            <span>{{ ddns ? '[DDNS Address]' : wanIp }}</span>
-          </div>
-        </div>
-        <button tuiButton size="s" [loading]="dnsLoading()" (click)="testDns()">
-          {{ 'Test' | i18n }}
-        </button>
-      </div>
+        </td>
+        <td [attr.data-label]="'Type' | i18n">{{ ddns ? 'ALIAS' : 'A' }}</td>
+        <td [attr.data-label]="'Host' | i18n">*</td>
+        <td [attr.data-label]="'Value' | i18n">
+          {{ ddns ? '[DDNS Address]' : wanIp }}
+        </td>
+        <td>
+          <button
+            tuiButton
+            size="s"
+            [loading]="dnsLoading()"
+            (click)="testDns()"
+          >
+            {{ 'Test' | i18n }}
+          </button>
+        </td>
+      </tr>
       @if (gua) {
-        <div class="card">
-          <div class="card-status">
+        <tr>
+          <td>
             <check-icon [pass]="dnsV6Pass()" [loading]="dnsLoading()" />
-          </div>
-          <div class="card-fields">
-            <div class="field">
-              <span class="field-label">{{ 'Type' | i18n }}</span>
-              <span>AAAA</span>
-            </div>
-            <div class="field">
-              <span class="field-label">{{ 'Host' | i18n }}</span>
-              <span>*</span>
-            </div>
-            <div class="field">
-              <span class="field-label">{{ 'Value' | i18n }}</span>
-              <span>{{ gua }}</span>
-            </div>
-          </div>
-        </div>
+          </td>
+          <td [attr.data-label]="'Type' | i18n">AAAA</td>
+          <td [attr.data-label]="'Host' | i18n">*</td>
+          <td [attr.data-label]="'Value' | i18n">{{ gua }}</td>
+          <td></td>
+        </tr>
       }
-    </div>
+    </table>
 
-    <h2>{{ 'Port Forwarding' | i18n }}</h2>
+    <h3 tuiHeader="h6">{{ 'Port Forwarding' | i18n }}</h3>
     <p>
       {{ 'In your gateway' | i18n }} "{{ gatewayName }}",
       {{ 'create this port forwarding rule' | i18n }}
@@ -167,7 +131,7 @@ export type DomainValidationData = {
     />
 
     @if (!isRange && gua) {
-      <h2>{{ 'IPv6 Firewall' | i18n }}</h2>
+      <h3 tuiHeader="h6">{{ 'IPv6 Firewall' | i18n }}</h3>
       <p>
         {{
           'IPv6 has no port forwarding — your server is reachable directly at its global address. Your gateway firewall must allow inbound connections to it, or enable automatic firewall configuration (PCP) on the gateway.'
@@ -191,7 +155,7 @@ export type DomainValidationData = {
     }
 
     @if (!isManualMode) {
-      <footer class="g-buttons padding-top">
+      <footer class="g-buttons">
         <button
           tuiButton
           appearance="flat"
@@ -211,83 +175,46 @@ export type DomainValidationData = {
     }
   `,
   styles: `
-    label {
-      display: flex;
-      gap: 0.75rem;
-      align-items: center;
-      margin: 1rem 0;
+    table {
+      margin-block-end: 2rem;
     }
 
-    h2 {
-      margin: 2rem 0 0 0;
+    tr {
+      grid-template-columns: min-content 1fr min-content;
+      margin-inline: 1rem;
     }
 
-    p {
-      margin-top: 0.5rem;
-    }
-
-    .status {
-      width: 3.2rem;
-    }
-
-    .padding-top {
-      padding-top: 2rem;
+    td:first-child {
+      inline-size: 0;
+      min-inline-size: fit-content;
+      place-self: center;
+      grid-column: 1;
+      grid-row: 1 / span 3;
+      margin-inline-end: 1rem;
     }
 
     td:last-child {
       text-align: end;
-    }
-
-    footer {
-      margin-top: 1.5rem;
-    }
-
-    .mobile {
-      display: none;
-    }
-
-    .card {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      padding: 1rem;
-      border: 1px solid var(--tui-border-normal);
-      border-radius: var(--tui-radius-l);
-      margin-top: 1rem;
-    }
-
-    .card-status {
-      flex-shrink: 0;
-      width: 1.5rem;
-      text-align: center;
-    }
-
-    .card-fields {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .field {
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    .field-label {
-      color: var(--tui-text-secondary);
-      font: var(--tui-typography-body-s);
-
-      &::after {
-        content: ':';
-      }
+      padding-inline: 0.5rem;
+      grid-column: 3;
+      grid-row: 1 / span 3;
+      place-self: center;
     }
 
     :host-context(tui-root._mobile) {
-      .desktop {
-        display: none;
+      table {
+        color: var(--tui-text-primary);
+        border-radius: var(--tui-radius-l);
+        box-shadow: inset 0 0 0 1px var(--tui-border-normal);
       }
 
-      .mobile {
-        display: block;
+      td[data-label] {
+        grid-column: 2;
+
+        &::before {
+          content: attr(data-label) ': ';
+          color: var(--tui-text-secondary);
+        }
       }
     }
   `,
@@ -301,7 +228,10 @@ export type DomainValidationData = {
     CheckIconComponent,
     TestStatusNoteComponent,
     PortCheckTestComponent,
+    TuiHeader,
+    TuiLabel,
   ],
+  providers: [tuiSwitchOptionsProvider({ appearance: () => 'primary' })],
 })
 export class DomainValidationComponent {
   private readonly errorService = inject(ErrorService)

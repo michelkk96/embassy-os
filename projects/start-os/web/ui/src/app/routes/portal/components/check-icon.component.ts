@@ -16,8 +16,7 @@ import { TuiIcon, TuiLoader } from '@taiga-ui/core'
   `,
   styles: `
     tui-icon {
-      font-size: 1.3rem;
-      vertical-align: text-bottom;
+      font-size: 1rem;
     }
   `,
   imports: [TuiIcon, TuiLoader],

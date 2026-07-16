@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core'
 import { ErrorService, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton, TuiDialogContext } from '@taiga-ui/core'
+import { TuiHeader } from '@taiga-ui/layout'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { formatPortRange } from 'src/app/utils/format-port-range'
@@ -28,7 +29,7 @@ export type PortForwardValidationData = {
     @let gatewayName =
       context.data.gateway.name || context.data.gateway.ipInfo.name;
 
-    <h2>{{ 'Port Forwarding' | i18n }}</h2>
+    <h3 tuiHeader="h6">{{ 'Port Forwarding' | i18n }}</h3>
     <p>
       {{ 'In your gateway' | i18n }} "{{ gatewayName }}",
       {{ 'create this port forwarding rule' | i18n }}
@@ -51,7 +52,7 @@ export type PortForwardValidationData = {
     }
 
     @if (!isManualMode) {
-      <footer class="g-buttons padding-top">
+      <footer class="g-buttons">
         <button
           tuiButton
           appearance="flat"
@@ -70,28 +71,12 @@ export type PortForwardValidationData = {
       </footer>
     }
   `,
-  styles: `
-    h2 {
-      margin: 2rem 0 0 0;
-    }
-
-    p {
-      margin-top: 0.5rem;
-    }
-
-    .padding-top {
-      padding-top: 2rem;
-    }
-
-    footer {
-      margin-top: 1.5rem;
-    }
-  `,
   imports: [
     TuiButton,
     i18nPipe,
     TestStatusNoteComponent,
     PortCheckTestComponent,
+    TuiHeader,
   ],
 })
 export class PortForwardValidationComponent {

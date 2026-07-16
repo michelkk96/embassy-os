@@ -19,125 +19,79 @@ export type PortCheckField = { label: i18nKey; value: string }
 @Component({
   selector: 'port-check-test',
   template: `
-    <div class="desktop">
-      <table [class.range-table]="!testable()" [appTable]="headers()">
-        <tr>
+    <table [appTable]="headers()">
+      <tr>
+        <td>
           @if (testable()) {
-            <td class="status">
-              <port-check-icon [result]="result()" [loading]="loading()" />
-            </td>
-          }
-          @for (field of fields(); track $index) {
-            <td>{{ field.value }}</td>
-          }
-          @if (testable()) {
-            <td>
-              <button
-                tuiButton
-                size="s"
-                [loading]="loading()"
-                [disabled]="disabled()"
-                (click)="test.emit()"
-              >
-                {{ 'Test' | i18n }}
-              </button>
-            </td>
-          }
-        </tr>
-      </table>
-    </div>
-    <div class="mobile">
-      <div class="card">
-        @if (testable()) {
-          <div class="card-status">
             <port-check-icon [result]="result()" [loading]="loading()" />
-          </div>
-        }
-        <div class="card-fields">
-          @for (field of fields(); track $index) {
-            <div class="field">
-              <span class="field-label">{{ field.label | i18n }}</span>
-              <span>{{ field.value }}</span>
-            </div>
           }
-        </div>
-        @if (testable()) {
-          <button
-            tuiButton
-            size="s"
-            [loading]="loading()"
-            [disabled]="disabled()"
-            (click)="test.emit()"
-          >
-            {{ 'Test' | i18n }}
-          </button>
+        </td>
+        @for (field of fields(); track $index) {
+          <td [attr.data-label]="field.label | i18n">{{ field.value }}</td>
         }
-      </div>
-    </div>
+        <td>
+          @if (testable()) {
+            <button
+              tuiButton
+              size="s"
+              [loading]="loading()"
+              [disabled]="disabled()"
+              (click)="test.emit()"
+            >
+              {{ 'Test' | i18n }}
+            </button>
+          }
+        </td>
+      </tr>
+    </table>
 
     <port-check-warnings [result]="warningResult()" />
   `,
   styles: `
-    .status {
-      width: 3.2rem;
+    table {
+      margin-block-end: 2rem;
+    }
+
+    tr {
+      grid-template-columns: min-content 1fr min-content;
+      margin-inline: 1rem;
+    }
+
+    td:first-child {
+      inline-size: 0;
+      min-inline-size: fit-content;
+      place-self: center;
+      grid-column: 1;
+      grid-row: 1 / span 100;
+      margin-inline-end: 1rem;
+
+      &:empty {
+        display: none;
+      }
     }
 
     td:last-child {
       text-align: end;
-    }
-
-    // A range row has no status/Test columns, so its last cell is the internal
-    // value — keep it left-aligned with its header.
-    .range-table td:last-child {
-      text-align: start;
-    }
-
-    .mobile {
-      display: none;
-    }
-
-    .card {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      padding: 1rem;
-      border: 1px solid var(--tui-border-normal);
-      border-radius: var(--tui-radius-l);
-      margin-top: 1rem;
-    }
-
-    .card-status {
-      flex-shrink: 0;
-      width: 1.5rem;
-      text-align: center;
-    }
-
-    .card-fields {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .field {
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    .field-label {
-      color: var(--tui-text-secondary);
-      font: var(--tui-typography-body-s);
-
-      &::after {
-        content: ':';
-      }
+      padding-inline: 0.5rem;
+      grid-column: 3;
+      grid-row: 1 / span 100;
+      place-self: center;
     }
 
     :host-context(tui-root._mobile) {
-      .desktop {
-        display: none;
+      table {
+        color: var(--tui-text-primary);
+        border-radius: var(--tui-radius-l);
+        box-shadow: inset 0 0 0 1px var(--tui-border-normal);
       }
 
-      .mobile {
-        display: block;
+      td[data-label] {
+        grid-column: 2;
+
+        &::before {
+          content: attr(data-label) ': ';
+          color: var(--tui-text-secondary);
+        }
       }
     }
   `,

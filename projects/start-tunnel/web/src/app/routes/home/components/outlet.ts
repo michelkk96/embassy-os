@@ -6,12 +6,11 @@ import {
   Router,
   RouterLink,
   RouterOutlet,
-  TitleStrategy,
 } from '@angular/router'
 import { TUI_BREAKPOINT, TuiIcon, TuiScrollbar } from '@taiga-ui/core'
 import { TuiBlock, TuiSwitch } from '@taiga-ui/kit'
 import { TuiNavigation } from '@taiga-ui/layout'
-import { filter, map } from 'rxjs'
+import { filter } from 'rxjs'
 import { Aside } from 'src/app/help/aside'
 import { HELP_OPEN } from 'src/app/help/help'
 import { i18nPipe } from 'src/app/i18n/i18n.pipe'
@@ -161,7 +160,6 @@ export class Outlet {
   protected readonly router = inject(Router)
   protected readonly breakpoint = inject(TUI_BREAKPOINT)
   protected readonly update = inject(UpdateService)
-  protected readonly strategy = inject(TitleStrategy)
   protected readonly help = inject(HELP_OPEN)
   protected readonly routes = [
     {
@@ -187,14 +185,11 @@ export class Outlet {
   ] as const
 
   protected readonly title = toSignal(
-    this.router.events.pipe(
-      filter(event => event instanceof NavigationEnd),
-      map(() => this.strategy.buildTitle(this.router.routerState.snapshot)),
-    ),
+    this.router.events.pipe(filter(event => event instanceof NavigationEnd)),
   )
 
   protected readonly open = linkedSignal<string[], boolean>({
-    source: () => [this.breakpoint(), this.title() || ''],
+    source: () => [this.breakpoint(), String(this.title())],
     computation: (source, previous) =>
       previous?.value !== false && source[0] !== 'mobile',
   })

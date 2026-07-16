@@ -132,11 +132,7 @@ export class PortForwardValidationComponent {
 
   readonly portOk = computed(() => {
     const result = this.portResult()
-    return (
-      !!result?.openInternally &&
-      !!result?.openExternally &&
-      !!result?.hairpinning
-    )
+    return !!result?.openExternally && !!result?.hairpinning
   })
 
   readonly isManualMode = !this.context.data.initialResults

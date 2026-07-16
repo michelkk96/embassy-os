@@ -7,7 +7,7 @@ import { T } from '@start9labs/start-core'
   template: `
     @let res = result();
     @if (res) {
-      @if (!res.openInternally) {
+      @if (checkInternal() && !res.openInternally) {
         <p class="g-warning">
           {{
             'Port status cannot be determined while service is not running'
@@ -34,4 +34,7 @@ import { T } from '@start9labs/start-core'
 })
 export class PortCheckWarningsComponent {
   readonly result = input<T.CheckPortRes>()
+  // See PortCheckIconComponent.checkInternal — only the port-forwards modal
+  // surfaces the openInternally "cannot be determined" cue.
+  readonly checkInternal = input(false)
 }

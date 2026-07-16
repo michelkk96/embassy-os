@@ -10,7 +10,7 @@ import { TuiIcon, TuiLoader } from '@taiga-ui/core'
     } @else {
       @let res = result();
       @if (res) {
-        @if (!res.openInternally) {
+        @if (checkInternal() && !res.openInternally) {
           <tui-icon class="g-warning" icon="@tui.alert-triangle" />
         } @else if (!res.openExternally) {
           <tui-icon class="g-negative" icon="@tui.x" />
@@ -36,4 +36,9 @@ export class PortCheckIconComponent {
   readonly result =
     input<Pick<T.CheckPortRes, 'openExternally' | 'openInternally'>>()
   readonly loading = input(false)
+  // Surface the neutral "can't determine" cue from openInternally. Only the
+  // System > Gateways port-forwards modal sets this — it's an aggregate with no
+  // single service to status-watch, so the point-sample is its best signal. The
+  // Address Requirements modals leave it off and rely on the whole-window watch.
+  readonly checkInternal = input(false)
 }

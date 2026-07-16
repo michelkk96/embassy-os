@@ -5,14 +5,15 @@ on:
     branches:
       - master
       - next/*
+    # A docs-only push to master needs no re-check — the PR that produced it
+    # already ran the prettier gate below. Pull requests intentionally do NOT
+    # ignore *.md (see the `prettier` job) so docs formatting is always checked.
     paths-ignore:
       - '**/*.md'
   pull_request:
     branches:
       - master
       - next/*
-    paths-ignore:
-      - '**/*.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -23,9 +24,61 @@ env:
   ENVIRONMENT: dev-unstable
 
 jobs:
+  # Fast (~20s) prettier gate: no docker, no npm ci, no paths filter. Runs on
+  # every non-draft PR (including docs-only ones) and on non-docs pushes, so an
+  # unformatted file is caught in seconds. The heavy jobs below `needs:` this, so
+  # a formatting slip short-circuits them instead of burning the full matrix.
+  prettier:
+    name: Prettier
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODEJS_VERSION }}
+      # Pin to the repo's prettier (devDependencies) so this matches `make
+      # format-check` exactly, without drift from a hardcoded version here.
+      - name: Check formatting
+        run: npx --yes prettier@$(node -p "require('./package.json').devDependencies.prettier") --check .
+
+  # On pull requests, the expensive jobs below only run when a non-docs file
+  # changed. A docs-only PR is fully covered by the `prettier` job above, so it
+  # skips make test / the rustfmt container / the artifact regen here. On
+  # push/dispatch this guard is bypassed and they always run.
+  changes:
+    name: Detect non-docs changes
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Check changed paths
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files="$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename')"
+          code="$(printf '%s\n' "$files" | grep -vE '(\.md$|^$)' || true)"
+          if [ -n "$code" ]; then
+            echo "Non-docs files changed:"; printf '  %s\n' "$code"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only docs (*.md) changed; heavy jobs skipped (prettier still ran)."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Run Automated Tests
-    if: github.event.pull_request.draft != true
+    needs: [prettier, changes]
+    if: >-
+      !cancelled() && needs.prettier.result == 'success'
+      && github.event.pull_request.draft != true
+      && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -41,7 +94,11 @@ jobs:
 
   format:
     name: Formatting & Lockfiles
-    if: github.event.pull_request.draft != true
+    needs: [prettier, changes]
+    if: >-
+      !cancelled() && needs.prettier.result == 'success'
+      && github.event.pull_request.draft != true
+      && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -72,7 +129,11 @@ jobs:
 
   generated:
     name: Generated Artifacts
-    if: github.event.pull_request.draft != true
+    needs: [prettier, changes]
+    if: >-
+      !cancelled() && needs.prettier.result == 'success'
+      && github.event.pull_request.draft != true
+      && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

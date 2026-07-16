@@ -20,7 +20,7 @@ additional-js = [
 ]
 admonitions = true
 default-theme = "ayu"
-edit-url-template = "https://github.com/Start9Labs/start-technologies/edit/master/docs/bitcoin-guides/{path}"
+edit-url-template = "https://github.com/Start9Labs/start-technologies/edit/master/projects/start-docs/bitcoin-guides/{path}"
 git-repository-url = "https://github.com/Start9Labs/start-technologies"
 no-section-label = false
 preferred-dark-theme = "ayu"

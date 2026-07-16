@@ -679,7 +679,7 @@ export default {
   771: 'Partie terminée',
   772: "Appuyez sur une touche ou touchez l'écran pour commencer",
   773: "Appuyez sur une touche ou touchez l'écran pour rejouer",
-  774: "L'état du port ne peut pas être déterminé tant que le service n'est pas en cours d'exécution",
+  774: "Rien n'a répondu sur ce port, son état ne peut donc pas être déterminé",
   775: "Cette adresse ne fonctionnera pas depuis votre réseau local en raison d'une limitation de hairpinning du routeur",
   776: 'Action introuvable',
   777: "Le domaine s'appliquera également aux interfaces suivantes :",

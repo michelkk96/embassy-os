@@ -59,16 +59,12 @@ function parseSocketAddr(s: string): { ip: string; port: number } {
             @for (iface of row.interfaces; track iface) {
               <div>{{ iface }}</div>
             }
-            <port-check-warnings
-              [result]="results()[i]"
-              [checkInternal]="true"
-            />
+            <port-check-warnings [result]="results()[i]" />
           </td>
           <td class="status">
             <port-check-icon
               [result]="results()[i]"
               [loading]="!!loading()[i]"
-              [checkInternal]="true"
             />
           </td>
           <td>{{ row.externalPort }}</td>

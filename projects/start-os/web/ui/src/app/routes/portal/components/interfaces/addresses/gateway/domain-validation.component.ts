@@ -124,7 +124,6 @@ export type DomainValidationData = {
       [fields]="portFields"
       [testable]="!isRange"
       [result]="portResult()"
-      [warningResult]="portResult()"
       [loading]="portLoading()"
       [disabled]="testDisabled()"
       (test)="testPort()"

@@ -39,7 +39,6 @@ export type PortForwardValidationData = {
       [fields]="portFields"
       [testable]="!isRange"
       [result]="portResult()"
-      [warningResult]="portResult()"
       [loading]="loading()"
       [disabled]="testDisabled()"
       (test)="testPort()"

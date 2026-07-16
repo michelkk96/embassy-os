@@ -679,7 +679,7 @@ export default {
   771: 'Spiel vorbei',
   772: 'Beliebige Taste drücken oder tippen zum Starten',
   773: 'Beliebige Taste drücken oder tippen zum Neustarten',
-  774: 'Der Portstatus kann nicht ermittelt werden, solange der Dienst nicht läuft',
+  774: 'Auf diesem Port hat nichts geantwortet, daher kann sein Status nicht ermittelt werden',
   775: 'Diese Adresse funktioniert nicht aus Ihrem lokalen Netzwerk aufgrund einer Router-Hairpinning-Einschränkung',
   776: 'Aktion nicht gefunden',
   777: 'Die Domain gilt auch für die folgenden Schnittstellen:',

@@ -10,12 +10,12 @@ import { TuiIcon, TuiLoader } from '@taiga-ui/core'
     } @else {
       @let res = result();
       @if (res) {
-        @if (checkInternal() && !res.openInternally) {
-          <tui-icon class="g-warning" icon="@tui.alert-triangle" />
-        } @else if (!res.openExternally) {
-          <tui-icon class="g-negative" icon="@tui.x" />
-        } @else {
+        @if (res.openExternally) {
           <tui-icon class="g-positive" icon="@tui.check" />
+        } @else if (!res.openInternally) {
+          <tui-icon class="g-warning" icon="@tui.alert-triangle" />
+        } @else {
+          <tui-icon class="g-negative" icon="@tui.x" />
         }
       } @else {
         <tui-icon class="g-secondary" icon="@tui.minus" />
@@ -30,14 +30,9 @@ import { TuiIcon, TuiLoader } from '@taiga-ui/core'
   imports: [TuiIcon, TuiLoader],
 })
 export class PortCheckIconComponent {
-  // Accepts either a full IPv4 check or the IPv6 sub-result — both carry the
-  // openExternally / openInternally fields this reads.
-  readonly result =
-    input<Pick<T.CheckPortRes, 'openExternally' | 'openInternally'>>()
+  // Either a full IPv4 check or the IPv6 sub-result; both carry the fields read
+  // here. A reachable port is reported as such whatever the internal probe said
+  // — something answered externally, so the probe was simply stale.
+  readonly result = input<T.CheckPortRes | T.CheckPortV6Res>()
   readonly loading = input(false)
-  // Surface the neutral "can't determine" cue from openInternally. Only the
-  // System > Gateways port-forwards modal sets this — it's an aggregate with no
-  // single service to status-watch, so the point-sample is its best signal. The
-  // Address Requirements modals leave it off and rely on the whole-window watch.
-  readonly checkInternal = input(false)
 }

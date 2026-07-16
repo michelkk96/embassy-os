@@ -68,16 +68,8 @@ export class StatusComponent {
       primary === 'running' && health === 'loading',
   )
 
-  readonly showDots = computed(({ primary } = this.status()) =>
-    [
-      'starting',
-      'stopping',
-      'restarting',
-      'installing',
-      'updating',
-      'backing-up',
-      'removing',
-    ].includes(primary),
+  readonly showDots = computed(
+    ({ primary } = this.status()) => PrimaryRendering[primary].showDots,
   )
 
   readonly color = computed(({ primary } = this.status()) =>

@@ -232,7 +232,6 @@ export class GatewayActionsComponent {
   readonly address = input.required<GatewayAddress>()
   readonly packageId = input('')
   readonly value = input<MappedServiceInterface | undefined>()
-  readonly disabled = input.required<boolean>()
   readonly gatewayId = input('')
 
   showQR() {

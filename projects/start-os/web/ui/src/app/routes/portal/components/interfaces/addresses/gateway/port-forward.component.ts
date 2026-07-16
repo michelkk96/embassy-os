@@ -1,20 +1,16 @@
 import { Component, computed, inject, signal } from '@angular/core'
-import { toSignal } from '@angular/core/rxjs-interop'
 import { ErrorService, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton, TuiDialogContext } from '@taiga-ui/core'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
-import { PatchDB } from 'patch-db-client'
-import { of } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
-import { DataModel } from 'src/app/services/patch-db/data-model'
-import { renderPkgStatus } from 'src/app/services/pkg-status-rendering.service'
 import { formatPortRange } from 'src/app/utils/format-port-range'
 import { DnsGateway } from './domain-validation.component'
 import {
   PortCheckField,
   PortCheckTestComponent,
 } from './port-check-test.component'
+import { injectTestStatus } from './test-status'
 import { TestStatusNoteComponent } from './test-status-note.component'
 
 export type PortForwardValidationData = {
@@ -101,29 +97,18 @@ export type PortForwardValidationData = {
 export class PortForwardValidationComponent {
   private readonly errorService = inject(ErrorService)
   private readonly api = inject(ApiService)
-  private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
 
   readonly context =
     injectContext<TuiDialogContext<void, PortForwardValidationData>>()
 
-  // The package's live status, or undefined for an OS interface (empty id). It
-  // gates the tests and drives the status shown while a test is unavailable.
-  protected readonly pkg = toSignal(
-    this.context.data.packageId
-      ? this.patch.watch$('packageData', this.context.data.packageId)
-      : of(undefined),
+  // Gates the port-forward test and drives the status shown while it is
+  // unavailable.
+  private readonly testStatus = injectTestStatus(
+    this.context.data.packageId,
+    this.context.data.addSsl,
   )
-  protected readonly status = computed(() => {
-    const pkg = this.pkg()
-    return pkg ? renderPkgStatus(pkg).primary : 'running'
-  })
-
-  // A non-SSL binding is served directly by the service, so its port forward
-  // can't be reached while the service is stopped. An SSL binding is fronted by
-  // the always-up OS reverse proxy, so it stays testable.
-  readonly testDisabled = computed(
-    () => this.status() !== 'running' && !this.context.data.addSsl,
-  )
+  protected readonly pkg = this.testStatus.pkg
+  readonly testDisabled = this.testStatus.testDisabled
 
   // A port range forwards a span of ports and can't be tested a port at a time.
   readonly isRange = this.context.data.count > 1

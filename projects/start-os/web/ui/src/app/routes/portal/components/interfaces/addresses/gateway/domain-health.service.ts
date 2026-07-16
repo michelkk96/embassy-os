@@ -18,16 +18,20 @@ import { PRIVATE_DNS_VALIDATION } from './private-dns.component'
 // The service context an address check runs in. `packageId`/`addSsl` make the
 // Address Requirements modal status-aware (an empty `packageId` has no service
 // to watch); `watch`, present only for auto-checks fired on add/enable, reports
-// whether the service restarted mid-check.
+// whether the service was non-running while the request was in flight.
 export type AddressCheckContext = {
   packageId: string
   addSsl: boolean
   watch?: ServiceStatusWatch
 }
 
-// Records whether a package left the 'running' state at any point between
-// construction and `stop()`. A `null` source (an empty package id) never reports
-// a restart. Start it just before the mutating request so the whole
+// Records whether a package was outside the 'running' state at any point between
+// construction and `stop()`. Deliberately not a running -> non-running
+// *transition*: if the service was down for any part of the window — restarted
+// by the change, or intentionally stopped the whole time — nothing was
+// listening, so an external probe cannot tell "forwarding is broken" from
+// "there was nothing to forward to". A `null` source (an empty package id) never
+// reports non-running. Start it just before the mutating request so the whole
 // request/response cycle is covered.
 export class ServiceStatusWatch {
   private sawNonRunning = false
@@ -42,7 +46,7 @@ export class ServiceStatusWatch {
       }) ?? Subscription.EMPTY
   }
 
-  get restarted(): boolean {
+  get wasNonRunning(): boolean {
     return this.sawNonRunning
   }
 
@@ -61,7 +65,7 @@ export class DomainHealthService {
 
   // Begin watching a service's status. Call this immediately before the request
   // that adds a domain or enables an address, then hand the result to the check
-  // so a restart triggered by that request is caught. Caller owns `stop()`.
+  // so any downtime during that request is caught. Caller owns `stop()`.
   watchServiceStatus(packageId: string): ServiceStatusWatch {
     return new ServiceStatusWatch(
       packageId ? this.patch.watch$('packageData', packageId) : null,
@@ -69,7 +73,7 @@ export class DomainHealthService {
   }
 
   // Enable or disable one address, then — on enable — run its reachability
-  // checks under a status watch (so a restart triggered by the change is caught,
+  // checks under a status watch (so any downtime during the change is caught,
   // see checkPublicDomain / checkPortForward). Shared by the desktop row switch
   // and the mobile actions dropdown so both platforms surface the setup modal.
   async setAddressEnabled(
@@ -182,15 +186,16 @@ export class DomainHealthService {
         portV6Result = isRange ? null : portOrRes.portV6
       }
 
-      // A non-SSL binding is served directly by the service, so while the
-      // service auto-restarts on an address change its port/firewall probes fail
-      // for a reason unrelated to the user's network — present those as untested
-      // (null → neutral) rather than failed. An SSL binding is fronted by the
-      // always-up OS reverse proxy, so its probe stays valid even mid-restart and
-      // a failure there is genuine; hence the !addSsl guard. The modal still
-      // opens below (a neutralized probe leaves portOk false) so the user learns
-      // the port needs forwarding and can retest once the service is running.
-      if (!ctx.addSsl && ctx.watch?.restarted) {
+      // A non-SSL binding is served directly by the service, so if the service
+      // was down for any part of this request — restarted by the change, or
+      // already stopped — nothing was listening and its port/firewall probes say
+      // nothing about the user's network. Present those as untested (null →
+      // neutral) rather than failed. An SSL binding is fronted by the always-up
+      // OS reverse proxy, so its probe stays valid regardless and a failure there
+      // is genuine; hence the !addSsl guard. The modal still opens below (a
+      // neutralized probe leaves portOk false) so the user learns the port needs
+      // forwarding and can retest once the service is running.
+      if (!ctx.addSsl && ctx.watch?.wasNonRunning) {
         if (portResult && !portResult.openExternally) portResult = null
         if (portV6Result && !portV6Result.openExternally) portV6Result = null
       }
@@ -282,12 +287,12 @@ export class DomainHealthService {
         .catch((): null => null)
 
       // See checkPublicDomain: only a non-SSL binding (served directly by the
-      // service) goes unreachable mid-restart, so suppress a spurious failure to
-      // neutral only when addSsl is false. The modal still opens (portOk stays
-      // false) to surface the forwarding requirement.
+      // service) goes unreachable while the service is down, so suppress a
+      // spurious failure to neutral only when addSsl is false. The modal still
+      // opens (portOk stays false) to surface the forwarding requirement.
       if (
         !ctx.addSsl &&
-        ctx.watch?.restarted &&
+        ctx.watch?.wasNonRunning &&
         portResult &&
         !portResult.openExternally
       ) {

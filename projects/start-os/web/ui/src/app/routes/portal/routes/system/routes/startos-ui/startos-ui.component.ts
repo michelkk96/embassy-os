@@ -29,7 +29,7 @@ import { TitleDirective } from 'src/app/services/title.service'
       </hgroup>
     </header>
     <br />
-    <service-interface packageId="start-os" [value]="ui()" [isRunning]="true" />
+    <service-interface packageId="start-os" [value]="ui()" />
   `,
   host: { class: 'g-subpage' },
   providers: [GatewayService],

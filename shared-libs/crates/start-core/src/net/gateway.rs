@@ -618,14 +618,6 @@ pub async fn check_port(
         )
     })?;
 
-    let internal_ips = ip_info
-        .subnets
-        .iter()
-        .map(|i| i.addr())
-        .filter(|a| a.is_ipv4())
-        .map(|a| SocketAddr::new(a, port))
-        .collect::<Vec<_>>();
-
     let local_ipv4 = ip_info
         .subnets
         .iter()

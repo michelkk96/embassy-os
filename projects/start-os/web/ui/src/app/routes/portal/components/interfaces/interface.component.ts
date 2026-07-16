@@ -12,7 +12,6 @@ import { PluginAddressesComponent } from './addresses/plugin/plugin.component'
         [gatewayGroup]="group"
         [packageId]="packageId()"
         [value]="value()"
-        [isRunning]="isRunning()"
       ></section>
     }
     @for (group of value()?.pluginGroups; track group.pluginId) {
@@ -44,5 +43,4 @@ import { PluginAddressesComponent } from './addresses/plugin/plugin.component'
 export class InterfaceComponent {
   readonly packageId = input('')
   readonly value = input.required<MappedServiceInterface | undefined>()
-  readonly isRunning = input.required<boolean>()
 }

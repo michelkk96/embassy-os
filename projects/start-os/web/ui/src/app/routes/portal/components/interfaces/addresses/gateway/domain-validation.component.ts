@@ -1,18 +1,13 @@
 import { Component, computed, inject, signal } from '@angular/core'
-import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { ErrorService, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton, TuiDialogContext } from '@taiga-ui/core'
 import { TuiButtonLoading, TuiSwitch } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
-import { PatchDB } from 'patch-db-client'
-import { of } from 'rxjs'
 import { CheckIconComponent } from 'src/app/routes/portal/components/check-icon.component'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
-import { DataModel } from 'src/app/services/patch-db/data-model'
-import { renderPkgStatus } from 'src/app/services/pkg-status-rendering.service'
 import { formatPortRange } from 'src/app/utils/format-port-range'
 import { dnsAllPass, getGua, getLanIpv4, portAllPass } from 'src/app/utils/gua'
 import { parse } from 'tldts'
@@ -20,6 +15,7 @@ import {
   PortCheckField,
   PortCheckTestComponent,
 } from './port-check-test.component'
+import { injectTestStatus } from './test-status'
 import { TestStatusNoteComponent } from './test-status-note.component'
 
 export type DnsGateway = T.NetworkInterfaceInfo & {
@@ -310,33 +306,21 @@ export type DomainValidationData = {
 export class DomainValidationComponent {
   private readonly errorService = inject(ErrorService)
   private readonly api = inject(ApiService)
-  private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
 
   ddns = false
 
   readonly context =
     injectContext<TuiDialogContext<void, DomainValidationData>>()
 
-  // The package's live status, or undefined for an OS interface (empty id). It
-  // gates the port/firewall tests and drives the status shown while they are
-  // unavailable. DNS resolution does not depend on it, so its Test always stays
-  // on. The OS UI carries its own packageId but stays testable via addSsl.
-  protected readonly pkg = toSignal(
-    this.context.data.packageId
-      ? this.patch.watch$('packageData', this.context.data.packageId)
-      : of(undefined),
+  // Gates the port-forward / firewall tests and drives the status shown while
+  // they are unavailable. DNS resolution does not depend on the service, so its
+  // Test always stays on.
+  private readonly testStatus = injectTestStatus(
+    this.context.data.packageId,
+    this.context.data.addSsl,
   )
-  protected readonly status = computed(() => {
-    const pkg = this.pkg()
-    return pkg ? renderPkgStatus(pkg).primary : 'running'
-  })
-
-  // A non-SSL binding is served directly by the service, so its port forward /
-  // firewall can't be reached while the service is stopped. An SSL binding is
-  // fronted by the always-up OS reverse proxy, so it stays testable.
-  readonly testDisabled = computed(
-    () => this.status() !== 'running' && !this.context.data.addSsl,
-  )
+  protected readonly pkg = this.testStatus.pkg
+  readonly testDisabled = this.testStatus.testDisabled
 
   readonly domain =
     parse(this.context.data.fqdn).domain || this.context.data.fqdn

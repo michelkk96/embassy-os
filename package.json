@@ -37,8 +37,8 @@
     "build-config": "node shared-libs/ts-modules/build-config.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "format:toml": "git ls-files -zco --exclude-standard -- '*.toml' | xargs -0 taplo fmt",
-    "format:toml:check": "git ls-files -zco --exclude-standard -- '*.toml' | xargs -0 taplo fmt --check"
+    "format:toml": "git ls-files -zco --exclude-standard -- '*.toml' | xargs -0r taplo fmt",
+    "format:toml:check": "git ls-files -zco --exclude-standard -- '*.toml' | xargs -0r taplo fmt --check"
   },
   "dependencies": {
     "@angular/cdk": "^22.0.0",

@@ -14,7 +14,6 @@ import {
 } from 'src/app/routes/portal/components/interfaces/interface.service'
 import { GatewayService } from 'src/app/services/gateway.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
-import { getInstalledBaseStatus } from 'src/app/services/pkg-status-rendering.service'
 import { TitleDirective } from 'src/app/services/title.service'
 
 @Component({
@@ -57,11 +56,7 @@ import { TitleDirective } from 'src/app/services/title.service'
         }
       </div>
 
-      <service-interface
-        [packageId]="pkgId"
-        [value]="iface"
-        [isRunning]="isRunning()"
-      />
+      <service-interface [packageId]="pkgId" [value]="iface" />
     }
   `,
   styles: `
@@ -109,10 +104,6 @@ export default class ServiceInterfaceRoute {
 
   readonly pkg = toSignal(this.patch.watch$('packageData', this.pkgId))
   private readonly allPackageData = toSignal(this.patch.watch$('packageData'))
-
-  readonly isRunning = computed((pkg = this.pkg()) =>
-    pkg ? getInstalledBaseStatus(pkg.statusInfo) === 'running' : false,
-  )
 
   readonly iface = computed(() => {
     const pkg = this.pkg()

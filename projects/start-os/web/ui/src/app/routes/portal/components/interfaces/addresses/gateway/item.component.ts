@@ -136,7 +136,6 @@ import { DomainHealthService } from './domain-health.service'
         [address]="address"
         [packageId]="packageId()"
         [value]="value()"
-        [disabled]="!isRunning()"
         [gatewayId]="gatewayId()"
         [(currentlyMasked)]="currentlyMasked"
         [style.width.rem]="5"
@@ -279,7 +278,6 @@ export class GatewayItemComponent {
   readonly address = input.required<GatewayAddress>()
   readonly packageId = input('')
   readonly value = input<MappedServiceInterface | undefined>()
-  readonly isRunning = input.required<boolean>()
   readonly gatewayId = input('')
 
   readonly toggling = signal(false)

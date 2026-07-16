@@ -8,12 +8,13 @@ revision separately. It also provides a `VersionRange` algebra with exact satisf
 
 - Path: `shared-libs/crates/exver`.
 - Cargo package: `exver` (the directory name and package name match).
-- Crate-type: `["cdylib", "rlib"]` — an rlib for Rust consumers and a cdylib for the WebAssembly
-  build published to npm as `@start9labs/exver`.
 - Consumers: `start-core` (`shared-libs/crates/start-core`, `exver = { path = "../exver",
 features = ["serde"] }`) uses `Version`, `ExtendedVersion`, and `VersionRange` throughout
   package management, the registry, dependency resolution, and manifest handling.
 - First-party: a direct path dependency, not a registry crate and not under any `[patch]`.
+- Rust only. The TypeScript ExVer in `@start9labs/start-core`
+  (`shared-libs/ts-modules/start-core/lib/exver/`) is an independent reimplementation of this
+  spec, not a binding to this crate — see § Relationship to the TypeScript implementation.
 
 ## Core types
 
@@ -56,12 +57,18 @@ contradiction (e.g. `>=2 && <1`). `sat` builds a truth-table over the relevant a
 evaluates the boolean structure exactly. It is precise but can be expensive on large, deeply
 nested ranges.
 
-## WebAssembly surface
+## Relationship to the TypeScript implementation
 
-`src/wasm.rs` (feature `wasm`) exposes three functions via `wasm-bindgen`: `flavor(version)`,
-`compare(lhs, rhs)` (returns `-1`/`0`/`1`, or `null` when flavors are incomparable), and
-`satisfies(version, range)`. These are the JavaScript API published as `@start9labs/exver`; the
-`exver.d.ts` sidecar is the hand-maintained type declaration shipped with that package.
+`@start9labs/start-core` implements this same spec independently in TypeScript
+(`shared-libs/ts-modules/start-core/lib/exver/` — a peggy grammar plus `ExtendedVersion` /
+`Version` / `VersionRange` classes), and `@start9labs/start-sdk` bundles and re-exports it. That is
+what every JS/TS caller uses; this crate has no JavaScript surface of its own.
+
+The two are separate code sharing one spec, and nothing enforces that they agree — no generated
+bindings, no shared test vectors. `ExtendedVersion.compare` returning
+`'greater' | 'equal' | 'less' | null` mirrors `partial_cmp`'s cross-flavor `None` by hand. So a
+change to the version/range format or to ordering here has to land there too, or the registries and
+their clients will disagree about which version is newer.
 
 ## Further reading
 

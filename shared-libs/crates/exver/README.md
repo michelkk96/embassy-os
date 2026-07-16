@@ -6,11 +6,13 @@ distributors.
 ## Place in the monorepo
 
 - Path: `shared-libs/crates/exver`.
-- Cargo package: `exver` (directory name and package name match); crate-type `cdylib` + `rlib`.
+- Cargo package: `exver` (directory name and package name match).
 - Consumers: `start-core` (`shared-libs/crates/start-core`) uses `Version`, `ExtendedVersion`, and
   `VersionRange` across package management, the registry, dependency resolution, and manifests.
-- First-party: a direct path dependency (no registry crate, no `[patch]`). Also published to npm as
-  `@start9labs/exver` from the wasm build.
+- First-party: a direct path dependency (no registry crate, no `[patch]`).
+- Rust only. TypeScript callers do not use this crate — `@start9labs/start-core` carries a separate
+  reimplementation of ExVer, which `@start9labs/start-sdk` re-exports as `ExtendedVersion` /
+  `Version` / `VersionRange`.
 
 This module was designed to address the problem of releasing updates to StartOS Packages where the upstream project was
 either unaware of or apathetic towards supporting their application on the StartOS platform. In most cases, the original
@@ -83,7 +85,7 @@ the LHS for a term on the RHS without changing the meaning of your program.
 ## Documentation
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — how the crate works internally (types, parsing,
-  satisfiability, wasm surface).
+  satisfiability, and its relationship to the TypeScript reimplementation).
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — toolchain, build/test, and PR conventions.
 - [AGENTS.md](./AGENTS.md) — agent-facing rules and gotchas (`CLAUDE.md` is a one-line
   `@AGENTS.md` import).

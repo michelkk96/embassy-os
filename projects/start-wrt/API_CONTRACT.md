@@ -535,7 +535,6 @@ struct WanDnsSetRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "lowercase")]
 enum DdnsProvider {
-    Start9,
     Dyndns,
     Noip,
     Cloudflare,
@@ -547,15 +546,21 @@ enum DdnsProvider {
 struct WanDdnsResponse {
     enabled: bool,
     provider: DdnsProvider,
-    /// The resolved/active hostname (auto-detected for Start9, user-configured for others)
+    /// The hostname registered with the provider
     hostname: Option<String>,
     /// Provider-specific fields
     username: Option<String>,
     password: Option<String>,
     token: Option<String>,
+    /// Cloudflare only: the zone's root domain (null for configs saved
+    /// before the zone was stored)
     zone: Option<String>,
 }
 ```
+
+A UCI section with an unknown or legacy `service_name` (e.g. `start9`, whose
+service never launched) reads back as the disabled default (`enabled: false`,
+`provider: dyndns`, all fields null).
 
 ### `wan.ddns-set`
 
@@ -574,6 +579,16 @@ struct WanDdnsSetRequest {
 // Response: null
 // Backend: updates UCI ddns config, restarts/stops ddns service
 ```
+
+For Cloudflare, `zone` is required and must be the domain registered with
+Cloudflare (e.g. `example.com`), and `hostname` must be that zone itself
+(apex record) or a name under it; anything else is rejected with
+`InvalidRequest`. The backend translates to the shape ddns-scripts'
+cloudflare script expects: `username 'Bearer'`, `domain 'host@zone'`
+(`'@zone'` for the apex), and `use_api_check '1'` so proxied (orange-cloud)
+records compare against the record's real content instead of the proxy IP.
+Every provider's section also gets `interface 'wan'`, binding it to hotplug
+so updates fire immediately on WAN reconnect.
 
 ---
 

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.2]
 
+### Removed
+
+- **The Start9 DDNS provider option has been removed.** The Start9 DDNS
+  service has not launched yet, so selecting it saved a configuration that
+  could never update a DNS record. Configurations previously saved with the
+  Start9 provider now read back as Dynamic DNS disabled; pick one of the
+  supported providers to re-enable. The option will return when the Start9
+  service goes live.
+
 ### Fixed
 
 - **Documentation corrected against the code in a full docs-vs-code audit.** The
@@ -19,6 +28,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   corrected `API_CONTRACT.md` wire types and documented the previously missing
   endpoints, and fixed stale paths, commands, and structure descriptions across
   the developer docs.
+- **Cloudflare Dynamic DNS now saves a working configuration.** The saved
+  config was missing fields the update client requires (the Bearer-token
+  marker and the zone), so Cloudflare updates could never succeed. The form
+  now asks for the **Zone** — the domain registered with Cloudflare, e.g.
+  `example.com` — instead of a Zone ID. Previously saved Cloudflare
+  configurations must be re-saved with the zone filled in. Note that the
+  DNS record must already exist in Cloudflare (the client updates records,
+  it does not create them), and the API token needs Zone:Read and DNS:Edit
+  permissions. Proxied (orange-cloud) records are supported: the client
+  reads the registered IP through the Cloudflare API rather than DNS, which
+  would only ever see the proxy's address.
+- **Dynamic DNS now actually updates your provider.** The image was missing
+  the `ddns-scripts` update client (and its Cloudflare and No-IP extensions),
+  so DDNS settings were saved but no DNS record was ever updated. The FreeDNS
+  provider also pointed at a service name (`freedns.afraid.org`) that modern
+  `ddns-scripts` no longer recognizes; it now uses the afraid.org update-key
+  service (`afraid.org-keyauth`), and configurations saved with the old name
+  are still read back correctly. DDNS configurations are also bound to the
+  WAN interface, so an update fires the moment the connection comes back up
+  (e.g. after a modem reboot or PPPoE reconnect) instead of waiting for the
+  next scheduled check.
 
 ## [1.0.1]
 

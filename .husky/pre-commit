@@ -1,0 +1,8 @@
+# Auto-format staged files with the repo's prettier before they land, so a
+# missed `make format` doesn't fail CI. No-ops (exit 0) when deps aren't
+# installed (e.g. a fresh worktree) — CI's format gate remains the source of truth.
+[ -x ./node_modules/.bin/lint-staged ] || {
+  echo "husky: lint-staged not installed; skipping pre-commit format (run 'npm ci')"
+  exit 0
+}
+./node_modules/.bin/lint-staged

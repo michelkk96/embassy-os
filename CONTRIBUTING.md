@@ -142,7 +142,12 @@ make start-cli-format    # also start-registry-format / start-tunnel-format / st
 make web-format          # prettier over the whole repo
 ```
 
-Run the formatters before committing.
+Run the formatters before committing. A git pre-commit hook (husky + lint-staged)
+auto-runs prettier on staged files once you've run `npm ci`, so a missed format
+won't reach CI; it no-ops when dependencies aren't installed. CI enforces
+formatting regardless: a fast `prettier --check` gate runs on every pull request
+(including docs-only ones) and blocks the slower jobs, with `make format-check` as
+the source of truth.
 
 ## Code Style Guidelines
 

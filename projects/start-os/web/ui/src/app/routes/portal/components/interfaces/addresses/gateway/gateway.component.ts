@@ -60,7 +60,6 @@ import { GatewayItemComponent } from './item.component'
           [address]="address"
           [packageId]="packageId()"
           [value]="value()"
-          [isRunning]="isRunning()"
           [gatewayId]="gatewayGroup().gatewayId"
         ></tr>
       } @empty {
@@ -110,7 +109,6 @@ export class GatewayComponent {
   readonly gatewayGroup = input.required<GatewayAddressGroup>()
   readonly packageId = input('')
   readonly value = input<MappedServiceInterface | undefined>()
-  readonly isRunning = input.required<boolean>()
 
   // The Certificate Authority column only makes sense when some address is
   // actually SSL-terminated. Non-SSL bindings and port ranges have none.
@@ -284,23 +282,36 @@ export class GatewayComponent {
     }
 
     return this.tasks.run(async () => {
-      let res
-      if (this.packageId()) {
-        res = await this.api.pkgAddPublicDomain({
-          ...params,
-          package: this.packageId(),
-          host: iface?.addressInfo.hostId || '',
-        })
-      } else {
-        res = await this.api.osUiAddPublicDomain(params)
-      }
+      // Watch the service across the add request: if it is down for any of it
+      // (restarted by the change, or already stopped), nothing was listening, so
+      // the backend's port/firewall probes say nothing (see DomainHealthService).
+      const watch = this.domainHealth.watchServiceStatus(this.packageId())
+      try {
+        let res
+        if (this.packageId()) {
+          res = await this.api.pkgAddPublicDomain({
+            ...params,
+            package: this.packageId(),
+            host: iface?.addressInfo.hostId || '',
+          })
+        } else {
+          res = await this.api.osUiAddPublicDomain(params)
+        }
 
-      await this.domainHealth.checkPublicDomain(
-        fqdn,
-        gatewayId,
-        res,
-        this.count(),
-      )
+        await this.domainHealth.checkPublicDomain(
+          fqdn,
+          gatewayId,
+          res,
+          this.count(),
+          {
+            packageId: this.packageId(),
+            addSsl: iface?.addSsl ?? false,
+            watch,
+          },
+        )
+      } finally {
+        watch.stop()
+      }
     }, 'Saving')
   }
 }

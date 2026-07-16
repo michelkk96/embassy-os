@@ -37,8 +37,8 @@
     "build-config": "node shared-libs/ts-modules/build-config.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "format:toml": "taplo fmt",
-    "format:toml:check": "taplo fmt --check",
+    "format:toml": "git ls-files -zco --exclude-standard -- '*.toml' | xargs -0r taplo fmt",
+    "format:toml:check": "git ls-files -zco --exclude-standard -- '*.toml' | xargs -0r taplo fmt --check",
     "prepare": "husky || true"
   },
   "dependencies": {

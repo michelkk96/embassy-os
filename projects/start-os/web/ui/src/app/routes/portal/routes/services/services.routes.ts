@@ -16,7 +16,16 @@ export const ROUTES: Routes = [
       },
       {
         path: 'interfaces',
-        loadComponent: () => import('./routes/interfaces.component'),
+        children: [
+          {
+            path: '',
+            loadComponent: () => import('./routes/interfaces.component'),
+          },
+          {
+            path: ':interfaceId',
+            loadComponent: () => import('./routes/interface.component'),
+          },
+        ],
       },
       {
         path: 'actions',

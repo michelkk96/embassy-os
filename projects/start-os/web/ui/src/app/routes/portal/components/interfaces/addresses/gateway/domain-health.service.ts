@@ -1,27 +1,151 @@
 import { inject, Injectable } from '@angular/core'
-import { DialogService, ErrorService } from '@start9labs/shared'
+import { DialogService, ErrorService, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { PatchDB } from 'patch-db-client'
-import { firstValueFrom } from 'rxjs'
+import { firstValueFrom, Observable, Subscription } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
-import { DataModel } from 'src/app/services/patch-db/data-model'
+import {
+  DataModel,
+  PackageDataEntry,
+} from 'src/app/services/patch-db/data-model'
+import { renderPkgStatus } from 'src/app/services/pkg-status-rendering.service'
 import { dnsAllPass, getGua, portAllPass } from 'src/app/utils/gua'
-import { DOMAIN_VALIDATION, DnsGateway } from './dns.component'
+import { GatewayAddress, MappedServiceInterface } from '../../interface.service'
+import { DOMAIN_VALIDATION, DnsGateway } from './domain-validation.component'
 import { PORT_FORWARD_VALIDATION } from './port-forward.component'
 import { PRIVATE_DNS_VALIDATION } from './private-dns.component'
+
+// The service context an address check runs in. `packageId`/`addSsl` make the
+// Address Requirements modal status-aware (an empty `packageId` has no service
+// to watch); `watch`, present only for auto-checks fired on add/enable, reports
+// whether the service was non-running while the request was in flight.
+export type AddressCheckContext = {
+  packageId: string
+  addSsl: boolean
+  watch?: ServiceStatusWatch
+}
+
+// Records whether a package was outside the 'running' state at any point between
+// construction and `stop()`. Deliberately not a running -> non-running
+// *transition*: if the service was down for any part of the window — restarted
+// by the change, or intentionally stopped the whole time — nothing was
+// listening, so an external probe cannot tell "forwarding is broken" from
+// "there was nothing to forward to". A `null` source (an empty package id) never
+// reports non-running. Start it just before the mutating request so the whole
+// request/response cycle is covered.
+export class ServiceStatusWatch {
+  private sawNonRunning = false
+  private readonly sub: Subscription
+
+  constructor(status$: Observable<PackageDataEntry | undefined> | null) {
+    this.sub =
+      status$?.subscribe(pkg => {
+        if (pkg && renderPkgStatus(pkg).primary !== 'running') {
+          this.sawNonRunning = true
+        }
+      }) ?? Subscription.EMPTY
+  }
+
+  get wasNonRunning(): boolean {
+    return this.sawNonRunning
+  }
+
+  stop(): void {
+    this.sub.unsubscribe()
+  }
+}
 
 @Injectable({ providedIn: 'root' })
 export class DomainHealthService {
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly dialog = inject(DialogService)
   private readonly api = inject(ApiService)
+  private readonly tasks = inject(TaskService)
   private readonly errorService = inject(ErrorService)
+
+  // Begin watching a service's status. Call this immediately before the request
+  // that adds a domain or enables an address, then hand the result to the check
+  // so any downtime during that request is caught. Caller owns `stop()`.
+  watchServiceStatus(packageId: string): ServiceStatusWatch {
+    return new ServiceStatusWatch(
+      packageId ? this.patch.watch$('packageData', packageId) : null,
+    )
+  }
+
+  // Enable or disable one address, then — on enable — run its reachability
+  // checks under a status watch (so any downtime during the change is caught,
+  // see checkPublicDomain / checkPortForward). Shared by the desktop row switch
+  // and the mobile actions dropdown so both platforms surface the setup modal.
+  async setAddressEnabled(
+    enabled: boolean,
+    addr: GatewayAddress,
+    iface: MappedServiceInterface,
+    packageId: string,
+    gatewayId: string,
+  ): Promise<void> {
+    const params = {
+      internalPort: iface.addressInfo.internalPort,
+      address: addr.hostnameInfo,
+      enabled,
+      package: packageId,
+      host: iface.addressInfo.hostId,
+    }
+
+    await this.tasks.run(async () => {
+      const watch = this.watchServiceStatus(packageId)
+      try {
+        if (packageId) {
+          // A range spans >1 port and lives in a separate subtree, so it has its
+          // own endpoint; a single-port binding is exactly 1.
+          if (addr.count > 1) {
+            await this.api.pkgBindingSetRangeAddressEnabled(params)
+          } else {
+            await this.api.pkgBindingSetAddressEnabled(params)
+          }
+        } else {
+          await this.api.serverBindingSetAddressEnabled({
+            internalPort: 80,
+            address: addr.hostnameInfo,
+            enabled,
+          })
+        }
+
+        if (!enabled) return
+
+        const kind = addr.hostnameInfo.metadata.kind
+        const ctx = { packageId, addSsl: iface.addSsl, watch }
+        if (kind === 'public-domain' && addr.hostnameInfo.port !== null) {
+          await this.checkPublicDomain(
+            addr.hostnameInfo.hostname,
+            gatewayId,
+            addr.hostnameInfo.port,
+            addr.count,
+            ctx,
+          )
+        } else if (kind === 'private-domain') {
+          await this.checkPrivateDomain(gatewayId, addr.hostnameInfo.hostname)
+        } else if (
+          kind === 'ipv4' &&
+          addr.access === 'public' &&
+          addr.hostnameInfo.port !== null &&
+          // A port range spans many ports; a single-port reachability check
+          // would be misleading, so don't auto-test it on enable.
+          addr.count === 1
+        ) {
+          await this.checkPortForward(gatewayId, addr.hostnameInfo.port, ctx)
+        }
+      } finally {
+        watch.stop()
+      }
+    }, 'Saving')
+  }
 
   async checkPublicDomain(
     fqdn: string,
     gatewayId: string,
     portOrRes: number | T.AddPublicDomainRes,
-    count = 1,
+    count: number,
+    ctx: AddressCheckContext,
   ): Promise<void> {
     try {
       const gateway = await this.getGatewayData(gatewayId)
@@ -62,17 +186,35 @@ export class DomainHealthService {
         portV6Result = isRange ? null : portOrRes.portV6
       }
 
+      // A non-SSL binding is served directly by the service, so if the service
+      // was down for any part of this request — restarted by the change, or
+      // already stopped — nothing was listening and its port/firewall probes say
+      // nothing about the user's network. Present those as untested (null →
+      // neutral) rather than failed. An SSL binding is fronted by the always-up
+      // OS reverse proxy, so its probe stays valid regardless and a failure there
+      // is genuine; hence the !addSsl guard. The modal still opens below (a
+      // neutralized probe leaves portOk false) so the user learns the port needs
+      // forwarding and can retest once the service is running.
+      if (!ctx.addSsl && ctx.watch?.wasNonRunning) {
+        if (portResult && !portResult.openExternally) portResult = null
+        if (portV6Result && !portV6Result.openExternally) portV6Result = null
+      }
+
       const dnsPass = dnsAllPass(dns, gateway.ipInfo.wanIp, gua)
       const portOk = isRange || portAllPass(portResult, portV6Result, gua)
 
       if (!dnsPass || !portOk) {
         setTimeout(
           () =>
-            this.openPublicDomainModal(fqdn, gateway, port, count, {
-              dns,
-              portResult,
-              portV6Result,
-            }),
+            this.openPublicDomainModal(
+              fqdn,
+              gateway,
+              port,
+              count,
+              ctx.packageId,
+              ctx.addSsl,
+              { dns, portResult, portV6Result },
+            ),
           250,
         )
       }
@@ -111,35 +253,65 @@ export class DomainHealthService {
     fqdn: string,
     gatewayId: string,
     port: number,
-    count = 1,
+    count: number,
+    ctx: AddressCheckContext,
   ): Promise<void> {
     try {
       const gateway = await this.getGatewayData(gatewayId)
       if (!gateway) return
 
-      this.openPublicDomainModal(fqdn, gateway, port, count)
+      this.openPublicDomainModal(
+        fqdn,
+        gateway,
+        port,
+        count,
+        ctx.packageId,
+        ctx.addSsl,
+      )
     } catch (e: any) {
       this.errorService.handleError(e)
     }
   }
 
-  async checkPortForward(gatewayId: string, port: number): Promise<void> {
+  async checkPortForward(
+    gatewayId: string,
+    port: number,
+    ctx: AddressCheckContext,
+  ): Promise<void> {
     try {
       const gateway = await this.getGatewayData(gatewayId)
       if (!gateway) return
 
-      const portResult = await this.api
+      let portResult = await this.api
         .checkPort({ gateway: gatewayId, port })
         .catch((): null => null)
 
-      const portOk =
-        !!portResult?.openInternally &&
-        !!portResult?.openExternally &&
-        !!portResult?.hairpinning
+      // See checkPublicDomain: only a non-SSL binding (served directly by the
+      // service) goes unreachable while the service is down, so suppress a
+      // spurious failure to neutral only when addSsl is false. The modal still
+      // opens (portOk stays false) to surface the forwarding requirement.
+      if (
+        !ctx.addSsl &&
+        ctx.watch?.wasNonRunning &&
+        portResult &&
+        !portResult.openExternally
+      ) {
+        portResult = null
+      }
+
+      const portOk = !!portResult?.openExternally && !!portResult?.hairpinning
 
       if (!portOk) {
         setTimeout(
-          () => this.openPortForwardModal(gateway, port, 1, { portResult }),
+          () =>
+            this.openPortForwardModal(
+              gateway,
+              port,
+              1,
+              ctx.packageId,
+              ctx.addSsl,
+              { portResult },
+            ),
           250,
         )
       }
@@ -151,13 +323,14 @@ export class DomainHealthService {
   async showPortForwardSetup(
     gatewayId: string,
     port: number,
-    count = 1,
+    count: number,
+    ctx: AddressCheckContext,
   ): Promise<void> {
     try {
       const gateway = await this.getGatewayData(gatewayId)
       if (!gateway) return
 
-      this.openPortForwardModal(gateway, port, count)
+      this.openPortForwardModal(gateway, port, count, ctx.packageId, ctx.addSsl)
     } catch (e: any) {
       this.errorService.handleError(e)
     }
@@ -188,6 +361,8 @@ export class DomainHealthService {
     gateway: DnsGateway,
     port: number,
     count: number,
+    packageId: string,
+    addSsl: boolean,
     initialResults?: {
       dns: T.QueryDnsRes | null
       portResult: T.CheckPortRes | null
@@ -198,7 +373,7 @@ export class DomainHealthService {
       .openComponent(DOMAIN_VALIDATION, {
         label: 'Address Requirements',
         size: 'm',
-        data: { fqdn, gateway, port, count, initialResults },
+        data: { fqdn, gateway, port, count, packageId, addSsl, initialResults },
       })
       .subscribe()
   }
@@ -207,13 +382,15 @@ export class DomainHealthService {
     gateway: DnsGateway,
     port: number,
     count: number,
+    packageId: string,
+    addSsl: boolean,
     initialResults?: { portResult: T.CheckPortRes | null },
   ) {
     this.dialog
       .openComponent(PORT_FORWARD_VALIDATION, {
         label: 'Address Requirements',
         size: 'm',
-        data: { gateway, port, count, initialResults },
+        data: { gateway, port, count, packageId, addSsl, initialResults },
       })
       .subscribe()
   }

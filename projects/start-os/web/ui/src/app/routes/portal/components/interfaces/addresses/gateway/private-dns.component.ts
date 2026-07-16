@@ -6,7 +6,7 @@ import { TuiButtonLoading } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
-import { DnsGateway } from './dns.component'
+import { DnsGateway } from './domain-validation.component'
 
 export type PrivateDnsValidationData = {
   gateway: DnsGateway

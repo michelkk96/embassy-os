@@ -10,12 +10,12 @@ import { TuiIcon, TuiLoader } from '@taiga-ui/core'
     } @else {
       @let res = result();
       @if (res) {
-        @if (!res.openInternally) {
-          <tui-icon class="g-warning" icon="@tui.alert-triangle" />
-        } @else if (!res.openExternally) {
-          <tui-icon class="g-negative" icon="@tui.x" />
-        } @else {
+        @if (res.openExternally) {
           <tui-icon class="g-positive" icon="@tui.check" />
+        } @else if (!res.openInternally) {
+          <tui-icon class="g-warning" icon="@tui.alert-triangle" />
+        } @else {
+          <tui-icon class="g-negative" icon="@tui.x" />
         }
       } @else {
         <tui-icon class="g-secondary" icon="@tui.minus" />
@@ -24,16 +24,15 @@ import { TuiIcon, TuiLoader } from '@taiga-ui/core'
   `,
   styles: `
     tui-icon {
-      font-size: 1.3rem;
-      vertical-align: text-bottom;
+      font-size: 1rem;
     }
   `,
   imports: [TuiIcon, TuiLoader],
 })
 export class PortCheckIconComponent {
-  // Accepts either a full IPv4 check or the IPv6 sub-result — both carry the
-  // openInternally/openExternally fields this reads.
-  readonly result =
-    input<Pick<T.CheckPortRes, 'openInternally' | 'openExternally'>>()
+  // Either a full IPv4 check or the IPv6 sub-result; both carry the fields read
+  // here. A reachable port is reported as such whatever the internal probe said
+  // — something answered externally, so the probe was simply stale.
+  readonly result = input<T.CheckPortRes | T.CheckPortV6Res>()
   readonly loading = input(false)
 }

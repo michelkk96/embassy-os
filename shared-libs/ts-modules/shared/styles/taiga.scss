@@ -141,12 +141,6 @@ tui-dropdown[data-appearance='start-os'][data-appearance='start-os'] {
   }
 }
 
-// TODO: Remove in Taiga v5.0
-a[tuiIconButton]:not([href]) {
-  pointer-events: none;
-  opacity: var(--tui-disabled-opacity);
-}
-
 tui-badge-notification {
   background: var(--tui-status-negative);
 }
@@ -178,7 +172,6 @@ tui-notification-middle {
   --tui-background-accent-1: var(--tui-status-warning);
 }
 
-// TODO: Remove in Taiga v5.0
-[tuiButton] {
-  min-block-size: var(--t-size);
+[tuiBadge] {
+  --tui-text-primary: var(--t-status);
 }

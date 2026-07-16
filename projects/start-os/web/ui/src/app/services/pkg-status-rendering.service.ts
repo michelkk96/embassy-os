@@ -190,3 +190,20 @@ export const PrimaryRendering: Record<PrimaryStatus, StatusRendering> = {
     showDots: false,
   },
 }
+
+// The CSS color a primary status renders in — shared so a status reads the same
+// everywhere (the services-list status, the Address Requirements note, ...).
+export function getStatusColor(primary: PrimaryStatus): string {
+  switch (primary) {
+    case 'running':
+      return 'var(--tui-status-positive)'
+    case 'task-required':
+      return 'var(--tui-status-warning)'
+    case 'error':
+      return 'var(--tui-status-negative)'
+    case 'stopped':
+      return 'var(--tui-text-secondary)'
+    default:
+      return 'var(--tui-status-info)'
+  }
+}

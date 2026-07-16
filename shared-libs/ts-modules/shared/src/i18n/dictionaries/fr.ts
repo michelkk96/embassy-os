@@ -679,7 +679,7 @@ export default {
   771: 'Partie terminée',
   772: "Appuyez sur une touche ou touchez l'écran pour commencer",
   773: "Appuyez sur une touche ou touchez l'écran pour rejouer",
-  774: "L'état du port ne peut pas être déterminé tant que le service n'est pas en cours d'exécution",
+  774: "Rien n'a répondu sur ce port, son état ne peut donc pas être déterminé",
   775: "Cette adresse ne fonctionnera pas depuis votre réseau local en raison d'une limitation de hairpinning du routeur",
   776: 'Action introuvable',
   777: "Le domaine s'appliquera également aux interfaces suivantes :",
@@ -801,4 +801,5 @@ export default {
   905: "Cette cible n'a aucune autre sauvegarde",
   906: "Il n'existe aucune sauvegarde actuelle (V2) pour ce serveur sur cette cible ; supprimer l'ancienne (V1) laissera donc ce serveur sans aucune sauvegarde ici. Continuer ?",
   907: 'Supprimer quand même',
+  908: 'Le service doit être en fonctionnement pour effectuer ce test. Statut actuel :',
 } satisfies i18n

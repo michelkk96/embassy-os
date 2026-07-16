@@ -118,7 +118,7 @@ const IP_VERSION: Record<string, i18nKey> = {
         />
       </tui-textfield>
       <tui-error formControlName="internalport" />
-      <tui-textfield>
+      <tui-textfield [tuiTextfieldCleaner]="false">
         <label tuiLabel>{{ 'Number of Ports' | i18n }}</label>
         <input
           tuiInputNumber

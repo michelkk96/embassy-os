@@ -2,7 +2,7 @@
 
 A semver extension that tracks an upstream version and a downstream (packaging) version
 separately, with an optional flavor prefix. First-party crate in the start-technologies monorepo at
-`shared-libs/crates/exver` (Cargo package `exver`, crate-type `cdylib` + `rlib`). `CLAUDE.md`
+`shared-libs/crates/exver` (Cargo package `exver`). `CLAUDE.md`
 is a one-line `@AGENTS.md` import. See ARCHITECTURE.md for how it works and CONTRIBUTING.md for
 the workflow.
 
@@ -16,20 +16,14 @@ the workflow.
   the `AnyRange`/`AllRange` monoid wrappers, the Pest `Grammar`, `FromStr`/`Display`/`Serialize`
   impls, comparison/`satisfies` logic, and the private `sat` satisfiability module.
 - `src/grammar.pest` — Pest grammar for `Version`, `ExtendedVersion`, and `VersionRange`.
-- `src/wasm.rs` — wasm-bindgen bindings (`flavor`, `compare`, `satisfies`); only compiled with
-  the `wasm` feature.
 - `src/test.rs` — proptest property tests for the `VersionRange` algebraic laws; `#[cfg(test)]`.
-- `exver.d.ts` — hand-written TypeScript types copied into the wasm `pkg/` by `publish.sh`.
-- `publish.sh` — builds the wasm package and publishes it to npm as `@start9labs/exver`.
 - `proptest-regressions/` — proptest's persisted failing-case seeds.
 
 ## Build & test (run from the repo root)
 
 ```bash
 cargo build -p exver
-cargo build -p exver --features wasm
 cargo test  -p exver
-cargo test  -p exver --features wasm
 ```
 
 ## Gotchas
@@ -47,5 +41,11 @@ cargo test  -p exver --features wasm
   variants — they fold identities/annihilators eagerly and keep the AST small.
 - The grammar and the `FromStr` impls must stay in sync: any change to the version or range
   string format means editing both `src/grammar.pest` and the parser code in `src/exver.rs`.
-- The crate builds a `cdylib`. The wasm package needs `wasm-pack`; `exver.d.ts` is the published
-  type surface and the generated `pkg/` directory is gitignored.
+- **This crate has no JavaScript surface — never send a TypeScript consumer here.** JS/TS callers
+  use the independent TypeScript reimplementation of ExVer in `@start9labs/start-core`
+  (`shared-libs/ts-modules/start-core/lib/exver/`), which the published `@start9labs/start-sdk`
+  re-exports as `ExtendedVersion` / `Version` / `VersionRange`.
+- **That reimplementation shares this crate's spec but none of its code, and nothing enforces
+  that they agree.** A change to the version/range format or to ordering here must land in
+  `shared-libs/ts-modules/start-core/lib/exver/` (`exver.pegjs` + `index.ts`) in the same change,
+  or the registries and their clients will disagree about which version is newer.

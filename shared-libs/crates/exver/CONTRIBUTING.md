@@ -6,14 +6,14 @@ How to build, test, and change the `exver` crate.
 
 - README.md — what the crate is and how to use it (version format, range grammar, `satisfies`,
   algebraic laws).
-- ARCHITECTURE.md — how it works internally (types, parsing, satisfiability, wasm surface).
+- ARCHITECTURE.md — how it works internally (types, parsing, satisfiability, and its
+  relationship to the TypeScript reimplementation).
 - CONTRIBUTING.md — this file: toolchain and workflow.
 - AGENTS.md — agent-facing rules and gotchas. `CLAUDE.md` is a one-line `@AGENTS.md` import.
 
 ## Prerequisites
 
-- Rust stable (the workspace toolchain) for the Rust library and tests.
-- For the WebAssembly build/publish: `wasm-pack` (and `jq` + `npm` for `publish.sh`).
+- Rust stable (the workspace toolchain). That is the whole toolchain — this crate is Rust only.
 
 ## Building
 
@@ -21,7 +21,6 @@ From the repo root:
 
 ```bash
 cargo build -p exver
-cargo build -p exver --features wasm
 ```
 
 ## Testing
@@ -30,7 +29,6 @@ From the repo root:
 
 ```bash
 cargo test -p exver
-cargo test -p exver --features wasm
 ```
 
 `src/test.rs` runs proptest property tests over the `VersionRange` laws (commutativity,
@@ -46,13 +44,10 @@ make start-core-format
 make start-core-format-check
 ```
 
-## Publishing the wasm package
-
-`./publish.sh` builds with `wasm-pack` and publishes to npm as `@start9labs/exver`. It copies
-`exver.d.ts` into the generated `pkg/` (gitignored). Run it only when intentionally cutting an
-npm release.
-
 ## Making a change
 
 - If you change the version or range string format, update `src/grammar.pest` and the `FromStr`
   impls together, and update README.md/ARCHITECTURE.md to match.
+- Any change to the format or to ordering must also land in the TypeScript reimplementation at
+  `shared-libs/ts-modules/start-core/lib/exver/` (`exver.pegjs` + `index.ts`). The two share a
+  spec but no code, and nothing enforces that they agree.

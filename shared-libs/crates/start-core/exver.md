@@ -4,10 +4,10 @@ Extended semver supporting **downstream versioning** (wrapper updates independen
 
 Two implementations exist:
 
-- **Rust crate** (`exver`) — used in `core/`. Source: https://github.com/Start9Labs/start-technologies/tree/master/shared-libs/crates/exver
-- **TypeScript** (`shared-libs/ts-modules/start-core/lib/exver/index.ts`, package `@start9labs/start-core`) — used in `sdk/` and `web/`
+- **Rust crate** (`exver`) — used in `shared-libs/crates/start-core`. Source: https://github.com/Start9Labs/start-technologies/tree/master/shared-libs/crates/exver
+- **TypeScript** (`shared-libs/ts-modules/start-core/lib/exver/index.ts`, package `@start9labs/start-core`) — used in `projects/start-sdk` and the web apps, and re-exported by `@start9labs/start-sdk` for out-of-repo consumers
 
-Both parse the same string format and agree on `satisfies` semantics.
+The TypeScript one is a reimplementation, not a binding: the two share this spec but no code, and nothing enforces that they agree. Both parse the same string format and agree on `satisfies` semantics — keep it that way by landing any format or ordering change in both.
 
 ## Version Format
 

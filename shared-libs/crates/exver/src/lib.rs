@@ -11,8 +11,5 @@ pub use emver;
 
 pub use crate::exver::*;
 
-#[cfg(feature = "wasm")]
-pub mod wasm;
-
 #[cfg(test)]
 mod test;

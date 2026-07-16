@@ -325,6 +325,32 @@ cmd_pre_check() {
         echo "  ✓ changelog documents ${VERSION}"
     fi
 
+    # 1b. StartOS install/update docs pin the GitHub release link to the version
+    # being shipped — a repo-wide releases/latest resolves to whichever product
+    # released most recently (e.g. StartTunnel), not to StartOS. Enforce the bump
+    # like the changelog: fail if any doc still says releases/latest, links to no
+    # ${TAG} release, or pins a stale version. See root AGENTS.md "Coupled changes".
+    if [ "$KIND" = os ]; then
+        local docs_src total good
+        docs_src="$REPO_ROOT/projects/start-os/docs/src"
+        if grep -rqF "releases/latest" "$docs_src" 2>/dev/null; then
+            >&2 echo "  ✗ start-os docs still link to releases/latest — pin to https://github.com/${REPO}/releases/tag/${TAG}"
+            errors=1
+        fi
+        total=$(grep -rohF "${REPO}/releases/tag/" "$docs_src" 2>/dev/null | wc -l | tr -d ' ')
+        good=$(grep -rohF "${REPO}/releases/tag/${TAG}" "$docs_src" 2>/dev/null | wc -l | tr -d ' ')
+        if [ "$good" -eq 0 ]; then
+            >&2 echo "  ✗ start-os docs link to no ${TAG} release — pin to https://github.com/${REPO}/releases/tag/${TAG}"
+            errors=1
+        elif [ "$total" -ne "$good" ]; then
+            >&2 echo "  ✗ start-os docs pin a stale release link (expected releases/tag/${TAG}):"
+            grep -rnF "${REPO}/releases/tag/" "$docs_src" 2>/dev/null | grep -vF "releases/tag/${TAG}" | sed 's/^/      /' >&2
+            errors=1
+        else
+            echo "  ✓ start-os docs pin the release link to ${TAG}"
+        fi
+    fi
+
     # 2. Git tag must not already exist on the remote (idempotent: FORCE re-tags).
     if git ls-remote --tags origin "refs/tags/${TAG}" 2>/dev/null | grep -q .; then
         release_guard "tag ${TAG} already exists on origin" || errors=1

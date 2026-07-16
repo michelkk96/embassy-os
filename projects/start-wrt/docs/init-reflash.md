@@ -273,7 +273,7 @@ The WiFi passphrase is never displayed in the admin interface. The sticker is th
 | Source                                     | Reuse                                             |
 | ------------------------------------------ | ------------------------------------------------- |
 | `auth.rs` — `rpassword::prompt_password()` | No-echo prompting in `set-wifi-password --manual` |
-| `start-os::util::io::AtomicFile`           | Atomic write pattern for `/etc/shadow`, conffiles |
+| `start-core::util::io::AtomicFile`         | Atomic write pattern for `/etc/shadow`, conffiles |
 | `uciedit` crate                            | UCI config writing                                |
 | `wifi.rs`                                  | WiFi PSK + dynamic VLAN structure                 |
 | `projects/start-os/web/setup-wizard/`      | Angular wizard reference                          |

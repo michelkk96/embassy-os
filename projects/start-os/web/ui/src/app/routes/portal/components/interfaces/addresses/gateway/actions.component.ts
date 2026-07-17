@@ -38,6 +38,7 @@ import { DomainHealthService } from './domain-health.service'
           tuiIconButton
           appearance="flat-grayscale"
           iconStart="@tui.settings"
+          [disabled]="!address().enabled"
           (click)="showDnsValidation()"
         >
           {{ 'Address Requirements' | i18n }}
@@ -48,6 +49,7 @@ import { DomainHealthService } from './domain-health.service'
           tuiIconButton
           appearance="flat-grayscale"
           iconStart="@tui.settings"
+          [disabled]="!address().enabled"
           (click)="showPrivateDnsValidation()"
         >
           {{ 'Address Requirements' | i18n }}
@@ -62,6 +64,7 @@ import { DomainHealthService } from './domain-health.service'
           tuiIconButton
           appearance="flat-grayscale"
           iconStart="@tui.settings"
+          [disabled]="!address().enabled"
           (click)="showPortForwardValidation()"
         >
           {{ 'Address Requirements' | i18n }}
@@ -152,6 +155,7 @@ import { DomainHealthService } from './domain-health.service'
             <button
               tuiOption
               iconStart="@tui.settings"
+              [disabled]="!address().enabled"
               (click)="showDnsValidation()"
             >
               {{ 'Address Requirements' | i18n }}
@@ -161,6 +165,7 @@ import { DomainHealthService } from './domain-health.service'
             <button
               tuiOption
               iconStart="@tui.settings"
+              [disabled]="!address().enabled"
               (click)="showPrivateDnsValidation()"
             >
               {{ 'Address Requirements' | i18n }}
@@ -174,6 +179,7 @@ import { DomainHealthService } from './domain-health.service'
             <button
               tuiOption
               iconStart="@tui.settings"
+              [disabled]="!address().enabled"
               (click)="showPortForwardValidation()"
             >
               {{ 'Address Requirements' | i18n }}

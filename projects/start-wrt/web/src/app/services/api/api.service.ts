@@ -472,7 +472,6 @@ export interface DeviceFromApi {
   ipv4: string | null
   ipv6: string | null
   ipv4_static: boolean
-  ipv6_static: boolean
   security_profile: string | null
   speed: { up: number; down: number } | null
   data_usage: number | null
@@ -483,8 +482,6 @@ export interface DeviceUpdateReq {
   name: string
   ipv4_static: boolean
   ipv4: string
-  ipv6_static: boolean
-  ipv6: string
 }
 
 export type DeviceDataUsagePeriod = 'week' | 'month' | '3months'

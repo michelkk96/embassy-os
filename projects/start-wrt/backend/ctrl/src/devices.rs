@@ -54,7 +54,6 @@ pub struct Device {
     pub ipv4: Option<String>,
     pub ipv6: Option<String>,
     pub ipv4_static: bool,
-    pub ipv6_static: bool,
     pub security_profile: Option<String>,
     pub speed: Option<SpeedData>,
     pub data_usage: Option<f64>,
@@ -72,8 +71,6 @@ pub struct DeviceUpdateReq {
     pub name: String,
     pub ipv4_static: bool,
     pub ipv4: String,
-    pub ipv6_static: bool,
-    pub ipv6: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -901,13 +898,12 @@ async fn resolve_mdns_names(targets: Vec<(String, String)>) -> HashMap<String, S
         .await
 }
 
-#[instrument(skip_all)]
-pub async fn list(_ctx: ServerContext) -> Result<Vec<Device>, Error> {
-    // --- Phase 1: IPv6 multicast discovery (all pings concurrent, ~1s) ---
-    //
-    // Ping ff02::1 to populate the NDP neighbor table. SLAAC is stateless —
-    // the router never learns which addresses clients configured. All pings
-    // fire concurrently so wall-clock time is 1s regardless of interface count.
+/// Ping ff02::1 on every LAN interface to (re)populate the NDP neighbor table.
+/// SLAAC is stateless — the router never learns which addresses clients
+/// configured — so this multicast prod is how they become visible. All pings
+/// fire concurrently so wall-clock time is ~1s regardless of interface count.
+/// Shared by `list` (phase 1) and the `ipv6_tracker` periodic rescan.
+pub(crate) async fn prod_ipv6_neighbors() {
     {
         use std::process::Stdio;
 
@@ -972,6 +968,12 @@ pub async fn list(_ctx: ServerContext) -> Result<Vec<Device>, Error> {
             let _ = child.wait().await;
         }
     }
+}
+
+#[instrument(skip_all)]
+pub async fn list(_ctx: ServerContext) -> Result<Vec<Device>, Error> {
+    // --- Phase 1: IPv6 multicast discovery (all pings concurrent, ~1s) ---
+    prod_ipv6_neighbors().await;
 
     // --- Phase 2a: Initial data gather (parallel) ---
     //
@@ -1348,7 +1350,6 @@ pub async fn list(_ctx: ServerContext) -> Result<Vec<Device>, Error> {
             ipv4,
             ipv6,
             ipv4_static: host.map(|h| h.ip.is_some()).unwrap_or(false),
-            ipv6_static: host.map(|h| h.hostid.is_some()).unwrap_or(false),
             security_profile,
             speed,
             data_usage,
@@ -1450,7 +1451,6 @@ pub async fn list(_ctx: ServerContext) -> Result<Vec<Device>, Error> {
                 ipv4: peer_cfg.ip.clone(),
                 ipv6: None,
                 ipv4_static: true,
-                ipv6_static: false,
                 security_profile: Some(server.profile_fullname.clone()),
                 speed,
                 data_usage,
@@ -1482,11 +1482,10 @@ pub async fn update<C: CtrlContext>(
                     } else {
                         host.ip = None;
                     }
-                    if req.ipv6_static && !req.ipv6.is_empty() {
-                        host.hostid = Some(extract_ipv6_hostid(&req.ipv6));
-                    } else {
-                        host.hostid = None;
-                    }
+                    // `hostid` is deliberately left untouched: IPv6 addresses are
+                    // chosen by the device (SLAAC), so there is no user-facing IPv6
+                    // reservation. The suffix is backend bookkeeping, pinned by
+                    // published-ports for its prefix-rotation fallback.
                     section.set(&host)?;
                     found = true;
                     break;
@@ -1504,11 +1503,7 @@ pub async fn update<C: CtrlContext>(
                 } else {
                     None
                 },
-                hostid: if req.ipv6_static && !req.ipv6.is_empty() {
-                    Some(extract_ipv6_hostid(&req.ipv6))
-                } else {
-                    None
-                },
+                hostid: None,
                 dns: Some("1".to_string()),
             };
             let section_name = format!("host_{}", req.mac.replace(':', "").to_lowercase());
@@ -1521,43 +1516,25 @@ pub async fn update<C: CtrlContext>(
                 continue;
             }
             Err(err) => {
-                let mut details = Vec::new();
-                if req.ipv4_static && !req.ipv4.is_empty() {
-                    details.push(format!("static IPv4: {}", req.ipv4));
-                }
-                if req.ipv6_static && !req.ipv6.is_empty() {
-                    details.push(format!("static IPv6: {}", req.ipv6));
-                }
-                let summary = if details.is_empty() {
-                    format!("Failed to update device '{}' ({})", req.name, mac_upper)
-                } else {
+                let summary = if req.ipv4_static && !req.ipv4.is_empty() {
                     format!(
-                        "Failed to update device '{}' ({}) — {}",
-                        req.name,
-                        mac_upper,
-                        details.join(", ")
+                        "Failed to update device '{}' ({}) — static IPv4: {}",
+                        req.name, mac_upper, req.ipv4
                     )
+                } else {
+                    format!("Failed to update device '{}' ({})", req.name, mac_upper)
                 };
                 crate::activity::log("device", "updated", false, &summary, Some(&err.to_string()));
                 return Err(err.into());
             }
             Ok(()) => {
-                let mut details = Vec::new();
-                if req.ipv4_static && !req.ipv4.is_empty() {
-                    details.push(format!("static IPv4: {}", req.ipv4));
-                }
-                if req.ipv6_static && !req.ipv6.is_empty() {
-                    details.push(format!("static IPv6: {}", req.ipv6));
-                }
-                let summary = if details.is_empty() {
-                    format!("Updated device '{}' ({})", req.name, mac_upper)
-                } else {
+                let summary = if req.ipv4_static && !req.ipv4.is_empty() {
                     format!(
-                        "Updated device '{}' ({}) — {}",
-                        req.name,
-                        mac_upper,
-                        details.join(", ")
+                        "Updated device '{}' ({}) — static IPv4: {}",
+                        req.name, mac_upper, req.ipv4
                     )
+                } else {
+                    format!("Updated device '{}' ({})", req.name, mac_upper)
                 };
                 crate::activity::log("device", "updated", true, &summary, None);
                 if ctx.effectful() {
@@ -1795,13 +1772,20 @@ pub fn pick_ipv6<'a>(candidates: impl Iterator<Item = &'a str>) -> Option<String
     ula_fallback.map(|ip| ip.to_string())
 }
 
-/// Extract the last 4 hextets from an IPv6 address for use as hostid.
+/// Extract the interface identifier (low 64 bits, as 4 hextets) from an IPv6
+/// address for use as hostid. Computed from the parsed segments, never the
+/// `Display` string: zero-compression can span the prefix/IID boundary
+/// (`2001:db8::11ff:fe22:3344` has IID `0:11ff:fe22:3344`), so slicing the
+/// last 4 colon-separated parts of the text yields a malformed suffix that
+/// `recombine_gua` cannot parse. Unparseable input passes through unchanged
+/// (legacy hostids are used verbatim).
 pub(crate) fn extract_ipv6_hostid(ipv6: &str) -> String {
-    let parts: Vec<&str> = ipv6.split(':').collect();
-    if parts.len() >= 4 {
-        parts[parts.len() - 4..].join(":")
-    } else {
-        ipv6.to_string()
+    match ipv6.parse::<std::net::Ipv6Addr>() {
+        Ok(addr) => {
+            let s = addr.segments();
+            format!("{:x}:{:x}:{:x}:{:x}", s[4], s[5], s[6], s[7])
+        }
+        Err(_) => ipv6.to_string(),
     }
 }
 
@@ -1824,6 +1808,25 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extract_ipv6_hostid_survives_zero_compression() {
+        // Straightforward IID.
+        assert_eq!(
+            extract_ipv6_hostid("2001:db8:abcd:0:dead:beef:0:50"),
+            "dead:beef:0:50"
+        );
+        // Zero-compression spanning the prefix/IID boundary: the EUI-64 IID of
+        // MAC 02:00:11:22:33:44 starts with a zero hextet, and Display renders
+        // the address as 2001:db8::11ff:fe22:3344 — slicing its last 4 text
+        // parts used to yield ":11ff:fe22:3344", which recombine_gua could not
+        // parse (silently killing that device's offline fallback).
+        let hostid = extract_ipv6_hostid("2001:db8::11ff:fe22:3344");
+        assert_eq!(hostid, "0:11ff:fe22:3344");
+        assert!(format!("::{hostid}").parse::<std::net::Ipv6Addr>().is_ok());
+        // Legacy/unparseable values pass through untouched.
+        assert_eq!(extract_ipv6_hostid("dead:beef:0:50"), "dead:beef:0:50");
+    }
 
     #[test]
     fn test_pick_ipv6() {

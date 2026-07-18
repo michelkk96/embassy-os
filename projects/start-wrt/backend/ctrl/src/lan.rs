@@ -4,7 +4,8 @@ use std::net::Ipv4Addr;
 use rpc_toolkit::{from_fn_async_local, ParentHandler};
 use serde::{Deserialize, Serialize};
 use uciedit::openwrt::{
-    Dhcp, DhcpHost, FirewallRedirect, NetworkInterface, NetworkRoute, NetworkRule, ProfileDnsmasq,
+    Dhcp, DhcpHost, FirewallRedirect, FirewallRule, NetworkInterface, NetworkRoute, NetworkRule,
+    ProfileDnsmasq,
 };
 use uciedit::{dump_all, parse_all, Arena, Configs};
 
@@ -404,7 +405,39 @@ pub async fn ipv6_set<C: CtrlContext>(
     let mut retries = 4;
     loop {
         let arena = Arena::new();
-        let mut cfgs = parse_all(ctx.uci_root(), &arena, &["network", "dhcp", "startwrt"]).await?;
+        let mut cfgs = parse_all(
+            ctx.uci_root(),
+            &arena,
+            &["network", "dhcp", "startwrt", "firewall"],
+        )
+        .await?;
+
+        // Disabling SLAAC strands every IPv6 published-port pinhole on an
+        // address no device will hold, so refuse while any enabled `pp_*_v6`
+        // rule exists. The UI locks the toggle for the same reason, but a
+        // point-in-time page or a CLI/RPC caller bypasses that lock — this is
+        // the authoritative check (mirroring the IPv4 static-reservation
+        // guard on subnet changes).
+        if !req.slaac {
+            let blocking: Vec<String> = cfgs["firewall"]
+                .sections
+                .iter()
+                .filter_map(|section| section.get::<FirewallRule>().ok())
+                .filter(|rule| {
+                    crate::published_ports::is_pp_v6_rule(rule)
+                        && rule.enabled.as_deref() != Some("0")
+                })
+                .map(|rule| rule.name.clone())
+                .collect();
+            if !blocking.is_empty() {
+                return Err(Error::new(
+                    eyre!(
+                        "cannot disable IPv6 (SLAAC) while published ports use IPv6: {blocking:?}; disable IPv6 on those published ports first"
+                    ),
+                    ErrorKind::PublishedPortsUseIpv6,
+                ));
+            }
+        }
 
         // Update LAN network interface ip6assign
         let mut found_network = false;
@@ -490,8 +523,16 @@ pub async fn ipv6_set<C: CtrlContext>(
             }
         }
 
+        // Skip the admin LAN here like the network loop above: its RA/DHCPv6
+        // were just set from the request, and the admin LAN is itself a profile
+        // (interface 'lan'), so re-gating it on its outbound would silently
+        // revert an enable whenever the admin routes through a v4-only VPN. A
+        // VPN-routed admin fails v6 closed via the kill-switch route instead.
         for section in &mut cfgs["dhcp"].sections {
             if let Some(name) = section.name() {
+                if name.as_ref() == LAN_INTERFACE {
+                    continue;
+                }
                 if let Some(&profile_ipv6) = profile_ipv6_map.get(name.as_ref()) {
                     if let Some(mut dhcp) = section.get_typed::<Dhcp>()? {
                         dhcp.ra = Some(
@@ -1412,6 +1453,78 @@ config profile guest
 
         let res = ipv6_get(ctx).await.unwrap();
         assert!(!res.slaac);
+        assert!(!res.dhcpv6);
+        assert_eq!(res.prefix, 64);
+    }
+
+    #[tokio::test]
+    async fn ipv6_set_enable_survives_v4_only_vpn_admin_outbound() {
+        // Regression: the admin LAN is itself a profile, so the profile sync
+        // used to re-gate dhcp.lan.ra on the admin outbound and silently
+        // revert an enable whenever that outbound was a v4-only VPN.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("network"),
+            "\
+config interface 'lan'
+\toption device 'br-lan'
+\toption proto 'static'
+\toption ipaddr '192.168.1.1'
+\toption netmask '255.255.0.0'
+
+config interface 'wan6'
+\toption device '@wan'
+\toption proto 'dhcpv6'
+
+config interface 'wg0'
+\toption proto 'wireguard'
+\toption private_key 'testkey'
+\tlist addresses '10.69.119.218/32'
+",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("dhcp"),
+            "\
+config dhcp 'lan'
+\toption interface 'lan'
+\toption start '100'
+\toption limit '150'
+\toption leasetime '12h'
+\toption ra 'disabled'
+\toption dhcpv6 'disabled'
+",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("startwrt"),
+            "\
+config profile lan
+\toption fullname 'Admin'
+\toption interface 'lan'
+\toption vlan_tag '1'
+\toption outbound 'wg0'
+",
+        )
+        .unwrap();
+        let ctx = TestContext(dir.path().to_path_buf());
+
+        ipv6_set(
+            ctx.clone(),
+            DeserializeStdin(LanIpv6SetRequest {
+                slaac: true,
+                dhcpv6: false,
+                prefix: 64,
+            }),
+        )
+        .await
+        .unwrap();
+
+        let res = ipv6_get(ctx).await.unwrap();
+        assert!(
+            res.slaac,
+            "enable must not be reverted by the admin outbound"
+        );
         assert!(!res.dhcpv6);
         assert_eq!(res.prefix, 64);
     }

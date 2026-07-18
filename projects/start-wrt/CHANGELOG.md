@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The IPv6 "Reserve" option has been removed — it never worked and never
+  could.** Devices choose their own IPv6 addresses via SLAAC, so a router
+  cannot reserve one; the toggle wrote a DHCPv6 hint that no mainstream
+  client ever requests. The device page now shows the IPv6 address read-only
+  with an explanation, publishing a port no longer claims the IPv6 address
+  "will be reserved" (the rule follows the device's current address
+  automatically), and the LAN IPv6
+  SLAAC toggle now locks while enabled published-port rules use IPv6 rather
+  than when "reserved" devices exist. The `devices.update` RPC no longer
+  accepts `ipv6_static`/`ipv6` fields. IPv4 reservations are unchanged.
+
 - **The Start9 DDNS provider option has been removed.** The Start9 DDNS
   service has not launched yet, so selecting it saved a configuration that
   could never update a DNS record. Configurations previously saved with the
@@ -17,6 +28,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   service goes live.
 
 ### Fixed
+
+- **Enabling LAN IPv6 no longer silently fails when the Admin profile routes
+  through an IPv4-only VPN.** Saving the LAN IPv6 settings reported success
+  but immediately reverted to disabled: the save re-derived the admin LAN's
+  router advertisements from whether its outbound VPN carries IPv6, undoing
+  the change in the same write. Editing the Admin profile onto an IPv4-only
+  VPN likewise switched LAN IPv6 off behind your back — and kept it off even
+  after switching the outbound back. The LAN IPv6 toggle is now the sole
+  owner of that setting; with an IPv4-only VPN outbound, LAN devices still
+  get local (ULA) IPv6 addresses while internet-bound IPv6 remains blocked
+  by the VPN kill switch, so nothing leaks around the tunnel.
+
+- **Published ports no longer reshuffle their order on every refresh.** The
+  list is auto-refreshed every few seconds, and each refresh returned the
+  rows in an arbitrary order, so the table visibly jumped around. Published
+  ports now appear in a stable order, sorted by label.
+
+- **IPv6 published-port rules now follow the target device when it changes
+  its address.** Devices assign their own IPv6 addresses and change them
+  routinely — privacy addresses rotate daily, and most operating systems
+  derive new addresses whenever the ISP rotates the delegated prefix — but
+  rules were only re-resolved on a prefix change, so a device-side change
+  silently broke the forward. The router now watches the network for
+  neighbor changes and retargets affected rules within seconds. Rules also
+  now pin the device's long-lived (stable) address instead of whichever
+  address happened to be observed first, which could be a short-lived
+  privacy address that expired within days. The **Endpoints** column shows
+  that same stable address, so the endpoint you copy always matches the rule.
 
 - **Documentation corrected against the code in a full docs-vs-code audit.** The
   user guide no longer misstates product behavior: backups _do_ preserve assigned

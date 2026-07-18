@@ -940,7 +940,6 @@ export class MockApiService extends ApiService {
         ipv4: device.ipv4,
         ipv6: device.ipv6,
         ipv4_static: !!host?.options.ip,
-        ipv6_static: !!host?.options.hostid,
         security_profile: profile?.fullname ?? null,
         speed: def.status === 'online' ? def.speed : null,
         data_usage: def.dataUsage,
@@ -957,9 +956,7 @@ export class MockApiService extends ApiService {
     if (existing) {
       existing.options.name = params.name
       existing.options.ip = params.ipv4_static ? params.ipv4 : undefined
-      existing.options.hostid = params.ipv6_static
-        ? `1::${parseInt(params.ipv6.split(':').pop() || '0', 16)}`
-        : undefined
+      // hostid untouched — backend bookkeeping, pinned by published-ports
     } else {
       this.mockDeviceHosts.push({
         type: 'host',
@@ -968,9 +965,6 @@ export class MockApiService extends ApiService {
           mac: params.mac,
           name: params.name,
           ip: params.ipv4_static ? params.ipv4 : undefined,
-          hostid: params.ipv6_static
-            ? `1::${parseInt(params.ipv6.split(':').pop() || '0', 16)}`
-            : undefined,
           dns: '1',
         },
         lists: {},
@@ -1343,29 +1337,21 @@ export class MockApiService extends ApiService {
   async publishedPortsSet(params: PublishedPortsSetRequest): Promise<null> {
     await pauseFor(250)
 
-    // Auto-reserve static IPs for enabled ports (matches real backend behavior)
+    // Auto-reserve static IPv4 for enabled ports (matches real backend
+    // behavior). No IPv6 counterpart: the backend tracks the device's
+    // self-chosen address instead of reserving one.
     for (const input of params.ports) {
-      if (!input.enabled) continue
+      if (!input.enabled || !input.ipv4) continue
       const macUpper = input.device_mac.toUpperCase()
       const existing = this.mockDeviceHosts.find(
         h => h.options.mac?.toUpperCase() === macUpper,
       )
-
-      // Reserve IPv4 static if port uses IPv4 and no reservation exists
-      if (input.ipv4 && existing && !existing.options.ip) {
+      if (existing && !existing.options.ip) {
         const leaseIp = mockDhcpLeasesOutput
           .split('\n')
           .find(l => l.includes(input.device_mac.toLowerCase()))
           ?.split(/\s+/)[2]
         if (leaseIp) existing.options.ip = leaseIp
-      }
-
-      // Reserve IPv6 static if port uses IPv6 and no reservation exists
-      if (input.ipv6 && existing && !existing.options.hostid) {
-        const def = this.mockDeviceDefs.find(
-          d => d.mac.toUpperCase() === macUpper,
-        )
-        if (def) existing.options.hostid = `1::${def.hostOctet}`
       }
     }
 

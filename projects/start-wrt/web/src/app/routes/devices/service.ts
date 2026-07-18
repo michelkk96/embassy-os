@@ -31,8 +31,6 @@ export class DevicesApiService {
       name: data.name,
       ipv4_static: data.ipv4Static,
       ipv4: data.ipv4,
-      ipv6_static: data.ipv6Static,
-      ipv6: data.ipv6,
     })
   }
 
@@ -57,7 +55,6 @@ export class DevicesApiService {
       ipv4: d.ipv4 || undefined,
       ipv6: d.ipv6 || undefined,
       ipv4Static: d.ipv4_static,
-      ipv6Static: d.ipv6_static,
       securityProfile: d.security_profile || undefined,
       speed: d.speed || undefined,
       dataUsage: d.data_usage ?? undefined,

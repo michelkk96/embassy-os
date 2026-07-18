@@ -12,8 +12,9 @@ monorepo-wide rules, and [ARCHITECTURE.md](ARCHITECTURE.md) and
 - `src/bin/startbox.rs`, `src/bin/start-container.rs` — the only Rust in this
   dir. They are thin entry points; backend logic lives in
   `../../shared-libs/crates/start-core` (crate `start-core`, lib `start_core`).
-- `web/ui`, `web/setup-wizard` — Angular apps; part of the workspace at
-  `../../shared-libs/ts-modules`. Run web commands from `../../shared-libs/ts-modules`, not from here.
+- `web/ui`, `web/setup-wizard` — Angular apps in the root Angular workspace
+  (`angular.json` at the repo root). Run web commands (`npm run check:ui`, `npm run start:ui`, …)
+  from the repo root, not from here.
 - `container-runtime/` — Node.js LXC runtime with its **own** AGENTS/CLAUDE;
   read `container-runtime/AGENTS.md` before touching it.
 - `docs/` — the end-user mdbook (book "StartOS"), served at `/start-os/`.

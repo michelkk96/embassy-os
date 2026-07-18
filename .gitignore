@@ -29,6 +29,7 @@ docs/USER.md
 /projects/start-os/build/lib/conflicts
 .claude/*
 !.claude/settings.json
+!.claude/skills/
 
 # openwrt build workspace: disposable, rebuilt from the pinned upstream release
 # tarball by projects/start-wrt/build/openwrt-setup.sh (was a git submodule);

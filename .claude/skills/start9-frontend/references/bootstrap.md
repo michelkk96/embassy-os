@@ -10,7 +10,15 @@ The root template is nothing but:
   selector: 'app-root',
   imports: [RouterOutlet, TuiRoot],
   template: '<tui-root><router-outlet /></tui-root>',
-  styles: `:host { height: 100%; display: block; } tui-root { height: 100%; }`,
+  styles: `
+    :host {
+      height: 100%;
+      display: block;
+    }
+    tui-root {
+      height: 100%;
+    }
+  `,
 })
 export class App {}
 ```
@@ -18,6 +26,7 @@ export class App {}
 `TuiRoot` hosts all portals (dialogs, alerts, dropdowns, hints) — never add outlets for them.
 Shell chrome (nav, header, footer) is either inside the root template as **attribute-selector
 components on semantic elements** (`<header appHeader></header> <main><router-outlet /></main>
+
 <footer appFooter></footer>` — start9-store) or a `TuiNavigation` shell
 (`tuiNavigationHeader`/`tuiNavigationAside`/`tuiAsideItem` — start-wrt, start-tunnel).
 
@@ -60,7 +69,7 @@ Notes, all load-bearing:
   `const { useMocks, gitHash } = require('../../config.json') as WorkspaceConfig` — this feeds
   the Live/Mock DI swap and value tokens (`IS_MOCK`, `GIT_HASH`, `RELATIVE_URL`).
 - Router features seen in canon: `withInMemoryScrolling({ scrollPositionRestoration: 'enabled',
-  anchorScrolling: 'enabled' })` (store), `withComponentInputBinding()` +
+anchorScrolling: 'enabled' })` (store), `withComponentInputBinding()` +
   `withPreloading(PreloadAllModules)` + `withDisabledInitialNavigation()` +
   `withRouterConfig({ paramsInheritanceStrategy: 'always' })` (StartOS ui — initial navigation
   deferred until services init inside `provideAppInitializer`). Use what the app needs, nothing
@@ -89,14 +98,14 @@ config as in SKILL.md, husky + lint-staged, `"build": "npm ci && ng build"` for 
 
 Icons are Lucide via `@tui.<name>` (`iconStart="@tui.plus"`, `<tui-icon icon="@tui.check" />`).
 
-| Setup | Who | How |
-|---|---|---|
-| **Asset copy** (default) | monorepo apps, dashboards | `angular.json` assets: `node_modules/@taiga-ui/icons/src` → `assets/taiga-ui/icons` |
-| **postinstall copy** | start9-store | hoisted npm workspace can't express the asset path — root `postinstall` runs `fs.cpSync` into `web/public/assets/taiga-ui/icons` (gitignored). Don't "simplify" it back into `angular.json`. |
-| **Inline registry** | start-wrt | bundle-size-critical (UI embedded in the Rust binary): `angular.json` `loader: { ".svg": "text" }` + `app.icons.ts` importing the used icons from `@taiga-ui/icons/src/*.svg`, registered via `tuiIconsProvider(ICONS)` |
+| Setup                    | Who                       | How                                                                                                                                                                                                                     |
+| ------------------------ | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Asset copy** (default) | monorepo apps, dashboards | `angular.json` assets: `node_modules/@taiga-ui/icons/src` → `assets/taiga-ui/icons`                                                                                                                                     |
+| **postinstall copy**     | start9-store              | hoisted npm workspace can't express the asset path — root `postinstall` runs `fs.cpSync` into `web/public/assets/taiga-ui/icons` (gitignored). Don't "simplify" it back into `angular.json`.                            |
+| **Inline registry**      | start-wrt                 | bundle-size-critical (UI embedded in the Rust binary): `angular.json` `loader: { ".svg": "text" }` + `app.icons.ts` importing the used icons from `@taiga-ui/icons/src/*.svg`, registered via `tuiIconsProvider(ICONS)` |
 
 The failure mode: a **hand-curated partial registry** breaks the icons Taiga components draw
-*internally* (select chevrons, dropdown arrows) — exactly such a registry was deleted from
+_internally_ (select chevrons, dropdown arrows) — exactly such a registry was deleted from
 start9-store for this reason. If you inline-register (wrt style), you own keeping the set complete; everywhere
 else, serve the whole directory and stop thinking about it. Non-Taiga SVGs ship as plain assets
 and are referenced by path, including in icon slots (`iconStart="/x-logo.svg"`).
@@ -125,4 +134,3 @@ Breakpoints: Taiga's `TUI_BREAKPOINT` signal and `tui-root._mobile` follow `TUI_
 an app may override when its header demands it (store: `mobile: 1120`, **measured** — if you add
 a nav item, re-measure and raise it). Components that shouldn't collapse at the app-wide
 threshold use their own `@media` — deliberately, with a comment.
-

@@ -15,7 +15,12 @@
       </span>
     }
   `,
-  styles: `:host { display: flex; gap: 0.5rem; }`, // layout only, tokens only — often absent
+  styles: `
+    :host {
+      display: flex;
+      gap: 0.5rem;
+    }
+  `, // layout only, tokens only — often absent
   host: { type: 'button', '[class._active]': 'active()' },
   hostDirectives: [TuiCell],
   providers: [tuiButtonOptionsProvider({ size: 's' })],
@@ -68,11 +73,7 @@ Real fleet examples: `header[appHeader]`, `footer[appFooter]`, `button[marketpla
 @Directive({
   selector: '[formLoading]',
   host: { class: 'g-form', style: 'overflow: visible' },
-  hostDirectives: [
-    TuiForm,
-    TuiCardLarge,
-    { directive: TuiSkeleton, inputs: ['tuiSkeleton: formLoading'] },
-  ],
+  hostDirectives: [TuiForm, TuiCardLarge, { directive: TuiSkeleton, inputs: ['tuiSkeleton: formLoading'] }],
 })
 export class Form {}
 ```
@@ -137,7 +138,7 @@ readonly subscription = merge(inject(PatchDataService), inject(PatchMonitorServi
 
 `takeUntilDestroyed()` is called bare in field initializers (injection context — no `DestroyRef`
 argument). `ngOnDestroy` survives only for cleaning up manually created refs. An `ngOnInit`
-doing form-patching is *known debt*, not style (`// TODO @Alex refactor this to declarative
+doing form-patching is _known debt_, not style (`// TODO @Alex refactor this to declarative
 validation`).
 
 ## Templates
@@ -165,4 +166,3 @@ validation`).
   `safeLinks` directive (forces `target="_blank" rel="noreferrer"` on external links).
 - Text stacks use `tuiTitle`/`tuiSubtitle` with `<b>` for the title — never custom
   heading/caption CSS: `<span tuiTitle><b>{{ title }}</b><span tuiSubtitle>{{ sub }}</span></span>`.
-

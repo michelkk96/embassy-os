@@ -34,4 +34,3 @@
   deviations (`// Deliberately NOT tui-root._mobile`), honest placeholders. Attributed TODOs
   mark known debt (`// TODO @Alex refactor this to declarative validation`); divergence from
   canon gets a named owner, not silence.
-

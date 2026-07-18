@@ -10,41 +10,41 @@ refactor and review history that shaped them. Follow it and new code matches the
 deviate and expect it to be rewritten in review.
 
 **Authority order: Taiga UI docs > this skill > neighboring code.** The codebases are
-mid-migration — *"matches existing repo patterns" is not a quality bar*; old code is often
+mid-migration — _"matches existing repo patterns" is not a quality bar_; old code is often
 exactly what this skill exists to eliminate. Never guess a Taiga API: verify against the
 `taiga-ui-mcp` MCP server or `https://taiga-ui.dev/llms-full.txt`.
 
 ## Reference files (read on demand — don't preload)
 
-| File | Read when |
-|---|---|
-| `references/bootstrap.md` | creating/touching app.config, main.ts, angular.json, icons, theming, or a new app/repo |
-| `references/components.md` | writing any component or template (selectors, hostDirectives, signal APIs, control flow) |
-| `references/styling.md` | about to write ANY CSS (the escalation ladder, breakpoints, tokens) |
-| `references/di.md` | providers, tokens, inject patterns |
-| `references/state.md` | services, data flow, loading/error UX, API/RPC integration |
-| `references/forms.md` | any form, validation, or submit flow |
-| `references/overlays.md` | dialogs, confirms, toasts, dropdowns, hints, drawers |
-| `references/routing.md` | route files, guards, navigation, URL state |
-| `references/conventions.md` | i18n strings, file naming, folder structure, import order |
-| `references/shared-libs.md` | before writing ANY utility/component in monorepo apps — it may exist in @start9labs/shared or marketplace |
-| `references/antipatterns.md` | reviewing code, refactoring, or upgrading Angular/Taiga (before→after catalog + verbatim review quotes) |
-| `references/taiga.md` | unsure of a Taiga 5 API; v4→v5 renames; need→primitive lookup table |
-| `references/recipes.md` | step-by-step: new page, dialog, form, table, control component, endpoint |
-| `references/repos.md` | repo-specific rules and build/verify commands |
+| File                         | Read when                                                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `references/bootstrap.md`    | creating/touching app.config, main.ts, angular.json, icons, theming, or a new app/repo                    |
+| `references/components.md`   | writing any component or template (selectors, hostDirectives, signal APIs, control flow)                  |
+| `references/styling.md`      | about to write ANY CSS (the escalation ladder, breakpoints, tokens)                                       |
+| `references/di.md`           | providers, tokens, inject patterns                                                                        |
+| `references/state.md`        | services, data flow, loading/error UX, API/RPC integration                                                |
+| `references/forms.md`        | any form, validation, or submit flow                                                                      |
+| `references/overlays.md`     | dialogs, confirms, toasts, dropdowns, hints, drawers                                                      |
+| `references/routing.md`      | route files, guards, navigation, URL state                                                                |
+| `references/conventions.md`  | i18n strings, file naming, folder structure, import order                                                 |
+| `references/shared-libs.md`  | before writing ANY utility/component in monorepo apps — it may exist in @start9labs/shared or marketplace |
+| `references/antipatterns.md` | reviewing code, refactoring, or upgrading Angular/Taiga (before→after catalog + verbatim review quotes)   |
+| `references/taiga.md`        | unsure of a Taiga 5 API; v4→v5 renames; need→primitive lookup table                                       |
+| `references/recipes.md`      | step-by-step: new page, dialog, form, table, control component, endpoint                                  |
+| `references/repos.md`        | repo-specific rules and build/verify commands                                                             |
 
 ## The fleet
 
-| App | Location | Angular | Taiga | Zone | Theme | i18n | Backend |
-|---|---|---|---|---|---|---|---|
-| StartOS `ui` | `start-technologies` `projects/start-os/web/ui` | 22 | 5.11 | zone.js (zoneless pending) | dark, `provideTaiga({mode})` | yes (shared dicts) | JSON-RPC + PatchDB push |
-| `setup-wizard` | `projects/start-os/web/setup-wizard` | 22 | 5.11 | zone.js | dark | yes (shared) | JSON-RPC |
-| `start-tunnel` | `projects/start-tunnel/web` | 22 | 5.11 | **zoneless** | dark | yes (local dicts) | JSON-RPC + PatchDB |
-| `start-wrt` | `projects/start-wrt/web` | 22 | 5.11 | **zoneless** | dual (`TUI_DARK_MODE`) | yes (local dicts) | JSON-RPC, own HTTP stack, 5s polling |
-| `brochure-marketplace` | `projects/brochure-marketplace` | 22 | 5.11 | zone.js (legacy) | dark | yes (shared) | registry RPC direct |
-| `start9-store` | `ops/start9-store/web` | 22 | 5.14 | **zoneless** | light | no | REST + Zod via `/api` BFF, **SSR** |
-| `ops-server` | `ops/ops-server/web` | 22 | 5.14 | **zoneless** | dark, `#07a4ff`, Montserrat | no | REST `/_api`, same-origin Express |
-| `support-server` | `ops/support-server/web` | 22 | 5.14 | **zoneless** | dark, `#07a4ff`, Montserrat | no | REST `/_api` |
+| App                    | Location                                        | Angular | Taiga | Zone                       | Theme                        | i18n               | Backend                              |
+| ---------------------- | ----------------------------------------------- | ------- | ----- | -------------------------- | ---------------------------- | ------------------ | ------------------------------------ |
+| StartOS `ui`           | `start-technologies` `projects/start-os/web/ui` | 22      | 5.11  | zone.js (zoneless pending) | dark, `provideTaiga({mode})` | yes (shared dicts) | JSON-RPC + PatchDB push              |
+| `setup-wizard`         | `projects/start-os/web/setup-wizard`            | 22      | 5.11  | zone.js                    | dark                         | yes (shared)       | JSON-RPC                             |
+| `start-tunnel`         | `projects/start-tunnel/web`                     | 22      | 5.11  | **zoneless**               | dark                         | yes (local dicts)  | JSON-RPC + PatchDB                   |
+| `start-wrt`            | `projects/start-wrt/web`                        | 22      | 5.11  | **zoneless**               | dual (`TUI_DARK_MODE`)       | yes (local dicts)  | JSON-RPC, own HTTP stack, 5s polling |
+| `brochure-marketplace` | `projects/brochure-marketplace`                 | 22      | 5.11  | zone.js (legacy)           | dark                         | yes (shared)       | registry RPC direct                  |
+| `start9-store`         | `ops/start9-store/web`                          | 22      | 5.14  | **zoneless**               | light                        | no                 | REST + Zod via `/api` BFF, **SSR**   |
+| `ops-server`           | `ops/ops-server/web`                            | 22      | 5.14  | **zoneless**               | dark, `#07a4ff`, Montserrat  | no                 | REST `/_api`, same-origin Express    |
+| `support-server`       | `ops/support-server/web`                        | 22      | 5.14  | **zoneless**               | dark, `#07a4ff`, Montserrat  | no                 | REST `/_api`                         |
 
 TypeScript ~6.0, rxjs ~7.8 everywhere. Taiga is **pinned exact** — bump only with the
 maintainer's blessing. Monorepo apps share **one Angular workspace rooted at the repo root**;
@@ -117,8 +117,8 @@ it with every Angular/Taiga bump (other repos' docs deliberately carry no versio
 - **Suffixless files and classes** in new code: `routes/devices/index.ts` exporting
   `export default class Devices`, plus `dialog.ts`, `table.ts`, `service.ts` —
   not `devices-page.component.ts` / `DevicesPageComponent`.
-- **Services can *be* Observables** (`class ConnectionService extends Observable<boolean>`);
-  tokens can *be* signals (`new InjectionToken('…', { factory: () => signal(false) })`).
+- **Services can _be_ Observables** (`class ConnectionService extends Observable<boolean>`);
+  tokens can _be_ signals (`new InjectionToken('…', { factory: () => signal(false) })`).
 - **`DOCUMENT` and `@Service()` import from `@angular/core`** now — `@Service()` is the
   emerging norm for new services over `@Injectable({providedIn: 'root'})`.
 - **The mock backend is a DI swap**: `useClass: useMocks ? MockApiService : LiveApiService`.

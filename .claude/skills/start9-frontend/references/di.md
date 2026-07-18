@@ -24,8 +24,7 @@
 - **Browser globals via DI**: `WA_WINDOW`, `WA_LOCAL_STORAGE`, `WA_IS_MOBILE`,
   `WA_INTERSECTION_ROOT`, `inject(DOCUMENT)` (from `@angular/core`), `tuiInjectElement()` for
   the host element. Raw `window`/`document`/`localStorage` is tolerated only in
-  infrastructure that genuinely means *the* window (`ConnectionService` reload/online events).
+  infrastructure that genuinely means _the_ window (`ConnectionService` reload/online events).
 - New services use **`@Service()`** (from `@angular/core`); `@Injectable({providedIn: 'root'})`
   is the older equivalent still present. Pipes that services also call imperatively are
   `@Pipe({...}) @Injectable({providedIn: 'root'})` and get injected (`inject(i18nPipe)`).
-

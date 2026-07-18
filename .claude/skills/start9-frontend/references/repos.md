@@ -20,4 +20,3 @@
   `adminService.isAdmin()`; all HTTP through `AdminService` (authed) / `ApiService` (public).
   support: no auth in the frontend at all. Husky+lint-staged Prettier on commit — fix
   formatting, never `--no-verify`. Never commit `.env`.
-

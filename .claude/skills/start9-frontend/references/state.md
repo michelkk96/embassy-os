@@ -8,11 +8,11 @@
   `try/catch` with an `error` signal — template does the three-arm `@if`.
 - **Service shapes**, pick by transport:
   - **Observable-subclass service** (push/composed state): `class ConnectionService extends
-    Observable<boolean>` with a private `stream$ = …pipe(shareReplay(1))` and
+Observable<boolean>` with a private `stream$ = …pipe(shareReplay(1))` and
     `constructor() { super(subscriber => this.stream$.subscribe(subscriber)) }`. Consumers pipe
     the service itself: `inject(ConnectionService).pipe(filter(Boolean))`.
   - **Polling signal store** (start-wrt `FormService<T>`): `merge(load$, timer(0, 5000)).pipe(
-    switchMap(() => from(this.load()).pipe(catchError(...))), share())` → `data = toSignal(...)`;
+switchMap(() => from(this.load()).pipe(catchError(...))), share())` → `data = toSignal(...)`;
     subclass implements `load()`/`store()`; page provides it with
     `provideFormService(Impl)` and reads one signal. Network errors collapse into the global
     reconnect toast — never per-poll error toasts.
@@ -63,4 +63,3 @@ promise-based**; components call `await this.api.method(params)` and never touch
   through `AdminService` (authed; token signal from `localStorage`, `headers()` per request) or
   `ApiService` (public) — components never call `HttpClient` directly. Secrets stay server-side
   (the server proxies to sibling services adding API keys).
-

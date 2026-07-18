@@ -17,4 +17,3 @@
 - `{ path: '**', redirectTo: … }` at every level (wildcard, not `''`+`pathMatch`).
 - Navigation: `routerLink` in templates (with `[queryParams]`, `[state]`), `Router.navigate` in
   TS; shareable UI state lives in **query params**, synced bidirectionally (see components.md, templates).
-

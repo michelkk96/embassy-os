@@ -2,15 +2,17 @@
 
 Extracted from the refactor diffs that shaped the fleet, ranked by how often the same fix
 recurs. The canonical cleanup refactors are **net-negative in 9 of the 10 largest cases**. The
-recurring diagnosis: *someone hand-built a thing the platform already provides — a card, a
+recurring diagnosis: _someone hand-built a thing the platform already provides — a card, a
 loader/try/catch, a mobile layout, a form class, a color, a wrapper element — and the fix is to
-find the primitive, configure it once via DI, and delete the rest.*
+find the primitive, configure it once via DI, and delete the rest._
 
 **1. Repeated styling attributes / CSS overrides of Taiga → option provider.**
+
 ```html
 <!-- BEFORE: appearance="flat" repeated on 8 nav buttons; or CSS:
      a[tuiLink] { color: var(--tui-text-secondary); font: var(--tui-typography-body-s) } -->
 ```
+
 ```ts
 // AFTER: one line, zero CSS
 providers: [tuiButtonOptionsProvider({ appearance: 'flat-grayscale', size: 'm' })]
@@ -38,11 +40,12 @@ single table whose cells self-label (`<td [attr.data-label]="'Type' | i18n">`) r
 wrapping `<footer>` becomes `selector: 'footer[appFooter]'`; a `.shell` wrapper div is deleted
 in favor of semantic elements directly inside `tui-root`; an element component wrapping
 `<a tuiButton>` becomes `selector: 'a[marketplacePackageLink]'` + `hostDirectives: [TuiButton]`
-+ static `host` attrs + option providers.
+
+- static `host` attrs + option providers.
 
 **6. Semantic-HTML repair.** `<h3>` abused for body text (with CSS undoing it) → plain text +
 `font: var(--tui-typography-body-l)`; `<h2>` for dialog sections → `<h3 tuiHeader="h6">`
-(heading *level* decoupled from visual *size*); `<h1>`+`<p>` → `<hgroup tuiTitle>` +
+(heading _level_ decoupled from visual _size_); `<h1>`+`<p>` → `<hgroup tuiTitle>` +
 `tuiSubtitle`; click-handler navigation → real `<a tuiButton [href]>`; icon-only buttons get
 text content (Taiga hides it visually) instead of `aria-label`; bare `<label>` + flex CSS →
 `<label tuiLabel>`; styled `<span class="divider">` → `<hr>`; `autocomplete="new-password"` on
@@ -55,7 +58,7 @@ gap: 2rem }`. Physical properties → logical (`inset-block-start`, `inline-size
 
 **8. Specificity hacks → deleted.** `!important` globals get scoped without it; `::ng-deep`
 layout pokes die with the primitive that replaces them; custom appearance CSS
-(`[tuiCardLarge] { background: … }`) → `appearance="floating"`. When a global override *is*
+(`[tuiCardLarge] { background: … }`) → `appearance="floating"`. When a global override _is_
 warranted: the doubled-selector trick (`.g-negative.g-negative { … }`,
 `tui-dropdown[data-appearance='start-os'][data-appearance='start-os']`), never `!important`.
 
@@ -96,7 +99,7 @@ after the upgrade), unused imports, five font families the day the design settle
 "it's better to make the argument optional so `undefined` will not cause type error." Delete
 the `@if` guard around `*ngTemplateOutlet` (it no-ops on nullish).
 
-**17. Route redirects: `{ path: '**', redirectTo: … }` last**, not `{ path: '',
+**17. Route redirects: `{ path: '**', redirectTo: … }`last**, not`{ path: '',
 redirectTo, pathMatch: 'full' }` first.
 
 **18. Utility-class hygiene.** `g-*` utilities exist once in the shared/global sheet — per-app
@@ -113,21 +116,21 @@ for proper nouns and page titles.
 
 ### Review quotes (verbatim, from actual PRs)
 
-- On template function calls: *"This way you call this function on each change detection,
+- On template function calls: _"This way you call this function on each change detection,
   effectively creating a new Observable each time. You need a readonly property… or a custom
-  pipe so that it is only called once."*
-- On submit buttons: *"There's no way to click save until the form is valid because it's
+  pipe so that it is only called once."_
+- On submit buttons: _"There's no way to click save until the form is valid because it's
   disabled. A good UX pattern is to not disable it… so that I can see all the fields I forgot
-  to type in."* → enabled submit + `tuiMarkControlAsTouchedAndValidate(this.form)` on click.
-- On dialog copy: *"It makes more sense for longer text to be in `data: { content }` rather
+  to type in."_ → enabled submit + `tuiMarkControlAsTouchedAndValidate(this.form)` on click.
+- On dialog copy: _"It makes more sense for longer text to be in `data: { content }` rather
   than in the title… it looks better with a title and an actual message than with just a huge
-  title."*
-- On error paths: *"Do we want to complete it on finally and not in successful try? What if we
-  lose connection while entering the values — we would then lose the form. Is that ok?"*
-- On component size: *"This component gets rather huge. I would move backing-up mode to a
-  separate component."* / *"It's easier to maintain when there's a single component per file"*
+  title."_
+- On error paths: _"Do we want to complete it on finally and not in successful try? What if we
+  lose connection while entering the values — we would then lose the form. Is that ok?"_
+- On component size: _"This component gets rather huge. I would move backing-up mode to a
+  separate component."_ / _"It's easier to maintain when there's a single component per file"_
   (tiny private helpers — a toast, a dialog's `PolymorpheusComponent` const — may co-locate).
-- On globals: *"It's good practice not to access global objects like that"* — DI tokens.
+- On globals: _"It's good practice not to access global objects like that"_ — DI tokens.
 - On RxJS: observables end in `$`; `defer(() => this.api.call().pipe(catchError(…)))` over
   fetch-in-`ngOnInit`; drop `async`/`switchMap` when nothing is async — use `map`; no `else`
   after `return`.
@@ -154,4 +157,3 @@ for proper nouns and page titles.
    commit.
 7. Taiga stays **pinned exact**; Angular gets carets. Don't bump Taiga majors/minors without
    the maintainer.
-

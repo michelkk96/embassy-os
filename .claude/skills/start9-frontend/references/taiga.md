@@ -8,19 +8,19 @@ nothing may import it. When in doubt: the official MCP
 
 ### v5 renames & dead APIs (your training data is probably stale)
 
-| If you remember… | v5 reality |
-|---|---|
-| `TuiAlertService` / `[tuiAlert]` | `TuiNotificationService` / `[tuiNotification]` (kit also adds a new compact `TuiToastService`) |
-| `tui-input`, `tui-input-password`, … wrappers | gone — native `<input tuiInput>` etc. inside `<tui-textfield>` |
-| inner directive `tuiTextfield` on the input | renamed `tuiInput` |
-| `<tui-avatar>`, `<tui-badge>`, `<tui-tag>` | `[tuiAvatar]`, `<span tuiBadge>`, `<span tuiChip>` attributes |
-| Loader `[showLoader]` | `[loading]` |
-| `NG_EVENT_PLUGINS`, `provideAnimations()` | one `provideTaiga(options?)` (event plugins included) |
-| `TuiFieldErrorPipe` (`tuiFieldError | async`) | `TuiErrorPipe` (`tuiError`) — house style: bare `<tui-error formControlName>` + provider map |
-| `tuiPure`, `TuiLet`, `TuiRepeatTimes`, `TuiDestroyService` | gone — `computed()`/pipes, `@let`, `@for`, `takeUntilDestroyed()` |
-| `tuiCreateToken` / `tuiCreateTokenFromFactory` | not in v5 cdk — `new InjectionToken(desc, { factory })` or `tuiCreateOptions` |
-| `TUI_IS_MOBILE` | `WA_IS_MOBILE` (`@ng-web-apis/platform`; also `WA_IS_IOS/ANDROID`, `WA_REDUCED_MOTION`) |
-| `TuiCell` in layout; Checkbox/Radio/Slider in kit | moved to `@taiga-ui/core` |
+| If you remember…                                           | v5 reality                                                                                     |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `TuiAlertService` / `[tuiAlert]`                           | `TuiNotificationService` / `[tuiNotification]` (kit also adds a new compact `TuiToastService`) |
+| `tui-input`, `tui-input-password`, … wrappers              | gone — native `<input tuiInput>` etc. inside `<tui-textfield>`                                 |
+| inner directive `tuiTextfield` on the input                | renamed `tuiInput`                                                                             |
+| `<tui-avatar>`, `<tui-badge>`, `<tui-tag>`                 | `[tuiAvatar]`, `<span tuiBadge>`, `<span tuiChip>` attributes                                  |
+| Loader `[showLoader]`                                      | `[loading]`                                                                                    |
+| `NG_EVENT_PLUGINS`, `provideAnimations()`                  | one `provideTaiga(options?)` (event plugins included)                                          |
+| `TuiFieldErrorPipe` (`tuiFieldError                        | async`)                                                                                        | `TuiErrorPipe` (`tuiError`) — house style: bare `<tui-error formControlName>` + provider map |
+| `tuiPure`, `TuiLet`, `TuiRepeatTimes`, `TuiDestroyService` | gone — `computed()`/pipes, `@let`, `@for`, `takeUntilDestroyed()`                              |
+| `tuiCreateToken` / `tuiCreateTokenFromFactory`             | not in v5 cdk — `new InjectionToken(desc, { factory })` or `tuiCreateOptions`                  |
+| `TUI_IS_MOBILE`                                            | `WA_IS_MOBILE` (`@ng-web-apis/platform`; also `WA_IS_IOS/ANDROID`, `WA_REDUCED_MOTION`)        |
+| `TuiCell` in layout; Checkbox/Radio/Slider in kit          | moved to `@taiga-ui/core`                                                                      |
 
 ### The cdk toolbox (`@taiga-ui/cdk`)
 
@@ -59,10 +59,10 @@ nothing may import it. When in doubt: the official MCP
 }
 ```
 
-- **Tokens** (override at any DOM level; this *is* branding): backgrounds
+- **Tokens** (override at any DOM level; this _is_ branding): backgrounds
   (`--tui-background-base|-neutral-1…|-accent-1…|-elevation-1/2/3`), text (`--tui-text-primary|
-  -secondary|-tertiary|-action|-primary-on-accent-1`), status (`--tui-status-negative|-positive|
-  -warning|-info` + `-pale` variants), borders (`--tui-border-normal|-hover|-focus`), shadows
+-secondary|-tertiary|-action|-primary-on-accent-1`), status (`--tui-status-negative|-positive|
+-warning|-info` + `-pale` variants), borders (`--tui-border-normal|-hover|-focus`), shadows
   (`--tui-shadow-small|-medium|-popup`), sizing (`--tui-height-l/m/s/xs`, `--tui-padding-*`,
   `--tui-radius-l/m/s/xs`), typography composites (`font: var(--tui-typography-body-s)`,
   families `--tui-typography-family-display/-text`), charts `--tui-chart-categorical-00…22`.
@@ -139,29 +139,28 @@ Handles paste/drop/autofill/predictive keyboards; SSR-safe. Never keydown-regex 
 
 ### Need → wrong instinct → right primitive
 
-| Need | Agent instinct | House answer |
-|---|---|---|
-| Close on click-outside/Esc | `document.addEventListener` | `[tuiDropdown]`, or `TuiActiveZone` + `TuiObscured` |
-| Tooltip | CSS `::after` bubble | `[tuiHint]` / `tui-icon[tuiTooltip]` |
-| Toast | fixed-position div + timeout | `TuiNotificationService` (queued, positioned) |
-| Blocking "working…" | full-screen spinner div | `TuiNotificationMiddleService` (hold subscription, `unsubscribe()` to close) |
-| Modal with typed result | `@if` overlay / CDK overlay | `TuiResponsiveDialogService` + Polymorpheus + `injectContext` |
-| Confirm prompt | custom dialog component | `TUI_CONFIRM` + `TuiConfirmData` |
-| Input mask | keydown regex | Maskito |
-| Custom form control | 40-line CVA | `TuiControl<T>` + `tuiAsControl` |
-| Validation messages | `@if (control.errors?.required)` chains | `<tui-error formControlName>` + `tuiValidationErrorsProvider` |
-| Dark mode | theme service + class toggle | `TUI_DARK_MODE` signal (+ `[tuiTheme]` scoping) |
-| Colors/spacing | hex + magic paddings | `--tui-*` tokens |
-| Responsive TS logic | `window.innerWidth` | `TUI_BREAKPOINT` / `WA_IS_MOBILE` |
-| Responsive CSS | `@media (max-width: 768px)` | `tui-root._mobile &` / styles-utils mixins |
-| Skeleton | hand-rolled shimmer CSS | `[tuiSkeleton]` |
-| Truncation | `text-overflow` fights | `tuiFade` / `tui-line-clamp` |
-| Page scaffolding | bespoke flex/grid | `tuiCardLarge`+`tuiSurface`, `tuiHeader`+`tuiTitle`, `tuiCell`, `tuiForm`, `tuiNavigation*`, `tui-block-status` |
-| Select/autocomplete | hand-built dropdown | `tui-textfield` + `tuiSelect`/`tuiComboBox` + `*tuiDropdown` + `tui-data-list-wrapper` + `tuiFilterByInput` |
-| Browser globals | `window.` / `localStorage.` | `WA_*` tokens |
-| High-frequency events | melting change detection | `.zoneless` / `.debounce~` / `.throttle~` modifiers |
-| `preventDefault` | `$event.preventDefault()` in TS | `(event.prevent)` modifier |
-| Configurable content slot | fork the component | `PolymorpheusContent` input |
-| Copy button, rating, pagination, PIN, carousel, avatar-initials… | write it | it's in kit — check the docs first |
-| Empty state | custom illustration div | `tui-block-status` |
-
+| Need                                                             | Agent instinct                          | House answer                                                                                                    |
+| ---------------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Close on click-outside/Esc                                       | `document.addEventListener`             | `[tuiDropdown]`, or `TuiActiveZone` + `TuiObscured`                                                             |
+| Tooltip                                                          | CSS `::after` bubble                    | `[tuiHint]` / `tui-icon[tuiTooltip]`                                                                            |
+| Toast                                                            | fixed-position div + timeout            | `TuiNotificationService` (queued, positioned)                                                                   |
+| Blocking "working…"                                              | full-screen spinner div                 | `TuiNotificationMiddleService` (hold subscription, `unsubscribe()` to close)                                    |
+| Modal with typed result                                          | `@if` overlay / CDK overlay             | `TuiResponsiveDialogService` + Polymorpheus + `injectContext`                                                   |
+| Confirm prompt                                                   | custom dialog component                 | `TUI_CONFIRM` + `TuiConfirmData`                                                                                |
+| Input mask                                                       | keydown regex                           | Maskito                                                                                                         |
+| Custom form control                                              | 40-line CVA                             | `TuiControl<T>` + `tuiAsControl`                                                                                |
+| Validation messages                                              | `@if (control.errors?.required)` chains | `<tui-error formControlName>` + `tuiValidationErrorsProvider`                                                   |
+| Dark mode                                                        | theme service + class toggle            | `TUI_DARK_MODE` signal (+ `[tuiTheme]` scoping)                                                                 |
+| Colors/spacing                                                   | hex + magic paddings                    | `--tui-*` tokens                                                                                                |
+| Responsive TS logic                                              | `window.innerWidth`                     | `TUI_BREAKPOINT` / `WA_IS_MOBILE`                                                                               |
+| Responsive CSS                                                   | `@media (max-width: 768px)`             | `tui-root._mobile &` / styles-utils mixins                                                                      |
+| Skeleton                                                         | hand-rolled shimmer CSS                 | `[tuiSkeleton]`                                                                                                 |
+| Truncation                                                       | `text-overflow` fights                  | `tuiFade` / `tui-line-clamp`                                                                                    |
+| Page scaffolding                                                 | bespoke flex/grid                       | `tuiCardLarge`+`tuiSurface`, `tuiHeader`+`tuiTitle`, `tuiCell`, `tuiForm`, `tuiNavigation*`, `tui-block-status` |
+| Select/autocomplete                                              | hand-built dropdown                     | `tui-textfield` + `tuiSelect`/`tuiComboBox` + `*tuiDropdown` + `tui-data-list-wrapper` + `tuiFilterByInput`     |
+| Browser globals                                                  | `window.` / `localStorage.`             | `WA_*` tokens                                                                                                   |
+| High-frequency events                                            | melting change detection                | `.zoneless` / `.debounce~` / `.throttle~` modifiers                                                             |
+| `preventDefault`                                                 | `$event.preventDefault()` in TS         | `(event.prevent)` modifier                                                                                      |
+| Configurable content slot                                        | fork the component                      | `PolymorpheusContent` input                                                                                     |
+| Copy button, rating, pagination, PIN, carousel, avatar-initials… | write it                                | it's in kit — check the docs first                                                                              |
+| Empty state                                                      | custom illustration div                 | `tui-block-status`                                                                                              |

@@ -1,4 +1,4 @@
-# Shared libraries — @start9labs/*
+# Shared libraries — @start9labs/\*
 
 `@start9labs/shared` (monorepo apps): `HttpService` (JSON-RPC), `ErrorService` +
 `getErrorMessage`, **`TaskService.run`** (the async-action wrapper), **`DialogService`**
@@ -30,4 +30,3 @@ signal inputs → content projection/`contentChild(TemplateRef)`/`PolymorpheusCo
 class as DI contract → optional hook tokens → `provide*` factories → Taiga option providers.
 Style with `--tui-*` vars, `:host { display: contents }` for pure-composition components; no
 theme definitions inside components.
-

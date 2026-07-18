@@ -63,6 +63,6 @@ make web-format-check                # prettier check across the Angular workspa
 - **patch-db is a first-party crate** at repo-root `shared-libs/crates/patch-db/` (not the old
   root `patch-db/`). start-core consumes its Rust `core`; web consumes its
   TS `client`.
-- **Web UI work is Taiga UI 5 first** — see `ts-modules/AGENTS.md`; don't hand-roll
-  HTML/CSS or guess Taiga APIs.
+- **Web UI work follows the `start9-frontend` skill** at the repo root
+  (`.claude/skills/start9-frontend/`) — see `ts-modules/AGENTS.md`.
 - Do not edit `CLAUDE.md` files — they are one-line `@AGENTS.md` imports.

@@ -210,6 +210,7 @@ import UpdatesComponent from './updates.component'
         padding: 0 3rem;
         text-align: left;
         white-space: normal;
+        overflow-wrap: anywhere;
       }
     }
 

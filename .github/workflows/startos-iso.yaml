@@ -4,9 +4,13 @@ on:
   workflow_call:
   workflow_dispatch:
     inputs:
+      # `default:` is not decoration — the UI preselects the first option, but an API
+      # dispatch (`gh workflow run`) that omits an input delivers it as the empty
+      # string, and only a declared default fills it in.
       environment:
         type: choice
         description: Environment
+        default: NONE
         options:
           - NONE
           - dev
@@ -15,12 +19,14 @@ on:
       runner:
         type: choice
         description: Runner
+        default: standard
         options:
           - standard
           - fast
       platform:
         type: choice
         description: Platform
+        default: ALL
         options:
           - ALL
           - x86_64
@@ -35,6 +41,7 @@ on:
       deploy:
         type: choice
         description: Deploy
+        default: NONE
         options:
           - NONE
           - alpha
@@ -434,9 +441,13 @@ jobs:
     needs: [image]
     # Explicit status check so the skipped PR-only `changes` job can't poison
     # the implicit success() through the needs chain (actions/runner#2205).
+    # Allowlist the channels rather than excluding NONE: a `!= 'NONE'` gate also admits
+    # an empty deploy input, which uploaded a branch build to the public bucket and then
+    # died on the empty REGISTRY below. Keep in sync with the REGISTRY map.
     if: >-
       !cancelled() && needs.image.result == 'success'
-      && github.event_name == 'workflow_dispatch' && github.event.inputs.deploy != 'NONE'
+      && github.event_name == 'workflow_dispatch'
+      && contains(fromJson('["alpha", "beta"]'), github.event.inputs.deploy)
     runs-on: ubuntu-latest
     env:
       REGISTRY: >-

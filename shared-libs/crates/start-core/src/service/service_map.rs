@@ -1,3 +1,4 @@
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -188,9 +189,6 @@ impl ServiceMap {
         let developer_key = s9pk.as_archive().signer();
         let mut service = self.get_mut(&id).await;
         let size = s9pk.size();
-        if let Some(size) = size {
-            unpack_progress.set_total(size);
-        }
         let op_name = if recovery_source.is_none() {
             if service.is_none() {
                 "Installing"
@@ -292,11 +290,19 @@ impl ServiceMap {
                             Some(Duration::from_millis(100)),
                         )));
 
+                    let out = crate::util::io::create_file(&download_path).await?;
+                    // `+C` before any extents exist, so fallocate lands nodatacow.
+                    crate::util::writeback::set_no_cow(&download_path).await;
+                    // Reserve while the phase is still indeterminate, so it shows a spinner
+                    // during the reserve (which can stall on fragmented btrfs) not a frozen 0%.
                     unpack_progress.start();
-                    let mut progress_writer = ProgressTrackerWriter::new(
-                        crate::util::io::create_file(&download_path).await?,
-                        unpack_progress,
-                    );
+                    if let Some(size) = size {
+                        crate::util::writeback::preallocate(out.as_raw_fd(), size)
+                            .await
+                            .log_err();
+                        unpack_progress.set_total(size);
+                    }
+                    let mut progress_writer = ProgressTrackerWriter::new(out, unpack_progress);
                     s9pk.serialize(&mut progress_writer, true).await?;
                     let (file, mut unpack_progress) = progress_writer.into_inner();
                     file.sync_all().await?;

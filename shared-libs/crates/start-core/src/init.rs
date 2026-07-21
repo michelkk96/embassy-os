@@ -342,7 +342,13 @@ pub async fn init(
     let mut ntp_synced = false;
     let mut not_made_progress = 0u32;
     for _ in 0..1800 {
-        if check_time_is_synchronized().await? {
+        // a failed query is "don't know yet", not a boot failure — an Err escaping
+        // this loop drops the server into Diagnostic Mode
+        if check_time_is_synchronized()
+            .await
+            .log_err()
+            .unwrap_or(false)
+        {
             ntp_synced = true;
             break;
         }

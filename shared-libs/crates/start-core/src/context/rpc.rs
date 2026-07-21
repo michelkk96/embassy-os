@@ -312,7 +312,13 @@ impl RpcContext {
                 c.insert(
                     Guid::new(),
                     tokio::spawn(async move {
-                        while !check_time_is_synchronized().await.unwrap() {
+                        // a failed query must not kill this task — the sync
+                        // warning would stick for the rest of the boot
+                        while !check_time_is_synchronized()
+                            .await
+                            .log_err()
+                            .unwrap_or(false)
+                        {
                             tokio::time::sleep(Duration::from_secs(30)).await;
                         }
                         db.mutate(|v| {

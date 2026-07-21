@@ -899,7 +899,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
           packageRepo: 'https://github.com/start9labs/lnd-startos',
           upstreamRepo: 'https://github.com/lightningnetwork/lnd',
           marketingUrl: 'https://lightning.engineering/',
-          releaseNotes: 'Upstream release and minor fixes.',
+          releaseNotes: `Updated LND to 0.18.0. Adds simple taproot channels, reworks the sweeper into a batched fee-bumping design, and fixes a peer-connection leak that could exhaust file descriptors on long-running nodes. Upstream notes: https://github.com/lightningnetwork/lnd/releases/tag/v0.18.0-beta`,
           osVersion: '0.4.0',
           sdkVersion: '0.4.0-beta.49',
           gitHash: 'fakehash',
@@ -949,7 +949,14 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
           packageRepo: 'https://github.com/Start9Labs/btc-rpc-proxy-wrappers',
           upstreamRepo: 'https://github.com/Kixunil/btc-rpc-proxy',
           marketingUrl: '',
-          releaseNotes: 'Major release with breaking changes.',
+          releaseNotes: `# Bitcoin Proxy 0.4.0
+
+**Breaking:** the \`users\` config section is now \`accounts\`, and each \`allowed-calls\` entry must be a fully-qualified RPC method name. Existing configs migrate automatically on first start.
+
+- Requests are pipelined over a single upstream connection, roughly halving median latency for wallets that batch \`getblock\` calls.
+- Fixed a panic when upstream Bitcoin Core returned \`503\` during initial block download.
+
+Full changelog: https://github.com/Kixunil/btc-rpc-proxy/blob/master/CHANGELOG.md#040-breaking-changes-to-the-users-configuration-section`,
           osVersion: '0.4.0',
           sdkVersion: '0.4.0-beta.49',
           gitHash: 'fakehash',

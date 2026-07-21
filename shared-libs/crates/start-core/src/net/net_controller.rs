@@ -110,7 +110,7 @@ impl NetController {
         let branding = crate::net::ssl::CertBranding::start_os(&hostname);
         // One PortMapController shared by the forward and vhost controllers so a
         // single query answers "is this port automatically forwarded?".
-        let port_map = PortMapController::new();
+        let port_map = PortMapController::new(net_iface.watcher.subscribe());
         Ok(Self {
             db: db.clone(),
             vhost: VHostController::new(

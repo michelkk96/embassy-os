@@ -264,6 +264,59 @@ pub struct NetworkInterfaceInfo {
     #[serde(deserialize_with = "deserialize_null_default")]
     #[ts(rename = "type")]
     pub gateway_type: GatewayType,
+    #[serde(default)]
+    pub port_map: GatewayPortMapCapabilities,
+}
+
+/// Whether the gateway reachable via this interface speaks each port-mapping
+/// protocol, as last probed. Fed by the watcher's periodic probes and by
+/// failure/success evidence from the port-map client, and synced to the db so a
+/// chronically uncooperative gateway is visible (and skipped) instead of being
+/// retried forever.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize, HasModel, TS)]
+#[serde(rename_all = "camelCase")]
+#[model = "Model<Self>"]
+#[ts(export)]
+pub struct GatewayPortMapCapabilities {
+    pub pcp: CapabilityVerdict,
+    pub nat_pmp: CapabilityVerdict,
+    pub upnp: CapabilityVerdict,
+    /// The PCP server answers ANNOUNCE with the Start9 capability marker, i.e.
+    /// it honors OPTION_HOSTNAME (SNI demux).
+    pub pcp_hostname: CapabilityVerdict,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize, HasModel, TS)]
+#[serde(rename_all = "camelCase")]
+#[model = "Model<Self>"]
+#[ts(export)]
+pub struct CapabilityVerdict {
+    /// `None` = never probed.
+    pub supported: Option<bool>,
+    #[ts(type = "string | null")]
+    pub at: Option<DateTime<Utc>>,
+}
+
+impl CapabilityVerdict {
+    pub fn supported(supported: bool) -> Self {
+        Self {
+            supported: Some(supported),
+            at: Some(Utc::now()),
+        }
+    }
+
+    /// The verdict if it is still inside its trust window at `now` — a yes is
+    /// trusted longer than a no (a gateway that once spoke a protocol rarely
+    /// stops; a refusal deserves periodic re-probing).
+    pub fn fresh(&self, now: DateTime<Utc>) -> Option<bool> {
+        let (supported, at) = (self.supported?, self.at?);
+        let ttl = if supported {
+            chrono::TimeDelta::hours(1)
+        } else {
+            chrono::TimeDelta::minutes(5)
+        };
+        (now - at < ttl).then_some(supported)
+    }
 }
 
 fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>

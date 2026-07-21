@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::time::{Duration, Instant};
 
+use chrono::Utc;
 use clap::Parser;
 use futures::{FutureExt, Stream, StreamExt, TryStreamExt};
 use imbl::{OrdMap, OrdSet};
@@ -30,11 +31,15 @@ use zbus::{Connection, proxy};
 
 use crate::context::{CliContext, RpcContext};
 use crate::db::model::Database;
-use crate::db::model::public::{IpInfo, NetworkInterfaceInfo, NetworkInterfaceType};
+use crate::db::model::public::{
+    CapabilityVerdict, GatewayPortMapCapabilities, IpInfo, NetworkInterfaceInfo,
+    NetworkInterfaceType,
+};
 use crate::net::forward::{START9_BRIDGE_IFACE, nft_ensure_base};
 use crate::net::gateway::device::DeviceProxy;
 use crate::net::host::all_hosts;
-use crate::net::utils::{bind_mio_listener, find_wifi_iface, ipv6_is_local};
+use crate::net::port_map::{candidate_gateways, probe};
+use crate::net::utils::{bind_mio_listener, find_wifi_iface, ipv6_is_link_local, ipv6_is_local};
 use crate::net::web_server::{Accept, AcceptStream, MetadataVisitor, TcpMetadata};
 use crate::prelude::*;
 use crate::util::Invoke;
@@ -1377,6 +1382,11 @@ fn upnp_probe_key() -> Url {
     Url::parse("upnp://get-external-ip-address").unwrap()
 }
 
+/// Rate-limit sentinel for the per-interface PCP/NAT-PMP capability probe.
+fn pcp_probe_key() -> Url {
+    Url::parse("pcp://capability-probe").unwrap()
+}
+
 async fn get_wan_ipv4(
     iface: &str,
     base_url: &Url,
@@ -2245,16 +2255,18 @@ async fn poll_ip_info(
     };
 
     write_to.send_if_modified(|m: &mut OrdMap<GatewayId, NetworkInterfaceInfo>| {
-        let (name, secure, gateway_type, prev_wan_ip) =
-            m.get(iface)
-                .map_or((None, None, Default::default(), None), |i| {
-                    (
-                        i.name.clone(),
-                        i.secure,
-                        i.gateway_type,
-                        i.ip_info.as_ref().and_then(|i| i.wan_ip),
-                    )
-                });
+        let (name, secure, gateway_type, prev_wan_ip, port_map) = m.get(iface).map_or(
+            (None, None, Default::default(), None, Default::default()),
+            |i| {
+                (
+                    i.name.clone(),
+                    i.secure,
+                    i.gateway_type,
+                    i.ip_info.as_ref().and_then(|i| i.wan_ip),
+                    i.port_map,
+                )
+            },
+        );
         ip_info.wan_ip = prev_wan_ip;
         let ip_info = Arc::new(ip_info);
         m.insert(
@@ -2264,6 +2276,7 @@ async fn poll_ip_info(
                 secure,
                 ip_info: Some(ip_info.clone()),
                 gateway_type,
+                port_map,
             },
         )
         .filter(|old| &old.ip_info == &Some(ip_info))
@@ -2295,10 +2308,14 @@ async fn poll_ip_info(
             Some(NetworkInterfaceType::Bridge | NetworkInterfaceType::Loopback)
         );
 
+    // Capability verdicts collected this poll, written back at the end.
+    let mut probed_caps: Option<GatewayPortMapCapabilities> = None;
+
     // Ask the gateway's own UPnP IGD first. This works for a home router and
     // for a StartTunnel gateway, which answers GetExternalIPAddress over the
     // WireGuard link (see crate::tunnel::forward::igd). Rate-limited like echoip below,
-    // keyed by a sentinel URL in the shared rate-limit map.
+    // keyed by a sentinel URL in the shared rate-limit map. One SSDP discovery
+    // doubles as the UPnP capability verdict.
     if let Some(local_ipv4) = local_ipv4.filter(|_| forwardable) {
         let upnp_probe_key = upnp_probe_key();
         if echoip_ratelimit_state
@@ -2306,10 +2323,37 @@ async fn poll_ip_info(
             .map_or(true, |i| i.elapsed() > Duration::from_secs(300))
         {
             echoip_ratelimit_state.insert(upnp_probe_key, Instant::now());
-            match crate::net::port_map::upnp::get_external_ipv4(local_ipv4).await {
-                Ok(Some(ip)) => wan_ip = Some(ip),
-                Ok(None) => (),
-                Err(e) => crate::dev_log!(debug, "UPnP WAN IP probe on {iface} failed: {e}"),
+            match crate::net::port_map::upnp::discover(local_ipv4).await {
+                Ok(upnp_gw) => {
+                    probed_caps
+                        .get_or_insert_with(|| {
+                            write_to
+                                .read()
+                                .get(iface)
+                                .map(|i| i.port_map)
+                                .unwrap_or_default()
+                        })
+                        .upnp = CapabilityVerdict::supported(true);
+                    match crate::net::port_map::upnp::external_ipv4(&upnp_gw).await {
+                        Ok(Some(ip)) => wan_ip = Some(ip),
+                        Ok(None) => (),
+                        Err(e) => {
+                            crate::dev_log!(debug, "UPnP WAN IP probe on {iface} failed: {e}")
+                        }
+                    }
+                }
+                Err(e) => {
+                    probed_caps
+                        .get_or_insert_with(|| {
+                            write_to
+                                .read()
+                                .get(iface)
+                                .map(|i| i.port_map)
+                                .unwrap_or_default()
+                        })
+                        .upnp = CapabilityVerdict::supported(false);
+                    crate::dev_log!(debug, "UPnP WAN IP probe on {iface} failed: {e}");
+                }
             }
         }
     }
@@ -2367,6 +2411,74 @@ async fn poll_ip_info(
             let mut updated = (**existing_ip).clone();
             updated.wan_ip = wan_ip;
             entry.ip_info = Some(Arc::new(updated));
+            true
+        });
+    }
+
+    // Probe the interface's candidate port-map gateways for PCP/NAT-PMP (and
+    // the Start9 HOSTNAME marker), but only once any of those verdicts has
+    // gone stale — a fresh verdict is trusted, so a healthy gateway is
+    // re-probed hourly and a refusing one every five minutes (the TTLs in
+    // `CapabilityVerdict::fresh`), never per mapping attempt.
+    {
+        let now = Utc::now();
+        let caps_now = write_to
+            .read()
+            .get(iface)
+            .map(|i| i.port_map)
+            .unwrap_or_default();
+        let stale = caps_now.pcp.fresh(now).is_none()
+            || caps_now.pcp_hostname.fresh(now).is_none()
+            || caps_now.nat_pmp.fresh(now).is_none();
+        let candidates = write_to
+            .read()
+            .get(iface)
+            .map(|info| candidate_gateways(info))
+            .unwrap_or_default();
+        if stale && forwardable && !candidates.is_empty() {
+            let pcp_probe_key = pcp_probe_key();
+            if echoip_ratelimit_state
+                .get(&pcp_probe_key)
+                .map_or(true, |i| i.elapsed() > Duration::from_secs(300))
+            {
+                let local_v6 = subnets.iter().find_map(|s| match s.addr() {
+                    IpAddr::V6(v6) if !ipv6_is_link_local(v6) => Some(v6),
+                    _ => None,
+                });
+                let mut pcp = false;
+                let mut pcp_hostname = false;
+                let mut nat_pmp = false;
+                for (gw, scope_id) in candidates {
+                    let local = match gw {
+                        IpAddr::V4(_) => local_ipv4.map(IpAddr::V4),
+                        IpAddr::V6(_) => local_v6.map(IpAddr::V6),
+                    };
+                    let Some(local) = local else {
+                        continue;
+                    };
+                    let probe = probe::probe_gateway(local, gw, scope_id).await;
+                    pcp |= probe.pcp;
+                    pcp_hostname |= probe.pcp_hostname;
+                    nat_pmp |= probe.nat_pmp;
+                }
+                echoip_ratelimit_state.insert(pcp_probe_key, Instant::now());
+                let caps = probed_caps.get_or_insert(caps_now);
+                caps.pcp = CapabilityVerdict::supported(pcp);
+                caps.pcp_hostname = CapabilityVerdict::supported(pcp_hostname);
+                caps.nat_pmp = CapabilityVerdict::supported(nat_pmp);
+            }
+        }
+    }
+
+    if let Some(caps) = probed_caps {
+        write_to.send_if_modified(|m: &mut OrdMap<GatewayId, NetworkInterfaceInfo>| {
+            let Some(entry) = m.get_mut(iface) else {
+                return false;
+            };
+            if entry.port_map == caps {
+                return false;
+            }
+            entry.port_map = caps;
             true
         });
     }

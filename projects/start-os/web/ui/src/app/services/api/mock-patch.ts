@@ -153,6 +153,12 @@ export const mockPatchData: DataModel = {
           name: null,
           secure: null,
           type: 'inbound-outbound',
+          portMap: {
+            pcp: { supported: null, at: null },
+            natPmp: { supported: null, at: null },
+            upnp: { supported: null, at: null },
+            pcpHostname: { supported: null, at: null },
+          },
           ipInfo: {
             name: 'Wired Connection 1',
             scopeId: 1,
@@ -168,6 +174,12 @@ export const mockPatchData: DataModel = {
           name: null,
           secure: null,
           type: 'inbound-outbound',
+          portMap: {
+            pcp: { supported: null, at: null },
+            natPmp: { supported: null, at: null },
+            upnp: { supported: null, at: null },
+            pcpHostname: { supported: null, at: null },
+          },
           ipInfo: {
             name: 'Wireless Connection 1',
             scopeId: 2,
@@ -186,6 +198,12 @@ export const mockPatchData: DataModel = {
           name: 'StartTunnel',
           secure: null,
           type: 'inbound-outbound',
+          portMap: {
+            pcp: { supported: null, at: null },
+            natPmp: { supported: null, at: null },
+            upnp: { supported: null, at: null },
+            pcpHostname: { supported: null, at: null },
+          },
           ipInfo: {
             name: 'wireguard1',
             scopeId: 2,
@@ -204,6 +222,12 @@ export const mockPatchData: DataModel = {
           name: 'Mullvad VPN',
           secure: null,
           type: 'outbound-only',
+          portMap: {
+            pcp: { supported: null, at: null },
+            natPmp: { supported: null, at: null },
+            upnp: { supported: null, at: null },
+            pcpHostname: { supported: null, at: null },
+          },
           ipInfo: {
             name: 'wireguard2',
             scopeId: 4,

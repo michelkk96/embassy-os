@@ -126,6 +126,12 @@ export const mockTunnelData: TunnelData = {
       name: null,
       secure: null,
       type: 'inbound-outbound',
+      portMap: {
+        pcp: { supported: null, at: null },
+        natPmp: { supported: null, at: null },
+        upnp: { supported: null, at: null },
+        pcpHostname: { supported: null, at: null },
+      },
       ipInfo: {
         name: 'Wired Connection 1',
         scopeId: 1,

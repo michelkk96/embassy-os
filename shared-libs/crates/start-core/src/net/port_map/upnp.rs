@@ -93,11 +93,10 @@ pub(crate) fn is_wan_candidate(ip: Ipv4Addr) -> bool {
         || ip.octets()[0] == 0)
 }
 
-/// External IPv4 of the IGD reachable from `local_ip` (UPnP
-/// `GetExternalIPAddress`). `Ok(None)` means no usable public address — a
-/// private/CGNAT result is discarded so the caller falls back to an echoip query.
-pub async fn get_external_ipv4(local_ip: Ipv4Addr) -> Result<Option<Ipv4Addr>, Error> {
-    let gateway = discover(local_ip).await?;
+/// External IPv4 of an already-discovered `gateway` — the same as
+/// [`get_external_ipv4`] but reusing the caller's discovery, so one SSDP round
+/// yields both the UPnP capability verdict and the WAN address.
+pub async fn external_ipv4(gateway: &Gateway<Tokio>) -> Result<Option<Ipv4Addr>, Error> {
     match tokio::time::timeout(CONTROL_TIMEOUT, gateway.get_external_ip()).await {
         Ok(Ok(IpAddr::V4(ip))) if is_wan_candidate(ip) => Ok(Some(ip)),
         Ok(Ok(_)) => Ok(None),
@@ -110,6 +109,13 @@ pub async fn get_external_ipv4(local_ip: Ipv4Addr) -> Result<Option<Ipv4Addr>, E
             ErrorKind::Network,
         )),
     }
+}
+
+/// External IPv4 of the IGD reachable from `local_ip` (UPnP
+/// `GetExternalIPAddress`). `Ok(None)` means no usable public address — a
+/// private/CGNAT result is discarded so the caller falls back to an echoip query.
+pub async fn get_external_ipv4(local_ip: Ipv4Addr) -> Result<Option<Ipv4Addr>, Error> {
+    external_ipv4(&discover(local_ip).await?).await
 }
 
 #[cfg(test)]

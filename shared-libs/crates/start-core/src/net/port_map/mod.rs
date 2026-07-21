@@ -4,6 +4,7 @@
 
 mod client;
 pub mod pcp;
+pub mod probe;
 pub mod server;
 pub mod upnp;
 

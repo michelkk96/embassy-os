@@ -9,38 +9,59 @@
 //! reconcile, so a gateway with none of these just falls back to a manual
 //! forward. `ensure`/`remove` are fire-and-forget sends so a slow or absent
 //! gateway never blocks the forward path.
+//!
+//! Work is sharded per local IP (one task per gateway interface), so a gateway
+//! that answers slowly or not at all never head-of-line-blocks mapping attempts
+//! against another interface's gateway. Two cooperating mechanisms keep a
+//! chronically uncooperative gateway from being retried forever:
+//!
+//! - Per-gateway capability verdicts
+//!   ([`GatewayPortMapCapabilities`]) live on the network-interface watcher
+//!   (and in the db): protocols the gateway is known not to speak are skipped
+//!   here, and every attempt outcome feeds back as fresh evidence.
+//! - Per-key exponential backoff: a mapping that keeps failing is retried at
+//!   15s doubling to a 16-minute cap, reset on success or a spec change.
 
 use std::collections::BTreeMap;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{IpAddr, Ipv4Addr};
 use std::num::NonZeroU16;
+use std::sync::Arc;
 use std::time::Duration;
 
-use crab_nat::{InternetProtocol, PortMapping, PortMappingOptions, TimeoutConfig, pcp};
+use chrono::{DateTime, Utc};
+use crab_nat::{
+    InternetProtocol, MappingFailure, PortMapping, PortMappingOptions, TimeoutConfig, pcp,
+};
 use igd_next::aio::Gateway;
 use igd_next::aio::tokio::Tokio;
+use imbl::OrdMap;
 use ipnet::IpNet;
-use tokio::net::UdpSocket;
 use tokio::sync::{mpsc, oneshot};
-use tokio::time::{Instant, interval, timeout};
+use tokio::time::{Instant, interval};
 
-use crate::db::model::public::{GatewayType, NetworkInterfaceInfo};
-use crate::net::port_map::pcp::capability::has_start9_capability;
+use crate::GatewayId;
+use crate::db::model::public::{
+    CapabilityVerdict, GatewayPortMapCapabilities, GatewayType, NetworkInterfaceInfo,
+};
 use crate::net::port_map::pcp::hostname::OPTION_HOSTNAME;
 use crate::net::port_map::pcp::portset::{OPTION_PORT_SET, PortSet};
-use crate::net::port_map::server::PCP_PORT;
-use crate::net::port_map::upnp;
+use crate::net::port_map::{probe, upnp};
 use crate::net::utils::ipv6_is_link_local;
 use crate::prelude::*;
+use crate::util::collections::OrdMapIterMut;
+use crate::util::sync::{SyncMutex, Watch};
 
 /// Cadence for the refresh tick: re-assert UPnP and retry not-yet-active
-/// mappings, and check whether each active PCP mapping has crossed half its
-/// lease (the point it's renewed). Well under the PCP lease so a renewal that's
-/// come due is caught with ample margin before expiry.
+/// mappings whose backoff has elapsed, and check whether each active PCP
+/// mapping has crossed half its lease (the point it's renewed). Well under the
+/// PCP lease so a renewal that's come due is caught with ample margin before
+/// expiry.
 const REFRESH_INTERVAL: Duration = Duration::from_secs(180);
-/// Retry floor for a desired-but-not-active mapping, so a reconcile burst can't
-/// busy-loop a failing apply yet boot/tunnel-restart races still recover in
-/// seconds rather than waiting for the 180s refresh.
+/// Initial retry delay for a desired-but-not-active mapping; doubles per
+/// consecutive failure up to [`BACKOFF_MAX`], so boot/tunnel-restart races
+/// still recover in seconds while a permanently-failing mapping quiets down.
 const RETRY_INTERVAL: Duration = Duration::from_secs(15);
+const BACKOFF_MAX: Duration = Duration::from_secs(960);
 const GATEWAY_CACHE_TTL: Duration = Duration::from_secs(600);
 const PCP_LIFETIME_SECONDS: u32 = 3600;
 /// Fail fast onto UPnP instead of the crate's multi-minute RFC backoff when a
@@ -50,6 +71,12 @@ const PCP_TIMEOUTS: TimeoutConfig = TimeoutConfig {
     max_retries: 1,
     max_retry_timeout: Some(Duration::from_secs(1)),
 };
+
+/// Delay before the next apply after `failures` consecutive failures: 15s,
+/// 30s, 60s, … capped at 16 minutes.
+fn retry_delay(failures: u32) -> Duration {
+    (RETRY_INTERVAL * 2u32.pow(failures.saturating_sub(1).min(6))).min(BACKOFF_MAX)
+}
 
 /// (local IP, external port, optional SNI hostname). Hostname is part of the
 /// identity: many hostnames share one external port via gateway SNI demux, each
@@ -170,53 +197,38 @@ enum Command {
     Remove {
         key: MappingKey,
     },
-    /// Gateway-assigned external IP for an active mapping on
-    /// `(local_ip, external_port)`, to confirm reachability without a remote
-    /// echo. `None` if not mapped or the external IP is unknown.
+    /// Gateway-assigned external IP for an active mapping on `external_port`,
+    /// to confirm reachability without a remote echo. `None` if not mapped or
+    /// the external IP is unknown.
     ExternalIp {
-        local_ip: IpAddr,
         external_port: u16,
         resp: oneshot::Sender<Option<IpAddr>>,
     },
 }
 
+/// Fire-and-forget port-map requests, sharded per local IP so one interface's
+/// gateway can never delay another interface's mapping work.
 #[derive(Clone)]
 pub struct PortMapController {
-    req: mpsc::UnboundedSender<Command>,
+    interfaces: Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    shards: Arc<SyncMutex<BTreeMap<IpAddr, mpsc::UnboundedSender<Command>>>>,
 }
 
 impl PortMapController {
-    pub fn new() -> Self {
-        let (req, mut recv) = mpsc::unbounded_channel::<Command>();
-        // Detached: `tokio::spawn` won't abort on drop; loop exits when all
-        // senders are gone.
-        tokio::spawn(async move {
-            let mut state = State::default();
-            let mut refresh = interval(REFRESH_INTERVAL);
-            refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            loop {
-                tokio::select! {
-                    cmd = recv.recv() => match cmd {
-                        Some(Command::Ensure { key, spec }) => state.ensure(key, spec).await,
-                        Some(Command::Remove { key }) => state.remove(key).await,
-                        Some(Command::ExternalIp { local_ip, external_port, resp }) => {
-                            let ip = state
-                                .active
-                                .iter()
-                                .find(|(k, _)| k.0 == local_ip && k.1 == external_port)
-                                .and_then(|(_, a)| match a {
-                                    Active::Pcp(m) => m.external_ip(),
-                                    Active::Upnp { external_ip } => external_ip.map(IpAddr::V4),
-                                });
-                            let _ = resp.send(ip);
-                        }
-                        None => break,
-                    },
-                    _ = refresh.tick() => state.refresh().await,
-                }
-            }
-        });
-        Self { req }
+    pub fn new(interfaces: Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>) -> Self {
+        Self {
+            interfaces,
+            shards: Arc::new(SyncMutex::new(BTreeMap::new())),
+        }
+    }
+
+    fn shard(&self, local_ip: IpAddr) -> mpsc::UnboundedSender<Command> {
+        self.shards.mutate(|shards| {
+            shards
+                .entry(local_ip)
+                .or_insert_with(|| spawn_shard(self.interfaces.clone()))
+                .clone()
+        })
     }
 
     pub fn ensure(
@@ -280,7 +292,7 @@ impl PortMapController {
         hostname: Option<String>,
         count: u16,
     ) {
-        self.req
+        self.shard(local_ip)
             .send(Command::Ensure {
                 key: (local_ip, external_port, hostname),
                 spec: Spec {
@@ -293,7 +305,7 @@ impl PortMapController {
     }
 
     pub fn remove(&self, local_ip: IpAddr, external_port: u16) {
-        self.req
+        self.shard(local_ip)
             .send(Command::Remove {
                 key: (local_ip, external_port, None),
             })
@@ -303,7 +315,7 @@ impl PortMapController {
     /// Remove the SNI HOSTNAME mapping for `hostname` on
     /// `(local_ip, external_port)`, leaving any other hostnames on that port.
     pub fn remove_hostname(&self, local_ip: IpAddr, external_port: u16, hostname: String) {
-        self.req
+        self.shard(local_ip)
             .send(Command::Remove {
                 key: (local_ip, external_port, Some(hostname)),
             })
@@ -315,9 +327,8 @@ impl PortMapController {
     /// forwarded automatically, so a remote reachability check can be skipped.
     pub async fn mapped_external_ip(&self, local_ip: IpAddr, external_port: u16) -> Option<IpAddr> {
         let (resp, rx) = oneshot::channel();
-        self.req
+        self.shard(local_ip)
             .send(Command::ExternalIp {
-                local_ip,
                 external_port,
                 resp,
             })
@@ -326,10 +337,163 @@ impl PortMapController {
     }
 }
 
-impl Default for PortMapController {
-    fn default() -> Self {
-        Self::new()
+fn spawn_shard(
+    interfaces: Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+) -> mpsc::UnboundedSender<Command> {
+    let (req, mut recv) = mpsc::unbounded_channel::<Command>();
+    // Detached: `tokio::spawn` won't abort on drop; the loop exits when all
+    // senders are gone.
+    tokio::spawn(async move {
+        let mut state = State::default();
+        let mut refresh = interval(REFRESH_INTERVAL);
+        refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                cmd = recv.recv() => match cmd {
+                    Some(Command::Ensure { key, spec }) => state.ensure(&interfaces, key, spec).await,
+                    Some(Command::Remove { key }) => state.remove(key).await,
+                    Some(Command::ExternalIp { external_port, resp }) => {
+                        let ip = state
+                            .active
+                            .iter()
+                            .find(|(k, _)| k.1 == external_port)
+                            .and_then(|(_, a)| match a {
+                                Active::Pcp(m) => m.external_ip(),
+                                Active::Upnp { external_ip } => external_ip.map(IpAddr::V4),
+                            });
+                        let _ = resp.send(ip);
+                    }
+                    None => break,
+                },
+                _ = refresh.tick() => state.refresh(&interfaces).await,
+            }
+        }
+    });
+    req
+}
+
+/// Capability verdicts for the interface whose candidate list contains `gw`.
+fn capabilities_for(
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    gw: IpAddr,
+) -> Option<GatewayPortMapCapabilities> {
+    interfaces
+        .read()
+        .iter()
+        .find(|(_, info)| candidate_gateways(info).iter().any(|(g, _)| *g == gw))
+        .map(|(_, info)| info.port_map)
+}
+
+/// Capability verdicts for the interface that owns `local` — the granularity
+/// UPnP discovery works at (no gateway address involved).
+fn capabilities_for_local(
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    local: IpAddr,
+) -> Option<GatewayPortMapCapabilities> {
+    interfaces
+        .read()
+        .values()
+        .find(|info| {
+            info.ip_info
+                .as_ref()
+                .map_or(false, |i| i.subnets.iter().any(|s| s.addr() == local))
+        })
+        .map(|info| info.port_map)
+}
+
+/// Feed an attempt outcome back into the interface's capability state. `update`
+/// mutates verdicts and reports whether anything changed, so a fresh identical
+/// verdict doesn't churn the watch (and the db sync behind it).
+fn report(
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    gw: IpAddr,
+    update: impl Fn(&mut GatewayPortMapCapabilities, DateTime<Utc>) -> bool,
+) {
+    let now = Utc::now();
+    interfaces.send_if_modified(|m| {
+        let mut changed = false;
+        for (_, info) in OrdMapIterMut::from(m) {
+            if candidate_gateways(info).iter().any(|(g, _)| *g == gw) {
+                changed |= update(&mut info.port_map, now);
+            }
+        }
+        changed
+    });
+}
+
+fn report_local(
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    local: IpAddr,
+    supported: bool,
+) {
+    let now = Utc::now();
+    interfaces.send_if_modified(|m| {
+        let mut changed = false;
+        for (_, info) in OrdMapIterMut::from(m) {
+            let owns = info
+                .ip_info
+                .as_ref()
+                .map_or(false, |i| i.subnets.iter().any(|s| s.addr() == local));
+            if owns {
+                changed |= set_verdict(&mut info.port_map.upnp, supported, now);
+            }
+        }
+        changed
+    });
+}
+
+fn set_verdict(v: &mut CapabilityVerdict, supported: bool, now: DateTime<Utc>) -> bool {
+    if v.fresh(now) == Some(supported) {
+        false
+    } else {
+        *v = CapabilityVerdict::supported(supported);
+        true
     }
+}
+
+/// What a crab_nat failure implies about the gateway: a refusal/timeout means
+/// the protocol is dead there; any protocol-level response (even a rejection)
+/// means it's spoken.
+fn report_crab_nat_failure(
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    gw: IpAddr,
+    failure: &MappingFailure,
+) {
+    use crab_nat::{natpmp, pcp};
+    let refused = |e: &std::io::Error| e.kind() == std::io::ErrorKind::ConnectionRefused;
+    report(interfaces, gw, |caps, now| match failure {
+        // A socket refusal or silence on the PCP attempt: nothing on 5351.
+        MappingFailure::Pcp(pcp::Failure::Socket(e)) if refused(e) => {
+            set_verdict(&mut caps.pcp, false, now)
+        }
+        MappingFailure::Pcp(pcp::Failure::Timeout) => set_verdict(&mut caps.pcp, false, now),
+        // Any other PCP failure is a protocol-level answer — PCP is spoken.
+        MappingFailure::Pcp(_) => set_verdict(&mut caps.pcp, true, now),
+        // crab_nat only attempts NAT-PMP after PCP answers UNSUPP_VERSION, so a
+        // NAT-PMP-level failure also settles PCP (unsupported) either way.
+        MappingFailure::NatPmp(natpmp::Failure::Socket(e)) if refused(e) => {
+            set_verdict(&mut caps.pcp, false, now) | set_verdict(&mut caps.nat_pmp, false, now)
+        }
+        MappingFailure::NatPmp(natpmp::Failure::Timeout) => {
+            set_verdict(&mut caps.pcp, false, now) | set_verdict(&mut caps.nat_pmp, false, now)
+        }
+        MappingFailure::NatPmp(_) => {
+            set_verdict(&mut caps.pcp, false, now) | set_verdict(&mut caps.nat_pmp, true, now)
+        }
+    });
+}
+
+fn report_pcp_failure(
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    gw: IpAddr,
+    failure: &pcp::Failure,
+) {
+    let refused = |e: &std::io::Error| e.kind() == std::io::ErrorKind::ConnectionRefused;
+    report(interfaces, gw, |caps, now| match failure {
+        pcp::Failure::Socket(e) if refused(e) => set_verdict(&mut caps.pcp, false, now),
+        pcp::Failure::Timeout => set_verdict(&mut caps.pcp, false, now),
+        _ => set_verdict(&mut caps.pcp, true, now),
+    });
 }
 
 #[derive(Default)]
@@ -337,43 +501,48 @@ struct State {
     desired: BTreeMap<MappingKey, Spec>,
     active: BTreeMap<MappingKey, Active>,
     upnp_cache: BTreeMap<Ipv4Addr, (Gateway<Tokio>, Instant)>,
-    /// Last apply() attempt per key, to rate-limit on-demand retries of
-    /// not-yet-active mappings (see RETRY_INTERVAL).
-    last_attempt: BTreeMap<MappingKey, Instant>,
-    /// Per-gateway PCP ANNOUNCE result ("speaks the Start9 HOSTNAME
-    /// extension"); a positive verdict is trusted longer than a negative one.
-    hostname_caps: BTreeMap<IpAddr, (bool, Instant)>,
+    /// Consecutive apply failures per key and when the latest attempt ran —
+    /// drives the exponential backoff between retries.
+    failures: BTreeMap<MappingKey, (u32, Instant)>,
 }
 
 impl State {
-    async fn ensure(&mut self, key: MappingKey, spec: Spec) {
+    async fn ensure(
+        &mut self,
+        interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+        key: MappingKey,
+        spec: Spec,
+    ) {
         let changed = self.desired.get(&key).map_or(true, |s| {
             s.internal_port != spec.internal_port
                 || s.gateways != spec.gateways
                 || s.count != spec.count
         });
         self.desired.insert(key.clone(), spec);
-        // Reapply on a spec change, or to retry a not-yet-active mapping — but
-        // rate-limited to RETRY_INTERVAL per key so a reconcile burst can't
-        // busy-loop one the gateway can't satisfy.
-        let stale = !self.active.contains_key(&key)
-            && self
-                .last_attempt
-                .get(&key)
-                .map_or(true, |t| t.elapsed() >= RETRY_INTERVAL);
-        if changed || stale {
+        // A spec change is new information (operator or config) — retry
+        // promptly, ignoring any accumulated backoff.
+        if changed {
+            self.failures.remove(&key);
+        }
+        if changed || (!self.active.contains_key(&key) && self.backoff_elapsed(&key)) {
             self.teardown(key.clone()).await;
-            self.apply(key).await;
+            self.apply(interfaces, key).await;
         }
     }
 
     async fn remove(&mut self, key: MappingKey) {
         self.desired.remove(&key);
-        self.last_attempt.remove(&key);
+        self.failures.remove(&key);
         self.teardown(key).await;
     }
 
-    async fn refresh(&mut self) {
+    fn backoff_elapsed(&self, key: &MappingKey) -> bool {
+        self.failures
+            .get(key)
+            .map_or(true, |(n, at)| at.elapsed() >= retry_delay(*n))
+    }
+
+    async fn refresh(&mut self, interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>) {
         for key in self.desired.keys().cloned().collect::<Vec<_>>() {
             match self.active.get_mut(&key) {
                 // expiration()/lifetime() reflect the gateway's last grant
@@ -389,31 +558,28 @@ impl State {
                             "PCP/NAT-PMP renew for {key:?} failed, re-mapping: {e}"
                         );
                         self.teardown(key.clone()).await;
-                        self.apply(key).await;
+                        self.apply(interfaces, key).await;
                     }
                 }
                 // A PCP mapping not yet at its renewal point: leave it be.
                 Some(Active::Pcp(_)) => {}
                 // UPnP has no lease; re-assert in case a gateway reboot dropped
-                // it. `None` retries a prior failure.
-                Some(Active::Upnp { .. }) | None => {
+                // it.
+                Some(Active::Upnp { .. }) => {
                     self.teardown(key.clone()).await;
-                    self.apply(key).await;
+                    self.apply(interfaces, key).await;
+                }
+                // A prior failure: retry once its backoff has elapsed.
+                None => {
+                    if self.backoff_elapsed(&key) {
+                        self.apply(interfaces, key).await;
+                    }
                 }
             }
         }
         self.upnp_cache
             .retain(|_, (_, at)| at.elapsed() < GATEWAY_CACHE_TTL);
-        self.hostname_caps.retain(|_, (ok, at)| {
-            at.elapsed()
-                < if *ok {
-                    GATEWAY_CACHE_TTL
-                } else {
-                    RETRY_INTERVAL
-                }
-        });
-        self.last_attempt
-            .retain(|k, _| self.desired.contains_key(k));
+        self.failures.retain(|k, _| self.desired.contains_key(k));
     }
 
     async fn teardown(&mut self, key: MappingKey) {
@@ -435,20 +601,46 @@ impl State {
         }
     }
 
-    async fn apply(&mut self, key: MappingKey) {
-        let Some(spec) = self.desired.get(&key).cloned() else {
-            return;
+    /// Wrapper around the attempt paths: on success any backoff is cleared;
+    /// after a real (network) attempt that left the key inactive the failure
+    /// count grows. An attempt fully short-circuited by capability verdicts
+    /// does no I/O and counts neither as success nor failure.
+    async fn apply(
+        &mut self,
+        interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+        key: MappingKey,
+    ) {
+        let attempted = self.try_apply(interfaces, &key).await;
+        if self.active.contains_key(&key) {
+            self.failures.remove(&key);
+        } else if attempted {
+            let (n, _) = self
+                .failures
+                .get(&key)
+                .copied()
+                .unwrap_or((0, Instant::now()));
+            self.failures.insert(key, (n + 1, Instant::now()));
+        }
+    }
+
+    /// Returns `true` if any network I/O was attempted.
+    async fn try_apply(
+        &mut self,
+        interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+        key: &MappingKey,
+    ) -> bool {
+        let mut attempted = false;
+        let Some(spec) = self.desired.get(key).cloned() else {
+            return false;
         };
-        // Stamp before attempting so a permanently-failing mapping is also
-        // rate-limited, not just successful ones.
-        self.last_attempt.insert(key.clone(), Instant::now());
         let (local_ip, external_port, hostname) = (key.0, key.1, key.2.clone());
         let (Some(ext), Some(intl)) = (
             NonZeroU16::new(external_port),
             NonZeroU16::new(spec.internal_port),
         ) else {
-            return;
+            return false;
         };
+        let now = Utc::now();
 
         // HOSTNAME (SNI-demux) mapping: PCP-only, since NAT-PMP/UPnP can't demux
         // by SNI. Other hostnames on the same port are separate mappings.
@@ -461,18 +653,36 @@ impl State {
                 if gw.is_ipv4() != local_ip.is_ipv4() {
                     continue;
                 }
-                // Never hand a Private-Use OPTION_HOSTNAME to a gateway that
-                // hasn't confirmed it speaks the extension via ANNOUNCE.
-                if !self
-                    .gateway_supports_hostname(local_ip, *gw, *scope_id)
-                    .await
-                {
-                    crate::dev_log!(
-                        debug,
-                        "PCP HOSTNAME skip {gw}: no ANNOUNCE confirmation of support"
-                    );
-                    continue;
+                // Skip a gateway whose HOSTNAME support is fresh-known-absent;
+                // probe only when the verdict is unknown or stale, and feed the
+                // result back to the interface's capability state.
+                let caps = capabilities_for(interfaces, *gw);
+                match caps.and_then(|c| c.pcp_hostname.fresh(now)) {
+                    Some(false) => {
+                        crate::dev_log!(
+                            debug,
+                            "PCP HOSTNAME skip {gw}: known not to support the HOSTNAME extension"
+                        );
+                        continue;
+                    }
+                    Some(true) => {}
+                    None => {
+                        let probe = probe::probe_gateway(local_ip, *gw, *scope_id).await;
+                        report(interfaces, *gw, |caps, now| {
+                            set_verdict(&mut caps.pcp, probe.pcp, now)
+                                | set_verdict(&mut caps.pcp_hostname, probe.pcp_hostname, now)
+                                | set_verdict(&mut caps.nat_pmp, probe.nat_pmp, now)
+                        });
+                        if !probe.pcp_hostname {
+                            crate::dev_log!(
+                                debug,
+                                "PCP HOSTNAME skip {gw}: no ANNOUNCE confirmation of support"
+                            );
+                            continue;
+                        }
+                    }
                 }
+                attempted = true;
                 match pcp::port_mapping(
                     pcp::BaseMapRequest::new(*gw, local_ip, InternetProtocol::Tcp, intl),
                     None,
@@ -499,19 +709,27 @@ impl State {
                             "PCP HOSTNAME mapped {external_port}->{local_ip}:{} {hostname} via {gw}",
                             spec.internal_port,
                         );
-                        self.active.insert(key, Active::Pcp(m));
-                        return;
+                        self.active.insert(key.clone(), Active::Pcp(m));
+                        return true;
                     }
+                    // Answered but didn't echo HOSTNAME: doesn't honor it.
                     Ok(m) => {
+                        report(interfaces, *gw, |caps, now| {
+                            set_verdict(&mut caps.pcp, true, now)
+                                | set_verdict(&mut caps.pcp_hostname, false, now)
+                        });
                         let _ = m.try_drop().await;
                     }
-                    Err(e) => crate::dev_log!(
-                        debug,
-                        "PCP HOSTNAME map {local_ip}:{external_port} {hostname} via {gw} failed: {e}"
-                    ),
+                    Err(e) => {
+                        report_pcp_failure(interfaces, *gw, &e);
+                        crate::dev_log!(
+                            debug,
+                            "PCP HOSTNAME map {local_ip}:{external_port} {hostname} via {gw} failed: {e}"
+                        )
+                    }
                 }
             }
-            return;
+            return attempted;
         }
 
         // Range mapping via PCP PORT_SET (RFC 7753), PCP-only. A gateway lacking
@@ -532,6 +750,12 @@ impl State {
                 if gw.is_ipv4() != local_ip.is_ipv4() {
                     continue;
                 }
+                // PORT_SET is PCP-only — a live NAT-PMP verdict can't save it.
+                if capabilities_for(interfaces, *gw).and_then(|c| c.pcp.fresh(now)) == Some(false) {
+                    crate::dev_log!(debug, "PCP PORT_SET skip {gw}: known not to support PCP");
+                    continue;
+                }
+                attempted = true;
                 match pcp::port_mapping(
                     pcp::BaseMapRequest::new(*gw, local_ip, InternetProtocol::Tcp, intl),
                     None,
@@ -558,8 +782,8 @@ impl State {
                                 "PCP PORT_SET mapped {external_port}+{range_size}->{local_ip}:{} via {gw}",
                                 spec.internal_port
                             );
-                            self.active.insert(key, Active::Pcp(m));
-                            return;
+                            self.active.insert(key.clone(), Active::Pcp(m));
+                            return true;
                         }
                         crate::dev_log!(
                             debug,
@@ -570,13 +794,16 @@ impl State {
                     Ok(m) => {
                         let _ = m.try_drop().await;
                     }
-                    Err(e) => crate::dev_log!(
-                        debug,
-                        "PCP PORT_SET map {local_ip}:{external_port} via {gw} failed: {e}"
-                    ),
+                    Err(e) => {
+                        report_pcp_failure(interfaces, *gw, &e);
+                        crate::dev_log!(
+                            debug,
+                            "PCP PORT_SET map {local_ip}:{external_port} via {gw} failed: {e}"
+                        )
+                    }
                 }
             }
-            return;
+            return attempted;
         }
 
         // PCP first, NAT-PMP fallback (crab_nat), against each candidate gateway.
@@ -584,6 +811,14 @@ impl State {
             if gw.is_ipv4() != local_ip.is_ipv4() {
                 continue;
             }
+            if pcp_fresh_dead(interfaces, *gw, now) {
+                crate::dev_log!(
+                    debug,
+                    "PCP/NAT-PMP skip {gw}: known not to support port mapping"
+                );
+                continue;
+            }
+            attempted = true;
             match PortMapping::new(
                 *gw,
                 local_ip,
@@ -602,16 +837,22 @@ impl State {
                     tracing::debug!(
                         "{} mapped {external_port}->{local_ip}:{} via {gw}",
                         m.mapping_type(),
-                        spec.internal_port
+                        spec.internal_port,
                     );
-                    self.active.insert(key, Active::Pcp(m));
-                    return;
+                    let nat_pmp = matches!(m.mapping_type(), crab_nat::PortMappingType::NatPmp);
+                    report(interfaces, *gw, |caps, now| {
+                        set_verdict(&mut caps.pcp, !nat_pmp, now)
+                            | set_verdict(&mut caps.nat_pmp, nat_pmp, now)
+                    });
+                    self.active.insert(key.clone(), Active::Pcp(m));
+                    return true;
                 }
                 // A different external port is useless for a fixed public port.
                 Ok(m) => {
                     let _ = m.try_drop().await;
                 }
                 Err(e) => {
+                    report_crab_nat_failure(interfaces, *gw, &e);
                     crate::dev_log!(
                         debug,
                         "PCP/NAT-PMP map {local_ip}:{external_port} via {gw} failed: {e}"
@@ -620,10 +861,21 @@ impl State {
             }
         }
 
-        // Fall back to UPnP (IPv4 only).
+        // Fall back to UPnP (IPv4 only), unless the interface's gateway is
+        // fresh-known to have no IGD.
         if let IpAddr::V4(local_v4) = local_ip {
+            let upnp_dead = capabilities_for_local(interfaces, local_ip)
+                .and_then(|c| c.upnp.fresh(now))
+                == Some(false);
+            if upnp_dead {
+                crate::dev_log!(debug, "UPnP skip on {local_ip}: known to have no IGD");
+                return attempted;
+            }
+            attempted = true;
             let added = match self.gateway_for(local_v4).await {
                 Some(gw) => {
+                    // Discovery alone proves the IGD, whatever the SOAP call says.
+                    report_local(interfaces, local_ip, true);
                     match upnp::add_port(gw, external_port, local_v4, spec.internal_port).await {
                         Ok(()) => {
                             tracing::debug!(
@@ -641,18 +893,23 @@ impl State {
                         }
                     }
                 }
-                None => false,
+                None => {
+                    report_local(interfaces, local_ip, false);
+                    false
+                }
             };
             if added {
                 // Best-effort external IP (local IGD query) so a reachability check
                 // can short-circuit; `get_external_ipv4` discards private/CGNAT.
                 let external_ip = upnp::get_external_ipv4(local_v4).await.ok().flatten();
-                self.active.insert(key, Active::Upnp { external_ip });
+                self.active
+                    .insert(key.clone(), Active::Upnp { external_ip });
             } else {
                 // Re-discover next time in case the gateway went away.
                 self.upnp_cache.remove(&local_v4);
             }
         }
+        attempted
     }
 
     async fn gateway_for(&mut self, local_ip: Ipv4Addr) -> Option<&Gateway<Tokio>> {
@@ -674,91 +931,18 @@ impl State {
         }
         self.upnp_cache.get(&local_ip).map(|(g, _)| g)
     }
-
-    /// Whether `gw` answered a PCP ANNOUNCE with the Start9 capability marker,
-    /// cached per gateway (a yes trusted for GATEWAY_CACHE_TTL, a no re-probed
-    /// after RETRY_INTERVAL). Gates OPTION_HOSTNAME while we ride a Private-Use
-    /// option code.
-    async fn gateway_supports_hostname(
-        &mut self,
-        local_ip: IpAddr,
-        gw: IpAddr,
-        scope_id: Option<u32>,
-    ) -> bool {
-        if let Some((ok, at)) = self.hostname_caps.get(&gw) {
-            let ttl = if *ok {
-                GATEWAY_CACHE_TTL
-            } else {
-                RETRY_INTERVAL
-            };
-            if at.elapsed() < ttl {
-                return *ok;
-            }
-        }
-        let ok = probe_announce(local_ip, gw, scope_id).await;
-        self.hostname_caps.insert(gw, (ok, Instant::now()));
-        ok
-    }
 }
 
-/// A datagram is a Start9 ANNOUNCE response iff it's a SUCCESS ANNOUNCE reply
-/// (version 2, response bit set on opcode 0) carrying the capability marker.
-fn announce_marker_ok(resp: &[u8]) -> bool {
-    resp.len() >= 24
-        && resp[0] == 2
-        && resp[1] == 0x80
-        && resp[3] == 0
-        && has_start9_capability(&resp[24..])
-}
-
-/// Send a PCP ANNOUNCE to `gw:5351` and report whether it answers with the
-/// Start9 capability marker. Raw UDP since crab_nat exposes no ANNOUNCE;
-/// best-effort — any error/timeout/non-marker reply is "not supported".
-async fn probe_announce(local_ip: IpAddr, gw: IpAddr, scope_id: Option<u32>) -> bool {
-    // Bind the gateway-facing source IP (as the crab_nat MAP path does) so the
-    // ANNOUNCE egresses the right interface — e.g. the WireGuard tunnel to a
-    // StartTunnel gateway — and the reply routes back to us.
-    let Ok(sock) = UdpSocket::bind((local_ip, 0)).await else {
-        return false;
-    };
-    // A link-local (fe80::) gateway needs the interface zone/scope id to connect.
-    let dst = match gw {
-        IpAddr::V4(v4) => SocketAddr::V4(SocketAddrV4::new(v4, PCP_PORT)),
-        IpAddr::V6(v6) => SocketAddr::V6(SocketAddrV6::new(v6, PCP_PORT, 0, scope_id.unwrap_or(0))),
-    };
-    if sock.connect(dst).await.is_err() {
-        return false;
-    }
-    // Bare 24-byte PCP header: version 2, opcode 0 (ANNOUNCE), client IP.
-    let mut req = [0u8; 24];
-    req[0] = 2;
-    let client_octets = match local_ip {
-        IpAddr::V4(v4) => v4.to_ipv6_mapped().octets(),
-        IpAddr::V6(v6) => v6.octets(),
-    };
-    req[8..24].copy_from_slice(&client_octets);
-    let mut buf = [0u8; 1100];
-    let attempts = PCP_TIMEOUTS.max_retries as u32 + 1;
-    for attempt in 0..attempts {
-        if sock.send(&req).await.is_err() {
-            return false;
-        }
-        let dur = if attempt == 0 {
-            PCP_TIMEOUTS.initial_timeout
-        } else {
-            PCP_TIMEOUTS
-                .max_retry_timeout
-                .unwrap_or(Duration::from_secs(1))
-        };
-        // Retransmit on a lost or garbled reply (RFC 6887 §8.3) rather than
-        // giving up on the first delivered-but-non-marker datagram.
-        if let Ok(Ok(n)) = timeout(dur, sock.recv(&mut buf)).await {
-            if announce_marker_ok(&buf[..n]) {
-                return true;
-            }
-        }
-    }
-    false
+/// PCP is fresh-known-dead on this gateway — and when NAT-PMP is too, any
+/// crab_nat attempt is a guaranteed failure, so skip it.
+fn pcp_fresh_dead(
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    gw: IpAddr,
+    now: DateTime<Utc>,
+) -> bool {
+    capabilities_for(interfaces, gw).map_or(false, |c| {
+        c.pcp.fresh(now) == Some(false) && c.nat_pmp.fresh(now) == Some(false)
+    })
 }
 
 /// Whether a PCP mapping granted `lifetime` seconds and expiring at `expiration`
@@ -776,13 +960,17 @@ mod tests {
     use super::*;
 
     fn spec() -> Spec {
-        // No gateways: apply() does no network I/O, so these tests exercise the
-        // keying/identity logic only.
+        // No gateways: try_apply() does no network I/O, so these tests exercise
+        // the keying/identity logic only.
         Spec {
             internal_port: 443,
             gateways: Vec::new(),
             count: 1,
         }
+    }
+
+    fn interfaces() -> Watch<OrdMap<GatewayId, NetworkInterfaceInfo>> {
+        Watch::new(OrdMap::new())
     }
 
     // Distinct hostnames on the same external port are independent mappings;
@@ -795,15 +983,15 @@ mod tests {
         let plain: MappingKey = (ip, 443, None);
 
         let mut state = State::default();
-        state.ensure(a.clone(), spec()).await;
-        state.ensure(b.clone(), spec()).await;
+        state.ensure(&interfaces(), a.clone(), spec()).await;
+        state.ensure(&interfaces(), b.clone(), spec()).await;
         assert!(state.desired.contains_key(&a));
         assert!(
             state.desired.contains_key(&b),
             "adding b clobbered a's siblings"
         );
 
-        state.ensure(plain.clone(), spec()).await;
+        state.ensure(&interfaces(), plain.clone(), spec()).await;
         assert_eq!(
             state.desired.len(),
             3,
@@ -828,30 +1016,77 @@ mod tests {
         assert!(!due(1801), "just before half-life: not due");
         assert!(due(1800), "at half-life: due");
         assert!(due(1), "near expiry: due");
-        // Already expired (or a degenerate tiny lease) renews immediately.
         assert!(renew_due(now, now - Duration::from_secs(1), lt));
         assert!(renew_due(now, now, 0));
     }
 
-    // The client accepts only a SUCCESS ANNOUNCE reply carrying the exact marker.
+    // Backoff schedule: 15s doubling per consecutive failure, capped.
     #[test]
-    fn announce_marker_recognized() {
-        use crate::net::port_map::pcp::capability::encode_start9_capability_option;
-        let mut resp = vec![0u8; 24];
-        resp[0] = 2;
-        resp[1] = 0x80; // RESPONSE_BIT | opcode 0 (ANNOUNCE)
-        encode_start9_capability_option(&mut resp);
-        assert!(announce_marker_ok(&resp));
+    fn retry_delay_doubles_and_caps() {
+        assert_eq!(retry_delay(0), Duration::from_secs(15));
+        assert_eq!(retry_delay(1), Duration::from_secs(15));
+        assert_eq!(retry_delay(2), Duration::from_secs(30));
+        assert_eq!(retry_delay(3), Duration::from_secs(60));
+        assert_eq!(retry_delay(7), BACKOFF_MAX);
+        assert_eq!(retry_delay(100), BACKOFF_MAX);
+    }
 
-        let mut not_response = resp.clone();
-        not_response[1] = 0x00;
-        assert!(!announce_marker_ok(&not_response));
+    // A fresh "not supported" verdict short-circuits the apply before any
+    // network I/O, and counts as neither success nor failure.
+    #[tokio::test]
+    async fn dead_gateway_verdict_skips_attempt_without_backoff() {
+        let gw: IpAddr = Ipv4Addr::new(192, 168, 8, 1).into();
+        let local: IpAddr = Ipv4Addr::new(192, 168, 8, 101).into();
+        let ifaces = Watch::new(OrdMap::from_iter([(
+            GatewayId::from(imbl_value::InternedString::intern("eno0")),
+            NetworkInterfaceInfo {
+                port_map: GatewayPortMapCapabilities {
+                    pcp: CapabilityVerdict::supported(false),
+                    nat_pmp: CapabilityVerdict::supported(false),
+                    upnp: CapabilityVerdict::supported(false),
+                    ..Default::default()
+                },
+                ..iface(
+                    &["192.168.8.101/24"],
+                    &["192.168.8.1"],
+                    GatewayType::InboundOutbound,
+                )
+            },
+        )]));
+        let key: MappingKey = (local, 443, None);
+        let mut state = State::default();
+        state
+            .ensure(
+                &ifaces,
+                key.clone(),
+                Spec {
+                    internal_port: 443,
+                    gateways: vec![(gw, None)],
+                    count: 1,
+                },
+            )
+            .await;
+        assert!(state.desired.contains_key(&key));
+        assert!(!state.active.contains_key(&key), "no mapping should exist");
+        assert!(
+            !state.failures.contains_key(&key),
+            "a verdict-skipped apply must not grow the backoff"
+        );
+    }
 
-        let mut not_success = resp.clone();
-        not_success[3] = 4;
-        assert!(!announce_marker_ok(&not_success));
-
-        assert!(!announce_marker_ok(&resp[..24]), "no marker option");
+    // A changed spec clears accumulated backoff so an operator's change is
+    // retried promptly. (v6 local IP: no gateways in the spec and no UPnP
+    // fallback for v6, so the apply does no network I/O.)
+    #[tokio::test]
+    async fn spec_change_resets_backoff() {
+        let ip: IpAddr = "fd00:59::2".parse().unwrap();
+        let key: MappingKey = (ip, 443, None);
+        let mut state = State::default();
+        state.failures.insert(key.clone(), (5, Instant::now()));
+        assert!(!state.backoff_elapsed(&key));
+        state.ensure(&interfaces(), key.clone(), spec()).await;
+        assert!(!state.failures.contains_key(&key));
+        assert!(state.backoff_elapsed(&key));
     }
 
     fn iface(subnets: &[&str], lan_ip: &[&str], gateway_type: GatewayType) -> NetworkInterfaceInfo {

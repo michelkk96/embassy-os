@@ -88,6 +88,7 @@ pub async fn add_tunnel(
                         secure: None,
                         ip_info: None,
                         gateway_type,
+                        port_map: Default::default(),
                     },
                 );
                 return true;

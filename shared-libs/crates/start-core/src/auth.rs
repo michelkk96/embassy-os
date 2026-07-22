@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use clap::Parser;
@@ -14,23 +16,26 @@ use tracing::instrument;
 use ts_rs::TS;
 
 use crate::context::{CliContext, RpcContext};
-use crate::middleware::auth::session::{
-    AsLogoutSessionId, HasLoggedOutSessions, HashSessionToken, LoginRes, SessionAuthContext,
-};
+use crate::middleware::auth::signature::{HasUnenrolledKeys, SignatureAuthContext};
 use crate::prelude::*;
+use crate::sign::AnyVerifyingKey;
 use crate::util::crypto::EncryptedWire;
 use crate::util::io::create_file_mod;
 use crate::util::serde::{HandlerExtSerde, WithIoFormat, display_serializable};
+use crate::util::sync::SyncMutex;
 use crate::{Error, ResultExt, ensure_code};
 
+/// The server's enrolled auth keys, keyed by their PEM encoding. Each enrolled
+/// key is a sign-in: it carries the same metadata a session used to (when it
+/// was created, when it was last used, and the user agent that enrolled it).
 #[derive(Debug, Clone, Default, Deserialize, Serialize, TS)]
-pub struct Sessions(pub BTreeMap<InternedString, Session>);
-impl Sessions {
+pub struct AuthKeys(pub BTreeMap<InternedString, Session>);
+impl AuthKeys {
     pub fn new() -> Self {
         Self(BTreeMap::new())
     }
 }
-impl Map for Sessions {
+impl Map for AuthKeys {
     type Key = InternedString;
     type Value = Session;
     fn key_str(key: &Self::Key) -> Result<impl AsRef<str>, Error> {
@@ -38,6 +43,38 @@ impl Map for Sessions {
     }
     fn key_string(key: &Self::Key) -> Result<InternedString, Error> {
         Ok(key.clone())
+    }
+}
+
+/// Contexts where a password can enroll an auth key (login), plus access to
+/// the enrolled-key store that login writes and the session list reads.
+pub trait LoginContext: SignatureAuthContext {
+    /// The persisted enrolled-key store. Enrollment happens via login; never
+    /// remove a key directly — unenrollment goes through
+    /// [`SignatureAuthContext::unenroll`] so a revoked key's open
+    /// continuations die with it.
+    fn access_auth_keys(db: &mut Model<Self::Database>) -> &mut Model<AuthKeys>;
+    fn check_password(db: &Model<Self::Database>, password: &str) -> Result<(), Error>;
+    #[allow(unused_variables)]
+    fn post_login_hook(&self, password: &str) -> impl Future<Output = Result<(), Error>> + Send {
+        async { Ok(()) }
+    }
+}
+impl LoginContext for RpcContext {
+    fn access_auth_keys(db: &mut Model<Self::Database>) -> &mut Model<AuthKeys> {
+        db.as_private_mut().as_session_pubkeys_mut()
+    }
+    fn check_password(db: &Model<Self::Database>, password: &str) -> Result<(), Error> {
+        check_password(&db.as_private().as_password().de()?, password)
+    }
+    async fn post_login_hook(&self, password: &str) -> Result<(), Error> {
+        if tokio::fs::metadata("/media/startos/config/overlay/etc/shadow")
+            .await
+            .is_err()
+        {
+            write_shadow(&password).await?;
+        }
+        Ok(())
     }
 }
 
@@ -113,7 +150,7 @@ impl std::str::FromStr for PasswordType {
         })
     }
 }
-pub fn auth<C: Context, AC: SessionAuthContext>() -> ParentHandler<C>
+pub fn auth<C: Context, AC: LoginContext>() -> ParentHandler<C>
 where
     CliContext: CallRemote<AC>,
 {
@@ -122,6 +159,8 @@ where
             "login",
             from_fn_async(login_impl::<AC>)
                 .with_metadata("login", Value::Bool(true))
+                .with_metadata("get_signer", Value::Bool(true))
+                .with_metadata("get_user_agent", Value::Bool(true))
                 .no_cli(),
         )
         .subcommand(
@@ -133,7 +172,7 @@ where
         .subcommand(
             "logout",
             from_fn_async(logout::<AC>)
-                .with_metadata("get_session", Value::Bool(true))
+                .with_metadata("get_signer", Value::Bool(true))
                 .no_display()
                 .with_about("about.logout-current-auth-session")
                 .with_call_remote::<CliContext>(),
@@ -176,7 +215,7 @@ fn gen_pwd() {
 }
 
 #[instrument(skip_all)]
-async fn cli_login<C: SessionAuthContext>(
+async fn cli_login<C: LoginContext>(
     HandlerArgs {
         context: ctx,
         parent_method,
@@ -193,10 +232,19 @@ where
         rpassword::prompt_password("Password: ")?
     };
 
+    if ctx.id_key().is_err() {
+        let secret = ed25519_dalek::SigningKey::generate(&mut crate::util::crypto::os_rng());
+        crate::developer::write_signing_key(&secret, &ctx.id_key_path).await?;
+    }
+    let pubkey = ctx
+        .id_key()
+        .map(|k| AnyVerifyingKey::Ed25519(k.into()).to_string())?;
+
     ctx.call_remote::<C>(
         &parent_method.into_iter().chain(method).join("."),
         json!({
             "password": password,
+            "pubkey": pubkey,
             "metadata": {
                 "platforms": ["cli"],
             },
@@ -229,56 +277,94 @@ pub struct LoginParams {
     #[ts(skip)]
     #[serde(rename = "__Auth_userAgent")] // from Auth middleware
     user_agent: Option<String>,
+    /// The PEM-encoded public key to enroll on a successful login. The login
+    /// request itself is signed with the matching secret key, so enrollment
+    /// proves possession.
+    pubkey: AnyVerifyingKey,
+    /// The key the request was actually signed with, injected by the auth
+    /// middleware. Enforced to equal `pubkey`, so a login can only enroll the
+    /// key that proved possession.
+    #[ts(skip)]
+    #[serde(rename = "__Auth_signer")] // from Auth middleware
+    signer: AnyVerifyingKey,
+    /// Enroll in memory only, never persisted (kiosk mode, which re-enrolls
+    /// on every browser restart and would otherwise accumulate keys).
     #[serde(default)]
     ephemeral: bool,
 }
 
+const LOGIN_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(20);
+const LOGIN_RATE_LIMIT_MAX_ATTEMPTS: usize = 3;
+static LOGIN_RATE_LIMITER: LazyLock<SyncMutex<(usize, Instant)>> =
+    LazyLock::new(|| SyncMutex::new((0, Instant::now())));
+
 #[instrument(skip_all)]
-pub async fn login_impl<C: SessionAuthContext>(
+pub async fn login_impl<C: LoginContext>(
     ctx: C,
     LoginParams {
         password,
         user_agent,
+        pubkey,
+        signer,
         ephemeral,
     }: LoginParams,
-) -> Result<LoginRes, Error> {
-    let tok = if ephemeral {
+) -> Result<(), Error> {
+    if signer != pubkey {
+        return Err(Error::new(
+            eyre!("{}", t!("middleware.auth.enrolled-key-mismatch")),
+            ErrorKind::InvalidRequest,
+        ));
+    }
+
+    LOGIN_RATE_LIMITER.mutate(|(count, time)| {
+        if time.elapsed() >= LOGIN_RATE_LIMIT_WINDOW {
+            *count = 0;
+        }
+        if *count >= LOGIN_RATE_LIMIT_MAX_ATTEMPTS {
+            Err(Error::new(
+                eyre!("{}", t!("middleware.auth.rate-limited-login")),
+                ErrorKind::RateLimited,
+            ))
+        } else {
+            *count += 1;
+            *time = Instant::now();
+            Ok(())
+        }
+    })?;
+
+    let now = Utc::now();
+    let pubkey = pubkey.to_string();
+    let record = Session {
+        name: None,
+        logged_in: now,
+        last_active: now,
+        user_agent,
+    };
+    if ephemeral {
+        let Some(ephemeral_keys) = ctx.ephemeral_auth_keys() else {
+            return Err(Error::new(
+                eyre!("{}", t!("middleware.auth.ephemeral-unsupported")),
+                ErrorKind::InvalidRequest,
+            ));
+        };
         C::check_password(&ctx.db().peek().await, &password)?;
-        let hash_token = HashSessionToken::new();
-        ctx.ephemeral_sessions().mutate(|s| {
-            s.0.insert(
-                hash_token.hashed().clone(),
-                Session {
-                    logged_in: Utc::now(),
-                    last_active: Utc::now(),
-                    user_agent,
-                },
-            )
+        ephemeral_keys.mutate(|keys| {
+            keys.0.insert(InternedString::intern(&pubkey), record);
         });
-        Ok(hash_token.to_login_res())
     } else {
         ctx.db()
             .mutate(|db| {
                 C::check_password(db, &password)?;
-                let hash_token = HashSessionToken::new();
-                C::access_sessions(db).insert(
-                    hash_token.hashed(),
-                    &Session {
-                        logged_in: Utc::now(),
-                        last_active: Utc::now(),
-                        user_agent,
-                    },
-                )?;
-
-                Ok(hash_token.to_login_res())
+                C::access_auth_keys(db).insert(&InternedString::intern(&pubkey), &record)?;
+                Ok(())
             })
             .await
-            .result
-    }?;
+            .result?;
+    }
 
     ctx.post_login_hook(&password).await?;
 
-    Ok(tok)
+    Ok(())
 }
 
 #[derive(Deserialize, Serialize, Parser, TS)]
@@ -287,27 +373,32 @@ pub async fn login_impl<C: SessionAuthContext>(
 #[command(rename_all = "kebab-case")]
 pub struct LogoutParams {
     #[ts(skip)]
-    #[serde(rename = "__Auth_session")] // from Auth middleware
-    session: InternedString,
+    #[serde(rename = "__Auth_signer")] // from Auth middleware
+    signer: InternedString,
 }
 
-pub async fn logout<C: SessionAuthContext>(
+pub async fn logout<C: SignatureAuthContext>(
     ctx: C,
-    LogoutParams { session }: LogoutParams,
-) -> Result<Option<HasLoggedOutSessions>, Error> {
-    Ok(Some(
-        HasLoggedOutSessions::new(vec![HashSessionToken::from_token(session)], &ctx).await?,
-    ))
+    LogoutParams { signer }: LogoutParams,
+) -> Result<Option<HasUnenrolledKeys>, Error> {
+    Ok(Some(ctx.unenroll([signer]).await?))
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Session {
+    /// A friendly name for the key, if one was assigned at enrollment (e.g.
+    /// tunnel device keys). UI-enrolled keys are unnamed.
+    #[serde(default)]
+    pub name: Option<InternedString>,
+    #[serde(default)]
     #[ts(type = "string")]
     pub logged_in: DateTime<Utc>,
+    #[serde(default)]
     #[ts(type = "string")]
     pub last_active: DateTime<Utc>,
+    #[serde(default)]
     pub user_agent: Option<String>,
 }
 
@@ -317,10 +408,10 @@ pub struct Session {
 pub struct SessionList {
     #[ts(type = "string | null")]
     current: Option<InternedString>,
-    sessions: Sessions,
+    sessions: AuthKeys,
 }
 
-pub fn session<C: Context, AC: SessionAuthContext>() -> ParentHandler<C>
+pub fn session<C: Context, AC: LoginContext>() -> ParentHandler<C>
 where
     CliContext: CallRemote<AC>,
 {
@@ -328,7 +419,7 @@ where
         .subcommand(
             "list",
             from_fn_async(list::<AC>)
-                .with_metadata("get_session", Value::Bool(true))
+                .with_metadata("get_signer", Value::Bool(true))
                 .with_display_serializable()
                 .with_custom_display_fn(|handle, result| display_sessions(handle.params, result))
                 .with_about("about.display-all-auth-sessions")
@@ -382,41 +473,28 @@ fn display_sessions(params: WithIoFormat<ListParams>, arg: SessionList) -> Resul
 pub struct ListParams {
     #[arg(skip)]
     #[ts(skip)]
-    #[serde(rename = "__Auth_session")] // from Auth middleware
-    session: Option<InternedString>,
+    #[serde(rename = "__Auth_signer")] // from Auth middleware
+    signer: Option<InternedString>,
 }
 
 // #[command(display(display_sessions))]
 #[instrument(skip_all)]
-pub async fn list<C: SessionAuthContext>(
+pub async fn list<C: LoginContext>(
     ctx: C,
-    ListParams { session, .. }: ListParams,
+    ListParams { signer }: ListParams,
 ) -> Result<SessionList, Error> {
-    let mut sessions = C::access_sessions(&mut ctx.db().peek().await).de()?;
-    ctx.ephemeral_sessions().peek(|s| {
-        sessions
-            .0
-            .extend(s.0.iter().map(|(k, v)| (k.clone(), v.clone())))
-    });
+    let mut sessions = C::access_auth_keys(&mut ctx.db().peek().await).de()?;
+    if let Some(ephemeral) = ctx.ephemeral_auth_keys() {
+        ephemeral.peek(|e| {
+            sessions
+                .0
+                .extend(e.0.iter().map(|(k, v)| (k.clone(), v.clone())))
+        });
+    }
     Ok(SessionList {
-        current: session,
+        current: signer,
         sessions,
     })
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct KillSessionId(InternedString);
-
-impl KillSessionId {
-    fn new(id: String) -> Self {
-        Self(InternedString::from(id))
-    }
-}
-
-impl AsLogoutSessionId for KillSessionId {
-    fn as_logout_session_id(self) -> InternedString {
-        self.0
-    }
 }
 
 #[derive(Deserialize, Serialize, Parser, TS)]
@@ -430,11 +508,12 @@ pub struct KillParams {
 }
 
 #[instrument(skip_all)]
-pub async fn kill<C: SessionAuthContext>(
+pub async fn kill<C: SignatureAuthContext>(
     ctx: C,
     KillParams { ids }: KillParams,
 ) -> Result<(), Error> {
-    HasLoggedOutSessions::new(ids.into_iter().map(KillSessionId::new), &ctx).await?;
+    ctx.unenroll(ids.into_iter().map(InternedString::from))
+        .await?;
     Ok(())
 }
 

@@ -7729,7 +7729,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "start-cli"
-version = "1.0.3"
+version = "1.1.0"
 dependencies = [
  "start-core",
  "tracing",
@@ -7750,7 +7750,6 @@ dependencies = [
  "base32",
  "base64 0.22.1",
  "base64ct",
- "basic-cookies",
  "blake3",
  "bytes",
  "chrono",
@@ -7761,8 +7760,6 @@ dependencies = [
  "console 0.16.3",
  "console-subscriber",
  "const_format",
- "cookie",
- "cookie_store",
  "crab_nat",
  "ctr",
  "der 0.8.0",
@@ -7837,7 +7834,6 @@ dependencies = [
  "rand 0.10.1",
  "regex",
  "reqwest",
- "reqwest_cookie_store",
  "rpassword",
  "rpc-toolkit",
  "rusqlite",
@@ -7899,7 +7895,7 @@ dependencies = [
 
 [[package]]
 name = "start-tunnel"
-version = "1.1.3"
+version = "1.2.0"
 dependencies = [
  "include_dir",
  "start-core",

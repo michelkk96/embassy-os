@@ -1,18 +1,14 @@
-use std::fs::File;
-use std::io::BufReader;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use cookie::{Cookie, Expiration, SameSite};
-use cookie_store::CookieStore;
 use http::HeaderMap;
+use http::header::AUTHORIZATION;
 use imbl::OrdMap;
 use imbl_value::InternedString;
 use josekit::jwk::Jwk;
 use once_cell::sync::OnceCell;
 use reqwest::Proxy;
-use reqwest_cookie_store::CookieStoreMutex;
 use rpc_toolkit::reqwest::{Client, Url};
 use rpc_toolkit::yajrc::RpcError;
 use rpc_toolkit::{CallRemote, Context, Empty};
@@ -22,20 +18,26 @@ use tokio_tungstenite::{Connector, MaybeTlsStream, WebSocketStream};
 use tracing::instrument;
 
 use super::setup::CURRENT_SECRET;
-use crate::context::config::{ClientConfig, local_config_path, resolve_target};
+use crate::context::config::{ClientConfig, resolve_target};
 use crate::context::{DiagnosticContext, InitContext, RpcContext, SetupContext};
-use crate::developer::{OS_DEVELOPER_KEY_PATH, default_developer_key_path, load_signing_key};
-use crate::middleware::auth::local::LocalAuthContext;
+use crate::developer::{
+    OS_ID_KEY_PATH, default_id_key_path, load_signing_key, migrate_legacy_key_file,
+};
+use crate::middleware::auth::local::{is_loopback, local_auth_header};
 use crate::net::mdns::pin_mdns_host;
 use crate::prelude::*;
 use crate::rpc_continuations::Guid;
-use crate::s9pk::init::{BUILD_KEY_FILE, STARTOS_DIR};
-use crate::util::io::read_file_to_string;
+use crate::s9pk::init::{BUILD_KEY_FILE, LEGACY_BUILD_KEY_FILE, STARTOS_DIR};
 
 #[derive(Debug)]
 pub struct CliContextSeed {
     pub runtime: OnceCell<Arc<Runtime>>,
     pub base_url: Url,
+    /// The host the user named the server by, captured before `pin_mdns_host`
+    /// rewrites a `.local` host to an address. Request signatures are bound to
+    /// this identity — one of the server's sig contexts — not to the pinned
+    /// transport address, which the server does not necessarily recognize.
+    pub host_identity: Option<InternedString>,
     pub rpc_url: Url,
     pub registry_url: Option<Url>,
     pub registry_hostname: Vec<InternedString>,
@@ -45,10 +47,8 @@ pub struct CliContextSeed {
     pub tunnel_addr: Option<SocketAddr>,
     pub tunnel_listen: Option<SocketAddr>,
     pub client: Client,
-    pub cookie_store: Arc<CookieStoreMutex>,
-    pub cookie_path: PathBuf,
-    pub developer_key_path: PathBuf,
-    pub developer_key: OnceCell<ed25519_dalek::SigningKey>,
+    pub id_key_path: PathBuf,
+    pub id_key: OnceCell<ed25519_dalek::SigningKey>,
     pub root_ca: Vec<PathBuf>,
     pub insecure: bool,
 }
@@ -59,62 +59,6 @@ impl Drop for CliContextSeed {
                 rt.shutdown_background();
             }
         }
-        // A cookie-cache write failure must not crash an otherwise-successful command.
-        self.save_cookie_store().log_err();
-    }
-}
-impl CliContextSeed {
-    /// Lock a stable sidecar file (not the temp, which each writer recreates) so
-    /// concurrent `start-cli` invocations sharing `$HOME` serialize their saves.
-    fn save_cookie_store(&self) -> Result<(), Error> {
-        let parent_dir = self.cookie_path.parent().unwrap_or(Path::new("/"));
-        if !parent_dir.exists() {
-            std::fs::create_dir_all(parent_dir)
-                .with_ctx(|_| (ErrorKind::Filesystem, parent_dir.display()))?;
-        }
-        let lock_path = format!("{}.lock", self.cookie_path.display());
-        let _lock = fd_lock_rs::FdLock::lock(
-            File::create(&lock_path).with_ctx(|_| (ErrorKind::Filesystem, &lock_path))?,
-            fd_lock_rs::LockType::Exclusive,
-            true,
-        )
-        .with_ctx(|_| (ErrorKind::Filesystem, &lock_path))?;
-
-        // Merge onto disk rather than clobber a concurrent writer's other-domain cookies; ours wins conflicts.
-        let on_disk = if self.cookie_path.exists() {
-            cookie_store::serde::json::load(BufReader::new(
-                File::open(&self.cookie_path)
-                    .with_ctx(|_| (ErrorKind::Filesystem, self.cookie_path.display()))?,
-            ))
-            .unwrap_or_default()
-        } else {
-            CookieStore::default()
-        };
-        let merged = {
-            let store = self.cookie_store.lock().map_err(|_| {
-                Error::new(eyre!("cookie store mutex poisoned"), ErrorKind::Unknown)
-            })?;
-            CookieStore::from_cookies(
-                on_disk
-                    .iter_unexpired()
-                    .chain(store.iter_unexpired())
-                    .cloned()
-                    .map(Ok::<_, std::convert::Infallible>),
-                false,
-            )
-            .expect("from_cookies is infallible")
-        };
-
-        let tmp = format!("{}.tmp", self.cookie_path.display());
-        let mut writer = File::create(&tmp).with_ctx(|_| (ErrorKind::Filesystem, &tmp))?;
-        cookie_store::serde::json::save(&merged, &mut writer)
-            .map_err(|e| Error::new(eyre!("{e}"), ErrorKind::Filesystem))?;
-        writer
-            .sync_all()
-            .with_ctx(|_| (ErrorKind::Filesystem, &tmp))?;
-        std::fs::rename(&tmp, &self.cookie_path)
-            .with_ctx(|_| (ErrorKind::Filesystem, self.cookie_path.display()))?;
-        Ok(())
     }
 }
 
@@ -133,27 +77,10 @@ impl CliContext {
         };
         // Before anything derives a URL from this one: a `.local` host is unresolvable from a
         // musl-static binary, so pin it to an address the system resolver found.
+        let host_identity = url.host_str().map(InternedString::intern);
         pin_mdns_host(&mut url)?;
 
         let registry = resolve_target(config.registry.as_ref())?;
-
-        let cookie_path = config.cookie_path.unwrap_or_else(|| {
-            local_config_path()
-                .as_deref()
-                .unwrap_or_else(|| Path::new(super::config::CONFIG_PATH))
-                .parent()
-                .unwrap_or(Path::new("/"))
-                .join(".cookies.json")
-        });
-        let cookie_store = Arc::new(CookieStoreMutex::new(if cookie_path.exists() {
-            cookie_store::serde::json::load(BufReader::new(
-                File::open(&cookie_path)
-                    .with_ctx(|_| (ErrorKind::Filesystem, cookie_path.display()))?,
-            ))
-            .unwrap_or_default()
-        } else {
-            CookieStore::default()
-        }));
 
         Ok(CliContext(Arc::new(CliContextSeed {
             runtime: OnceCell::new(),
@@ -184,8 +111,9 @@ impl CliContext {
             s9pk_s3bucket: config.s9pk_s3bucket,
             tunnel_addr: config.tunnel,
             tunnel_listen: config.tunnel_listen,
+            host_identity,
             client: {
-                let mut builder = Client::builder().cookie_provider(cookie_store.clone());
+                let mut builder = Client::builder();
                 if let Some(proxy) = config.proxy.or_else(|| {
                     config
                         .socks_listen
@@ -206,12 +134,8 @@ impl CliContext {
                 }
                 builder.build().expect("cannot fail")
             },
-            cookie_store,
-            cookie_path,
-            developer_key_path: config
-                .developer_key_path
-                .unwrap_or_else(default_developer_key_path),
-            developer_key: OnceCell::new(),
+            id_key_path: config.id_key_path.unwrap_or_else(default_id_key_path),
+            id_key: OnceCell::new(),
             root_ca: config.root_ca.unwrap_or_default(),
             insecure: config.insecure,
         })))
@@ -239,9 +163,13 @@ impl CliContext {
 
     /// BLOCKING
     #[instrument(skip_all)]
-    pub fn developer_key(&self) -> Result<&ed25519_dalek::SigningKey, Error> {
-        self.developer_key.get_or_try_init(|| {
-            for path in [Path::new(OS_DEVELOPER_KEY_PATH), &self.developer_key_path] {
+    pub fn id_key(&self) -> Result<&ed25519_dalek::SigningKey, Error> {
+        self.id_key.get_or_try_init(|| {
+            migrate_legacy_key_file(
+                &self.id_key_path,
+                &self.id_key_path.with_file_name("developer.key.pem"),
+            );
+            for path in [Path::new(OS_ID_KEY_PATH), &self.id_key_path] {
                 if !path.exists() {
                     continue;
                 }
@@ -260,20 +188,25 @@ impl CliContext {
                 return Ok(secret.into());
             }
             Err(Error::new(
-                eyre!("{}", t!("context.cli.developer-key-does-not-exist")),
+                eyre!("{}", t!("context.cli.id-key-does-not-exist")),
                 crate::ErrorKind::Uninitialized,
             ))
         })
     }
 
-    /// The workspace's s9pk signing key. Walks up from cwd for `.startos/build-key`
-    /// (created by `s9pk init-workspace`) and errors if there's no workspace, since
-    /// s9pk signing is workspace-scoped. Distinct from [`Self::developer_key`], which
-    /// stays the global identity for registry/server auth.
+    /// The workspace's s9pk signing key. Walks up from cwd for
+    /// `.startos/build.key.pem` (created by `s9pk init-workspace`) and errors if
+    /// there's no workspace, since s9pk signing is workspace-scoped. Distinct
+    /// from [`Self::id_key`], which stays the global identity for
+    /// registry/server auth.
     pub fn build_key(&self) -> Result<ed25519_dalek::SigningKey, Error> {
         let mut dir = std::env::current_dir().with_kind(ErrorKind::Filesystem)?;
         loop {
             let candidate = dir.join(STARTOS_DIR).join(BUILD_KEY_FILE);
+            migrate_legacy_key_file(
+                &candidate,
+                &dir.join(STARTOS_DIR).join(LEGACY_BUILD_KEY_FILE),
+            );
             // EACCES on an inaccessible ancestor (or any other IO error) is treated
             // as "no accessible workspace here" — stop walking rather than either
             // silently stepping past it (`exists()`) or surfacing the error
@@ -429,25 +362,17 @@ impl CallRemote<RpcContext> for CliContext {
         params: Value,
         _: Empty,
     ) -> Result<Value, RpcError> {
-        if let Ok(local) = read_file_to_string(RpcContext::LOCAL_AUTH_COOKIE_PATH).await {
-            self.cookie_store
-                .lock()
-                .unwrap()
-                .insert_raw(
-                    &Cookie::build(("local", local))
-                        .domain("localhost")
-                        .expires(Expiration::Session)
-                        .same_site(SameSite::Strict)
-                        .build(),
-                    &"http://localhost".parse()?,
-                )
-                .with_kind(crate::ErrorKind::Network)?;
+        let mut headers = HeaderMap::new();
+        if is_loopback(&self.rpc_url) {
+            if let Some(auth) = local_auth_header::<RpcContext>().await {
+                headers.insert(AUTHORIZATION, auth);
+            }
         }
         crate::middleware::auth::signature::call_remote(
             self,
             self.rpc_url.clone(),
-            HeaderMap::new(),
-            self.rpc_url.host_str(),
+            headers,
+            self.host_identity.as_deref(),
             method,
             params,
         )
@@ -466,7 +391,7 @@ impl CallRemote<DiagnosticContext> for CliContext {
             self,
             self.rpc_url.clone(),
             HeaderMap::new(),
-            self.rpc_url.host_str(),
+            self.host_identity.as_deref(),
             method,
             params,
         )
@@ -485,7 +410,7 @@ impl CallRemote<InitContext> for CliContext {
             self,
             self.rpc_url.clone(),
             HeaderMap::new(),
-            self.rpc_url.host_str(),
+            self.host_identity.as_deref(),
             method,
             params,
         )
@@ -504,7 +429,7 @@ impl CallRemote<SetupContext> for CliContext {
             self,
             self.rpc_url.clone(),
             HeaderMap::new(),
-            self.rpc_url.host_str(),
+            self.host_identity.as_deref(),
             method,
             params,
         )

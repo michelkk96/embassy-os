@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use axum::extract::ws;
 use clap::Parser;
-use imbl::{HashMap, OrdMap};
+use imbl::OrdMap;
 use imbl_value::InternedString;
 use ipnet::Ipv4Net;
 use itertools::Itertools;
@@ -18,13 +18,11 @@ use tracing::instrument;
 use ts_rs::TS;
 
 use crate::GatewayId;
-use crate::auth::Sessions;
+use crate::auth::AuthKeys;
 use crate::context::CliContext;
 use crate::db::model::public::NetworkInterfaceInfo;
 use crate::prelude::*;
 use crate::rpc_continuations::{Guid, RpcContinuation};
-use crate::sign::AnyVerifyingKey;
-use crate::tunnel::auth::SignerInfo;
 use crate::tunnel::context::TunnelContext;
 use crate::tunnel::migrations;
 use crate::tunnel::web::WebserverInfo;
@@ -39,10 +37,11 @@ pub struct TunnelDatabase {
     #[ts(skip)]
     pub migrations: BTreeSet<InternedString>,
     pub webserver: WebserverInfo,
-    pub sessions: Sessions,
     pub password: Option<String>,
-    #[ts(as = "std::collections::HashMap::<AnyVerifyingKey, SignerInfo>")]
-    pub auth_pubkeys: HashMap<AnyVerifyingKey, SignerInfo>,
+    /// Same key as the StartOS private db, so a 1.1.x db upgrades by serde
+    /// default (empty — everyone signs in again) with no migration.
+    #[serde(default)]
+    pub session_pubkeys: AuthKeys,
     #[ts(as = "std::collections::BTreeMap::<GatewayId, NetworkInterfaceInfo>")]
     pub gateways: OrdMap<GatewayId, NetworkInterfaceInfo>,
     pub wg: WgServer,
@@ -399,7 +398,7 @@ pub fn db_api<C: Context>() -> ParentHandler<C> {
         .subcommand(
             "subscribe",
             from_fn_async(subscribe)
-                .with_metadata("get_session", Value::Bool(true))
+                .with_metadata("get_signer", Value::Bool(true))
                 .no_cli(),
         )
         .subcommand(
@@ -566,8 +565,8 @@ pub struct SubscribeParams {
     #[ts(type = "string | null")]
     pointer: Option<JsonPointer>,
     #[ts(skip)]
-    #[serde(rename = "__Auth_session")]
-    session: Option<InternedString>,
+    #[serde(rename = "__Auth_signer")]
+    signer: Option<InternedString>,
 }
 
 #[derive(Deserialize, Serialize, TS)]
@@ -580,7 +579,7 @@ pub struct SubscribeRes {
 
 pub async fn subscribe(
     ctx: TunnelContext,
-    SubscribeParams { pointer, session }: SubscribeParams,
+    SubscribeParams { pointer, signer }: SubscribeParams,
 ) -> Result<SubscribeRes, Error> {
     let (dump, mut sub) = ctx
         .db
@@ -592,7 +591,7 @@ pub async fn subscribe(
             guid.clone(),
             RpcContinuation::ws_authed(
                 &ctx,
-                session,
+                signer,
                 |mut ws| async move {
                     if let Err(e) = async {
                         loop {

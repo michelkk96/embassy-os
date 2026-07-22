@@ -831,8 +831,8 @@ pub struct AttachParams {
     pub stderr_tty: bool,
     pub pty_size: Option<TermSize>,
     #[ts(skip)]
-    #[serde(rename = "__Auth_session")]
-    session: Option<InternedString>,
+    #[serde(rename = "__Auth_signer")]
+    signer: Option<InternedString>,
     #[ts(type = "string | null")]
     subcontainer: Option<Guid>,
     #[ts(type = "string | null")]
@@ -850,7 +850,7 @@ pub async fn attach(
         tty,
         stderr_tty,
         pty_size,
-        session,
+        signer,
         subcontainer,
         image_id,
         name,
@@ -1161,7 +1161,7 @@ pub async fn attach(
             guid.clone(),
             RpcContinuation::ws_authed(
                 &ctx,
-                session,
+                signer,
                 move |mut ws| async move {
                     if let Err(e) = handler(
                         &mut ws,

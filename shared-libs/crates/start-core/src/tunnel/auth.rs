@@ -1,5 +1,7 @@
+use std::collections::BTreeSet;
+
+use chrono::Utc;
 use clap::Parser;
-use imbl::HashMap;
 use imbl_value::InternedString;
 use itertools::Itertools;
 use patch_db::HasModel;
@@ -7,19 +9,19 @@ use rpc_toolkit::{Context, HandlerArgs, HandlerExt, ParentHandler, from_fn_async
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::auth::{Sessions, check_password};
+use crate::auth::{AuthKeys, LoginContext, Session, check_password};
 use crate::context::CliContext;
 use crate::middleware::auth::DbContext;
 use crate::middleware::auth::local::LocalAuthContext;
-use crate::middleware::auth::session::SessionAuthContext;
-use crate::middleware::auth::signature::SignatureAuthContext;
+use crate::middleware::auth::signature::{
+    LoginMetadata, SignatureAuthContext, check_enrolled, url_host_str,
+};
 use crate::prelude::*;
 use crate::rpc_continuations::OpenAuthedContinuations;
 use crate::sign::AnyVerifyingKey;
 use crate::tunnel::context::TunnelContext;
 use crate::tunnel::db::TunnelDatabase;
 use crate::util::serde::{HandlerExtSerde, display_serializable};
-use crate::util::sync::SyncMutex;
 
 impl DbContext for TunnelContext {
     type Database = TunnelDatabase;
@@ -28,8 +30,33 @@ impl DbContext for TunnelContext {
     }
 }
 impl SignatureAuthContext for TunnelContext {
-    type AdditionalMetadata = ();
-    type CheckPubkeyRes = ();
+    type AdditionalMetadata = LoginMetadata;
+    type CheckPubkeyRes = Option<InternedString>;
+    fn mutate_nonce_cache<
+        F: FnOnce(&mut crate::middleware::auth::signature::NonceCache) -> T,
+        T,
+    >(
+        &self,
+        f: F,
+    ) -> T {
+        self.auth_sig_nonce_cache.mutate(f)
+    }
+    async fn clock_synced(&self) -> bool {
+        true // Assume. Validating VPS clock sync out of scope for now,
+    }
+    fn open_authed_continuations(&self) -> &OpenAuthedContinuations<Option<InternedString>> {
+        &self.open_authed_continuations
+    }
+    fn remove_enrolled_keys(
+        db: &mut Model<Self::Database>,
+        keys: &BTreeSet<InternedString>,
+    ) -> Result<(), Error> {
+        let auth_keys = db.as_session_pubkeys_mut();
+        for key in keys {
+            auth_keys.remove(key)?;
+        }
+        Ok(())
+    }
     async fn sig_context(
         &self,
     ) -> impl IntoIterator<Item = Result<impl AsRef<str> + Send, Error>> + Send {
@@ -37,7 +64,7 @@ impl SignatureAuthContext for TunnelContext {
         peek.as_webserver()
             .as_listen()
             .de()
-            .map(|a| a.as_ref().map(InternedString::from_display))
+            .map(|a| a.as_ref().map(|a| url_host_str(a.ip())))
             .transpose()
             .into_iter()
             .chain(
@@ -63,7 +90,7 @@ impl SignatureAuthContext for TunnelContext {
                                         )),
                                         _ => return None,
                                     };
-                                    Some(InternedString::from_display(&ip))
+                                    Some(url_host_str(ip))
                                 })
                             })
                         })
@@ -74,26 +101,33 @@ impl SignatureAuthContext for TunnelContext {
             )
     }
     fn check_pubkey(
+        &self,
         db: &Model<Self::Database>,
         pubkey: Option<&crate::sign::AnyVerifyingKey>,
-        _: Self::AdditionalMetadata,
+        metadata: Self::AdditionalMetadata,
     ) -> Result<Self::CheckPubkeyRes, Error> {
-        if let Some(pubkey) = pubkey {
-            if db.as_auth_pubkeys().de()?.contains_key(pubkey) {
-                return Ok(());
-            }
-        }
-
-        Err(Error::new(
-            eyre!("Key is not authorized"),
-            ErrorKind::IncorrectPassword,
-        ))
+        check_enrolled(pubkey, metadata.login, |key| {
+            Ok(db.as_session_pubkeys().de()?.0.contains_key(&**key))
+        })
     }
     async fn post_auth_hook(
         &self,
-        _: Self::CheckPubkeyRes,
+        key: Self::CheckPubkeyRes,
         _: &rpc_toolkit::RpcRequest,
     ) -> Result<(), Error> {
+        if let Some(key) = key {
+            self.db
+                .mutate(|db| {
+                    db.as_session_pubkeys_mut().mutate(|keys| {
+                        if let Some(info) = keys.0.get_mut(&*key) {
+                            info.last_active = Utc::now();
+                        }
+                        Ok(())
+                    })
+                })
+                .await
+                .result?;
+        }
         Ok(())
     }
 }
@@ -101,15 +135,9 @@ impl LocalAuthContext for TunnelContext {
     const LOCAL_AUTH_COOKIE_PATH: &str = "/run/startos/tunnel.authcookie";
     const LOCAL_AUTH_COOKIE_OWNERSHIP: &str = "root:root";
 }
-impl SessionAuthContext for TunnelContext {
-    fn access_sessions(db: &mut Model<Self::Database>) -> &mut Model<crate::auth::Sessions> {
-        db.as_sessions_mut()
-    }
-    fn ephemeral_sessions(&self) -> &SyncMutex<Sessions> {
-        &self.ephemeral_sessions
-    }
-    fn open_authed_continuations(&self) -> &OpenAuthedContinuations<Option<InternedString>> {
-        &self.open_authed_continuations
+impl LoginContext for TunnelContext {
+    fn access_auth_keys(db: &mut Model<Self::Database>) -> &mut Model<AuthKeys> {
+        db.as_session_pubkeys_mut()
     }
     fn check_password(db: &Model<Self::Database>, password: &str) -> Result<(), Error> {
         check_password(&db.as_password().de()?.unwrap_or_default(), password)
@@ -170,8 +198,8 @@ pub fn auth_api<C: Context>() -> ParentHandler<C> {
                             }
                             let mut table = Table::new();
                             table.add_row(row![bc => "NAME", "KEY"]);
-                            for (key, info) in res {
-                                table.add_row(row![info.name, key]);
+                            for (key, info) in res.0 {
+                                table.add_row(row![info.name.as_deref().unwrap_or("-"), key]);
                             }
                             table.print_tty(false)?;
                             Ok(())
@@ -197,8 +225,14 @@ pub async fn add_key(
 ) -> Result<(), Error> {
     ctx.db
         .mutate(|db| {
-            db.as_auth_pubkeys_mut().mutate(|auth_pubkeys| {
-                auth_pubkeys.insert(key, SignerInfo { name });
+            db.as_session_pubkeys_mut().mutate(|session_pubkeys| {
+                session_pubkeys.0.insert(
+                    key.interned_pem(),
+                    Session {
+                        name: Some(name),
+                        ..Default::default()
+                    },
+                );
                 Ok(())
             })
         })
@@ -217,18 +251,12 @@ pub async fn remove_key(
     ctx: TunnelContext,
     RemoveKeyParams { key }: RemoveKeyParams,
 ) -> Result<(), Error> {
-    ctx.db
-        .mutate(|db| {
-            db.as_auth_pubkeys_mut()
-                .mutate(|auth_pubkeys| Ok(auth_pubkeys.remove(&key)))
-        })
-        .await
-        .result?;
+    ctx.unenroll([key.interned_pem()]).await?;
     Ok(())
 }
 
-pub async fn list_keys(ctx: TunnelContext) -> Result<HashMap<AnyVerifyingKey, SignerInfo>, Error> {
-    ctx.db.peek().await.into_auth_pubkeys().de()
+pub async fn list_keys(ctx: TunnelContext) -> Result<AuthKeys, Error> {
+    ctx.db.peek().await.into_session_pubkeys().de()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, TS)]

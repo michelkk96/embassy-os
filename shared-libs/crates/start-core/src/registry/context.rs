@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -5,8 +6,8 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use clap::Parser;
-use cookie::{Cookie, Expiration, SameSite};
 use http::HeaderMap;
+use http::header::AUTHORIZATION;
 use imbl::OrdMap;
 use imbl_value::InternedString;
 use patch_db::PatchDb;
@@ -24,16 +25,16 @@ use url::Url;
 use crate::context::config::{CONFIG_PATH, ContextConfig};
 use crate::context::{CliContext, RpcContext};
 use crate::middleware::auth::DbContext;
-use crate::middleware::auth::local::LocalAuthContext;
-use crate::middleware::auth::signature::SignatureAuthContext;
+use crate::middleware::auth::local::{LocalAuthContext, is_loopback, local_auth_header};
+use crate::middleware::auth::signature::{NonceCache, SignatureAuthContext};
 use crate::prelude::*;
 use crate::registry::RegistryDatabase;
 use crate::registry::device_info::{DEVICE_INFO_HEADER, DeviceInfo};
 use crate::registry::migrations::run_migrations;
 use crate::registry::signer::SignerInfo;
-use crate::rpc_continuations::RpcContinuations;
+use crate::rpc_continuations::{OpenAuthedContinuations, RpcContinuations};
 use crate::sign::AnyVerifyingKey;
-use crate::util::io::{append_file, read_file_to_string};
+use crate::util::io::append_file;
 use crate::util::sync::SyncMutex;
 
 const DEFAULT_REGISTRY_LISTEN: SocketAddr =
@@ -86,6 +87,8 @@ pub struct RegistryContextSeed {
     pub db: TypedPatchDb<RegistryDatabase>,
     pub datadir: PathBuf,
     pub rpc_continuations: RpcContinuations,
+    pub open_authed_continuations: OpenAuthedContinuations<Option<InternedString>>,
+    pub auth_sig_nonce_cache: SyncMutex<NonceCache>,
     pub client: Client,
     pub shutdown: Sender<()>,
     pub metrics_db: SyncMutex<Connection>,
@@ -154,6 +157,8 @@ impl RegistryContext {
             db,
             datadir,
             rpc_continuations: RpcContinuations::new(),
+            open_authed_continuations: OpenAuthedContinuations::new(),
+            auth_sig_nonce_cache: SyncMutex::new(Default::default()),
             client: Client::builder()
                 .proxy(Proxy::custom(move |url| {
                     if url.host_str().map_or(false, |h| h.ends_with(".onion")) {
@@ -198,11 +203,11 @@ impl CallRemote<RegistryContext> for CliContext {
         params: Value,
         _: Empty,
     ) -> Result<Value, RpcError> {
-        let cookie = read_file_to_string(RegistryContext::LOCAL_AUTH_COOKIE_PATH).await;
+        let local_auth = local_auth_header::<RegistryContext>().await;
 
         let url = if let Some(url) = self.registry_url.clone() {
             url
-        } else if cookie.is_ok() || !self.registry_hostname.is_empty() {
+        } else if local_auth.is_some() || !self.registry_hostname.is_empty() {
             let mut url: Url = format!(
                 "http://{}",
                 self.registry_listen.unwrap_or(DEFAULT_REGISTRY_LISTEN)
@@ -223,24 +228,11 @@ impl CallRemote<RegistryContext> for CliContext {
             .into());
         };
 
-        if let Ok(local) = cookie {
-            let cookie_url = match url.host() {
-                Some(url::Host::Ipv4(ip)) if ip.is_loopback() => url.clone(),
-                Some(url::Host::Ipv6(ip)) if ip.is_loopback() => url.clone(),
-                _ => format!("http://{DEFAULT_REGISTRY_LISTEN}").parse()?,
-            };
-            self.cookie_store
-                .lock()
-                .unwrap()
-                .insert_raw(
-                    &Cookie::build(("local", local))
-                        .domain(cookie_url.host_str().unwrap_or("localhost"))
-                        .expires(Expiration::Session)
-                        .same_site(SameSite::Strict)
-                        .build(),
-                    &cookie_url,
-                )
-                .with_kind(crate::ErrorKind::Network)?;
+        let mut headers = HeaderMap::new();
+        if is_loopback(&url) {
+            if let Some(auth) = local_auth {
+                headers.insert(AUTHORIZATION, auth);
+            }
         }
 
         method = method.strip_prefix("registry.").unwrap_or(method);
@@ -253,7 +245,7 @@ impl CallRemote<RegistryContext> for CliContext {
         crate::middleware::auth::signature::call_remote(
             self,
             url,
-            HeaderMap::new(),
+            headers,
             sig_context.as_deref(),
             method,
             params,
@@ -364,12 +356,34 @@ impl LocalAuthContext for RegistryContext {
 impl SignatureAuthContext for RegistryContext {
     type AdditionalMetadata = RegistryAuthMetadata;
     type CheckPubkeyRes = Option<(AnyVerifyingKey, SignerInfo)>;
+    fn mutate_nonce_cache<F: FnOnce(&mut NonceCache) -> T, T>(&self, f: F) -> T {
+        self.auth_sig_nonce_cache.mutate(f)
+    }
+    async fn clock_synced(&self) -> bool {
+        true // Assume. Validating registry clock sync out of scope for now,
+    }
+    fn open_authed_continuations(&self) -> &OpenAuthedContinuations<Option<InternedString>> {
+        &self.open_authed_continuations
+    }
+    fn remove_enrolled_keys(
+        db: &mut Model<Self::Database>,
+        keys: &BTreeSet<InternedString>,
+    ) -> Result<(), Error> {
+        for (_, signer) in db.as_index_mut().as_signers_mut().as_entries_mut()? {
+            signer.as_keys_mut().mutate(|signer_keys| {
+                signer_keys.retain(|k| !keys.contains(&*k.interned_pem()));
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
     async fn sig_context(
         &self,
     ) -> impl IntoIterator<Item = Result<impl AsRef<str> + Send, Error>> + Send {
         self.hostnames.iter().map(Ok)
     }
     fn check_pubkey(
+        &self,
         db: &Model<Self::Database>,
         pubkey: Option<&AnyVerifyingKey>,
         metadata: Self::AdditionalMetadata,

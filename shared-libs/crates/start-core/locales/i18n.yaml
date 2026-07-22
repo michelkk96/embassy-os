@@ -2559,12 +2559,12 @@ context.cli.pkcs8-key-incorrect-length:
   fr_FR: "la clé pkcs8 a une longueur incorrecte"
   pl_PL: "klucz pkcs8 ma nieprawidłową długość"
 
-context.cli.developer-key-does-not-exist:
-  en_US: "Developer Key does not exist! Please run `start-cli init-key` before running this command."
-  de_DE: "Entwicklerschlüssel existiert nicht! Bitte führen Sie `start-cli init-key` aus, bevor Sie diesen Befehl ausführen."
-  es_ES: "¡La clave de desarrollador no existe! Por favor ejecute `start-cli init-key` antes de ejecutar este comando."
-  fr_FR: "La clé développeur n'existe pas ! Veuillez exécuter `start-cli init-key` avant d'exécuter cette commande."
-  pl_PL: "Klucz programisty nie istnieje! Proszę uruchomić `start-cli init-key` przed wykonaniem tego polecenia."
+context.cli.id-key-does-not-exist:
+  en_US: "Identity key does not exist! Please run `start-cli init-key` before running this command."
+  de_DE: "Identitätsschlüssel existiert nicht! Bitte führen Sie `start-cli init-key` aus, bevor Sie diesen Befehl ausführen."
+  es_ES: "¡La clave de identidad no existe! Por favor ejecute `start-cli init-key` antes de ejecutar este comando."
+  fr_FR: "La clé d'identité n'existe pas ! Veuillez exécuter `start-cli init-key` avant d'exécuter cette commande."
+  pl_PL: "Klucz tożsamości nie istnieje! Proszę uruchomić `start-cli init-key` przed wykonaniem tego polecenia."
 
 context.cli.cannot-parse-scheme-from-base-url:
   en_US: "Cannot parse scheme from base URL"
@@ -2687,6 +2687,20 @@ middleware.auth.rate-limited-login:
   fr_FR: "Veuillez limiter les tentatives de connexion à 3 par 20 secondes."
   pl_PL: "Proszę ograniczyć próby logowania do 3 na 20 sekund."
 
+middleware.auth.ephemeral-unsupported:
+  en_US: "Ephemeral sign-in is not supported by this server."
+  de_DE: "Flüchtige Anmeldung wird von diesem Server nicht unterstützt."
+  es_ES: "El inicio de sesión efímero no es compatible con este servidor."
+  fr_FR: "La connexion éphémère n'est pas prise en charge par ce serveur."
+  pl_PL: "Logowanie efemeryczne nie jest obsługiwane przez ten serwer."
+
+middleware.auth.enrolled-key-mismatch:
+  en_US: "The enrolled key must match the key the login request was signed with."
+  de_DE: "Der registrierte Schlüssel muss mit dem Schlüssel übereinstimmen, mit dem die Anmeldeanfrage signiert wurde."
+  es_ES: "La clave inscrita debe coincidir con la clave con la que se firmó la solicitud de inicio de sesión."
+  fr_FR: "La clé enregistrée doit correspondre à la clé avec laquelle la demande de connexion a été signée."
+  pl_PL: "Zarejestrowany klucz musi być zgodny z kluczem, którym podpisano żądanie logowania."
+
 # middleware/auth/signature.rs
 middleware.auth.key-not-authorized:
   en_US: "Key is not authorized"
@@ -2702,19 +2716,19 @@ middleware.auth.replay-attack-detected:
   fr_FR: "attaque par rejeu détectée"
   pl_PL: "wykryto atak powtórzeniowy"
 
-middleware.auth.no-valid-sig-context:
-  en_US: "no valid signature context available to verify"
-  de_DE: "kein gültiger Signaturkontext zur Verifizierung verfügbar"
-  es_ES: "no hay contexto de firma válido disponible para verificar"
-  fr_FR: "aucun contexte de signature valide disponible pour vérifier"
-  pl_PL: "brak prawidłowego kontekstu podpisu do weryfikacji"
+middleware.auth.invalid-request-signature:
+  en_US: "invalid request signature: not valid for any identity this server recognizes (hostname, domain, or IP address); the request was likely signed for a different server identity or by an incompatible client"
+  de_DE: "ungültige Anfragesignatur: für keine Identität gültig, die dieser Server kennt (Hostname, Domain oder IP-Adresse); die Anfrage wurde wahrscheinlich für eine andere Serveridentität oder von einem inkompatiblen Client signiert"
+  es_ES: "firma de solicitud no válida: no es válida para ninguna identidad que este servidor reconozca (nombre de host, dominio o dirección IP); probablemente la solicitud se firmó para una identidad de servidor diferente o con un cliente incompatible"
+  fr_FR: "signature de requête invalide : invalide pour toute identité reconnue par ce serveur (nom d'hôte, domaine ou adresse IP) ; la requête a probablement été signée pour une identité de serveur différente ou par un client incompatible"
+  pl_PL: "nieprawidłowy podpis żądania: nieważny dla żadnej tożsamości rozpoznawanej przez ten serwer (nazwa hosta, domena lub adres IP); żądanie zostało prawdopodobnie podpisane dla innej tożsamości serwera lub przez niezgodnego klienta"
 
 middleware.auth.timestamp-not-within-30s:
-  en_US: "timestamp not within 30s of now"
-  de_DE: "Zeitstempel nicht innerhalb von 30s der aktuellen Zeit"
-  es_ES: "la marca de tiempo no está dentro de 30s del momento actual"
-  fr_FR: "l'horodatage n'est pas dans les 30s de maintenant"
-  pl_PL: "znacznik czasu nie mieści się w 30s od teraz"
+  en_US: "timestamp not within 30s of now; check this device's clock and the server's clock"
+  de_DE: "Zeitstempel nicht innerhalb von 30s der aktuellen Zeit; prüfen Sie die Uhr dieses Geräts und die des Servers"
+  es_ES: "la marca de tiempo no está dentro de 30s del momento actual; compruebe el reloj de este dispositivo y el del servidor"
+  fr_FR: "l'horodatage n'est pas dans les 30s de maintenant ; vérifiez l'horloge de cet appareil et celle du serveur"
+  pl_PL: "znacznik czasu nie mieści się w 30s od teraz; sprawdź zegar tego urządzenia i serwera"
 
 middleware.auth.unknown-content-type:
   en_US: "unknown content type"
@@ -3157,13 +3171,6 @@ help.arg.container-name:
   fr_FR: "Nom du conteneur"
   pl_PL: "Nazwa kontenera"
 
-help.arg.cookie-path:
-  en_US: "Path to cookie file"
-  de_DE: "Pfad zur Cookie-Datei"
-  es_ES: "Ruta al archivo de cookies"
-  fr_FR: "Chemin vers le fichier de cookies"
-  pl_PL: "Ścieżka do pliku cookie"
-
 help.arg.data-directory:
   en_US: "Path to data directory"
   de_DE: "Pfad zum Datenverzeichnis"
@@ -3192,12 +3199,12 @@ help.arg.destination-path:
   fr_FR: "Chemin de destination pour le téléchargement"
   pl_PL: "Ścieżka docelowa do pobrania"
 
-help.arg.developer-key-path:
-  en_US: "Path to developer signing key"
-  de_DE: "Pfad zum Entwickler-Signaturschlüssel"
-  es_ES: "Ruta a la clave de firma del desarrollador"
-  fr_FR: "Chemin vers la clé de signature du développeur"
-  pl_PL: "Ścieżka do klucza podpisu dewelopera"
+help.arg.id-key-path:
+  en_US: "Path to identity signing key"
+  de_DE: "Pfad zum Identitäts-Signaturschlüssel"
+  es_ES: "Ruta a la clave de firma de identidad"
+  fr_FR: "Chemin vers la clé de signature d'identité"
+  pl_PL: "Ścieżka do klucza podpisu tożsamości"
 
 help.arg.disable-encryption:
   en_US: "Disable trivial LUKS encryption"
@@ -5134,12 +5141,12 @@ about.create-backup-all-packages:
   fr_FR: "Créer une sauvegarde de tous les packages"
   pl_PL: "Utwórz kopię zapasową wszystkich pakietów"
 
-about.create-developer-key:
-  en_US: "Create a new developer key"
-  de_DE: "Erstelle einen neuen Entwicklerschlüssel"
-  es_ES: "Crear una nueva clave de desarrollador"
-  fr_FR: "Créer une nouvelle clé de développeur"
-  pl_PL: "Utwórz nowy klucz deweloperski"
+about.create-id-key:
+  en_US: "Create a new identity key"
+  de_DE: "Erstelle einen neuen Identitätsschlüssel"
+  es_ES: "Crear una nueva clave de identidad"
+  fr_FR: "Créer une nouvelle clé d'identité"
+  pl_PL: "Utwórz nowy klucz tożsamości"
 
 about.delete-legacy-backup:
   en_US: "Delete the legacy (V1) backup from a backup target; its space is reclaimed in the background"
@@ -5470,19 +5477,19 @@ about.get-certificate-for-webserver:
   fr_FR: "Obtenir le certificat du serveur web"
   pl_PL: "Pobierz certyfikat dla serwera internetowego"
 
-about.get-developer-pubkey:
-  en_US: "Get the developer public key"
-  de_DE: "Öffentlichen Entwicklerschlüssel abrufen"
-  es_ES: "Obtener la clave pública del desarrollador"
-  fr_FR: "Obtenir la clé publique du développeur"
-  pl_PL: "Pobierz klucz publiczny dewelopera"
-
 about.get-device-info:
   en_US: "Display device information"
   de_DE: "Geräteinformationen anzeigen"
   es_ES: "Mostrar información del dispositivo"
   fr_FR: "Afficher les informations de l'appareil"
   pl_PL: "Wyświetl informacje o urządzeniu"
+
+about.get-id-pubkey:
+  en_US: "Get the identity public key"
+  de_DE: "Öffentlichen Identitätsschlüssel abrufen"
+  es_ES: "Obtener la clave pública de identidad"
+  fr_FR: "Obtenir la clé publique d'identité"
+  pl_PL: "Pobierz klucz publiczny tożsamości"
 
 about.get-initialization-progress:
   en_US: "Get initialization progress"

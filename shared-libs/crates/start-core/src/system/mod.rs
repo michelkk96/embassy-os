@@ -620,13 +620,13 @@ pub struct MetricsFollowResponse {
 #[command(rename_all = "kebab-case")]
 pub struct MetricsFollowParams {
     #[ts(skip)]
-    #[serde(rename = "__auth_session")] // from Auth middleware
-    session: Option<InternedString>,
+    #[serde(rename = "__Auth_signer")] // from Auth middleware
+    signer: Option<InternedString>,
 }
 
 pub async fn metrics_follow(
     ctx: RpcContext,
-    MetricsFollowParams { session }: MetricsFollowParams,
+    MetricsFollowParams { signer }: MetricsFollowParams,
 ) -> Result<MetricsFollowResponse, Error> {
     let mut local_cache = ctx.metrics_cache.clone();
     let metrics = local_cache
@@ -638,7 +638,7 @@ pub async fn metrics_follow(
             guid.clone(),
             RpcContinuation::ws_authed(
                 ctx.clone(),
-                session,
+                signer,
                 |mut ws| async move {
                     let res = async {
                         loop {

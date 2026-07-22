@@ -2,6 +2,7 @@ import { DOCUMENT, inject, Injectable } from '@angular/core'
 import { blake3 } from '@noble/hashes/blake3'
 import { GetPackageRes, GetPackagesRes } from '@start9labs/marketplace'
 import {
+  AuthKeyService,
   FullKeyboard,
   HttpOptions,
   HttpService,
@@ -46,6 +47,7 @@ export class LiveApiService extends ApiService {
   private readonly document = inject(DOCUMENT)
   private readonly http = inject(HttpService)
   private readonly auth = inject(AuthService)
+  private readonly authKeys = inject(AuthKeyService)
   private readonly cache$ = inject<Observable<Dump<DataModel>>>(PATCH_CACHE)
 
   constructor() {
@@ -749,7 +751,20 @@ export class LiveApiService extends ApiService {
     options: RPCOptions,
     urlOverride?: string,
   ): Promise<T> {
-    const res = await this.http.rpcRequest<T>(options, urlOverride)
+    // A foreign origin must never receive our signature (or a signed message
+    // valid at home); the only overridden call, `echo`, is unauthenticated.
+    const res = await this.http.rpcRequest<T>(
+      urlOverride
+        ? options
+        : {
+            ...options,
+            headers: {
+              ...options.headers,
+              ...(await this.authKeys.signRpcHeaders(options)),
+            },
+          },
+      urlOverride,
+    )
     const body = res.body
 
     if (isRpcError(body)) {
@@ -770,6 +785,17 @@ export class LiveApiService extends ApiService {
   }
 
   private async httpRequest<T>(opts: HttpOptions): Promise<T> {
+    // Static package assets are authorized; continuation endpoints (uploads,
+    // websockets) authenticate by capability URL and need no signature.
+    if (opts.url.startsWith('/s9pk')) {
+      opts = {
+        ...opts,
+        headers: {
+          ...opts.headers,
+          ...(await this.authKeys.signHeader(new Uint8Array(0))),
+        },
+      }
+    }
     const res = await this.http.httpRequest<T>(opts)
     if (res.headers.get('Repr-Digest')) {
       // verify

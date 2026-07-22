@@ -1,12 +1,12 @@
 use base64::Engine;
-use basic_cookies::Cookie;
 use http::HeaderValue;
-use http::header::COOKIE;
+use http::header::AUTHORIZATION;
 use rand::random;
 use rpc_toolkit::yajrc::{RpcError, RpcResponse};
 use rpc_toolkit::{Context, Empty, Middleware};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use url::Url;
 
 use crate::context::RpcContext;
 use crate::prelude::*;
@@ -39,6 +39,27 @@ impl LocalAuthContext for RpcContext {
     const LOCAL_AUTH_COOKIE_OWNERSHIP: &str = "root:startos";
 }
 
+/// Whether `url` names the local machine — the only hosts the local auth
+/// token may be sent to.
+pub fn is_loopback(url: &Url) -> bool {
+    match url.host() {
+        Some(url::Host::Domain(host)) => host == "localhost",
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
+}
+
+/// `Authorization: Bearer` header carrying the server's local auth token, if
+/// this process can read it (i.e. it runs on the server itself). Only attach
+/// this to requests bound for a loopback address ([`is_loopback`]).
+pub async fn local_auth_header<C: LocalAuthContext>() -> Option<HeaderValue> {
+    let token = read_file_to_string(C::LOCAL_AUTH_COOKIE_PATH).await.ok()?;
+    let mut header = HeaderValue::from_str(&format!("Bearer {token}")).ok()?;
+    header.set_sensitive(true);
+    Some(header)
+}
+
 fn unauthorized() -> Error {
     Error::new(
         eyre!("{}", t!("middleware.auth.unauthorized")),
@@ -47,37 +68,28 @@ fn unauthorized() -> Error {
 }
 
 async fn check_from_header<C: LocalAuthContext>(header: Option<&HeaderValue>) -> Result<(), Error> {
-    if let Some(cookie_header) = header {
-        let cookies = Cookie::parse(
-            cookie_header
-                .to_str()
-                .with_kind(crate::ErrorKind::Authorization)?,
-        )
-        .with_kind(crate::ErrorKind::Authorization)?;
-        if let Some(cookie) = cookies.iter().find(|c| c.get_name() == "local") {
-            return check_cookie::<C>(cookie).await;
+    if let Some(bearer) = header
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+    {
+        if let Ok(token) = read_file_to_string(C::LOCAL_AUTH_COOKIE_PATH).await {
+            if bearer == &*token {
+                return Ok(());
+            }
         }
     }
-    Err(unauthorized())
-}
-
-async fn check_cookie<C: LocalAuthContext>(local: &Cookie<'_>) -> Result<(), Error> {
-    if let Ok(token) = read_file_to_string(C::LOCAL_AUTH_COOKIE_PATH).await {
-        if local.get_value() == &*token {
-            return Ok(());
-        }
-    }
-
     Err(unauthorized())
 }
 
 #[derive(Clone)]
 pub struct LocalAuth {
-    cookie: Option<HeaderValue>,
+    authorization: Option<HeaderValue>,
 }
 impl LocalAuth {
     pub fn new() -> Self {
-        Self { cookie: None }
+        Self {
+            authorization: None,
+        }
     }
 }
 
@@ -88,7 +100,7 @@ impl<C: LocalAuthContext> Middleware<C> for LocalAuth {
         _: &C,
         request: &mut axum::extract::Request,
     ) -> Result<(), axum::response::Response> {
-        self.cookie = request.headers().get(COOKIE).cloned();
+        self.authorization = request.headers().get(AUTHORIZATION).cloned();
         Ok(())
     }
     async fn process_rpc_request(
@@ -97,7 +109,7 @@ impl<C: LocalAuthContext> Middleware<C> for LocalAuth {
         _: Self::Metadata,
         _: &mut rpc_toolkit::RpcRequest,
     ) -> Result<(), rpc_toolkit::RpcResponse> {
-        check_from_header::<C>(self.cookie.as_ref())
+        check_from_header::<C>(self.authorization.as_ref())
             .await
             .map_err(|e| RpcResponse::from(RpcError::from(e)))
     }

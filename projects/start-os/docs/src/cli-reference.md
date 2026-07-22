@@ -16,20 +16,19 @@ These apply to all subcommands.
 - `--s9pk-s3bucket <BUCKET>` — S3 bucket for publishing
 - `-t, --tunnel <URL>` — Tunnel server address
 - `-p, --proxy <URL>` — HTTP/SOCKS proxy
-- `--cookie-path <PATH>` — Cookie file path
-- `--developer-key-path <PATH>` — Developer signing key path
+- `--id-key-path <PATH>` — Identity signing key path (`--developer-key-path` is accepted as an alias)
 
 ## Authentication
 
-Log in, log out, manage sessions, and reset the master password.
+Log in, log out, manage enrolled device keys, and reset the master password.
 
 ### `start-cli auth login`
 
-Log in and create an authenticated session. Required before running any commands against a remote server.
+Log in and enroll this device's signing key. Required before running any commands against a remote server.
 
 ### `start-cli auth logout <SESSION>`
 
-End a specific authentication session.
+Remove an enrolled device key.
 
 ### `start-cli auth reset-password`
 
@@ -41,13 +40,13 @@ Retrieve the server's public key.
 
 ### `start-cli auth session list`
 
-List all active sessions.
+List all enrolled device keys.
 
 - `--format` — Output format
 
 ### `start-cli auth session kill [IDS...]`
 
-Terminate one or more sessions.
+Remove one or more enrolled device keys.
 
 ## Server
 

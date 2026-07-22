@@ -60,7 +60,7 @@ pub fn db<C: Context>() -> ParentHandler<C> {
         .subcommand(
             "subscribe",
             from_fn_async(subscribe)
-                .with_metadata("get_session", Value::Bool(true))
+                .with_metadata("get_signer", Value::Bool(true))
                 .no_cli(),
         )
         .subcommand(
@@ -152,8 +152,8 @@ pub struct SubscribeParams {
     #[ts(type = "string | null")]
     pointer: Option<JsonPointer>,
     #[ts(skip)]
-    #[serde(rename = "__Auth_session")]
-    session: Option<InternedString>,
+    #[serde(rename = "__Auth_signer")]
+    signer: Option<InternedString>,
 }
 
 #[derive(Deserialize, Serialize, TS)]
@@ -203,7 +203,7 @@ impl DbSubscriber {
 
 pub async fn subscribe(
     ctx: RpcContext,
-    SubscribeParams { pointer, session }: SubscribeParams,
+    SubscribeParams { pointer, signer }: SubscribeParams,
 ) -> Result<SubscribeRes, Error> {
     let (dump, sub) = ctx
         .db
@@ -220,7 +220,7 @@ pub async fn subscribe(
             guid.clone(),
             RpcContinuation::ws_authed(
                 &ctx,
-                session,
+                signer,
                 |mut ws| async move {
                     if let Err(e) = async {
                         loop {

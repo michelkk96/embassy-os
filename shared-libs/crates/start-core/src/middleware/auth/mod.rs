@@ -6,13 +6,11 @@ use serde::Deserialize;
 use crate::context::RpcContext;
 use crate::db::model::Database;
 use crate::middleware::auth::local::{LocalAuth, LocalAuthContext};
-use crate::middleware::auth::session::{SessionAuth, SessionAuthContext};
 use crate::middleware::auth::signature::{SignatureAuth, SignatureAuthContext};
 use crate::prelude::*;
 use crate::util::serde::const_true;
 
 pub mod local;
-pub mod session;
 pub mod signature;
 
 pub trait DbContext: Context {
@@ -52,12 +50,6 @@ impl<C: LocalAuthContext> Auth<C> {
 impl<C: SignatureAuthContext> Auth<C> {
     pub fn with_signature_auth(mut self) -> Self {
         self.0.push(DynMiddleware::new(SignatureAuth::new()));
-        self
-    }
-}
-impl<C: SessionAuthContext> Auth<C> {
-    pub fn with_session_auth(mut self) -> Self {
-        self.0.push(DynMiddleware::new(SessionAuth::new()));
         self
     }
 }

@@ -183,10 +183,9 @@ pub struct ClientConfig {
     pub proxy: Option<Url>,
     #[arg(skip)]
     pub socks_listen: Option<SocketAddr>,
-    #[arg(long, help = "help.arg.cookie-path")]
-    pub cookie_path: Option<PathBuf>,
-    #[arg(long, help = "help.arg.developer-key-path")]
-    pub developer_key_path: Option<PathBuf>,
+    #[serde(alias = "developer-key-path")]
+    #[arg(long, alias = "developer-key-path", help = "help.arg.id-key-path")]
+    pub id_key_path: Option<PathBuf>,
     /// PEM-encoded root CA certificate(s) to trust when talking to a
     /// StartOS server with a self-signed cert (e.g. immediately after
     /// `setup complete`, before the device's CA has been imported into
@@ -219,8 +218,7 @@ impl ContextConfig for ClientConfig {
         self.tunnel_listen = self.tunnel_listen.take().or(other.tunnel_listen);
         self.proxy = self.proxy.take().or(other.proxy);
         self.socks_listen = self.socks_listen.take().or(other.socks_listen);
-        self.cookie_path = self.cookie_path.take().or(other.cookie_path);
-        self.developer_key_path = self.developer_key_path.take().or(other.developer_key_path);
+        self.id_key_path = self.id_key_path.take().or(other.id_key_path);
         self.root_ca = self.root_ca.take().or(other.root_ca);
         self.insecure = self.insecure || other.insecure;
     }
@@ -235,7 +233,7 @@ impl ClientConfig {
         self.load_path_rec(path)?;
         if let Some(workspace) = find_workspace_config()? {
             // Only its `host`/`registry` profiles — a workspace found by walking up from
-            // cwd must not reach into TLS, proxy, signing-key or cookie settings just
+            // cwd must not reach into TLS, proxy or signing-key settings just
             // because you `cd`'d into its tree (unlike the fixed-path files below, which
             // you own and which `merge_with` folds in whole).
             merge_profiles(&mut self.host, workspace.host);
@@ -322,8 +320,9 @@ pub struct ServerConfig {
     pub disable_encryption: Option<bool>,
     #[arg(long, help = "help.arg.multi-arch-s9pks")]
     pub multi_arch_s9pks: Option<bool>,
-    #[arg(long, help = "help.arg.developer-key-path")]
-    pub developer_key_path: Option<PathBuf>,
+    #[serde(alias = "developer-key-path")]
+    #[arg(long, alias = "developer-key-path", help = "help.arg.id-key-path")]
+    pub id_key_path: Option<PathBuf>,
     #[arg(long, help = "help.arg.max-proxy-conns-per-target")]
     pub max_proxy_conns_per_target: Option<usize>,
 }
@@ -339,7 +338,7 @@ impl ContextConfig for ServerConfig {
             .or(other.revision_cache_size);
         self.disable_encryption = self.disable_encryption.take().or(other.disable_encryption);
         self.multi_arch_s9pks = self.multi_arch_s9pks.take().or(other.multi_arch_s9pks);
-        self.developer_key_path = self.developer_key_path.take().or(other.developer_key_path);
+        self.id_key_path = self.id_key_path.take().or(other.id_key_path);
         self.max_proxy_conns_per_target = self
             .max_proxy_conns_per_target
             .take()

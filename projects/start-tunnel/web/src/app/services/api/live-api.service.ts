@@ -1,5 +1,6 @@
 import { DOCUMENT, inject, Injectable } from '@angular/core'
 import {
+  AuthKeyService,
   HttpService,
   isRpcError,
   RpcError,
@@ -19,6 +20,7 @@ export class LiveApiService extends ApiService {
   private readonly http = inject(HttpService)
   private readonly document = inject(DOCUMENT)
   private readonly auth = inject(AuthService)
+  private readonly authKeys = inject(AuthKeyService)
   private readonly cache$ = inject(PATCH_CACHE)
 
   constructor() {
@@ -40,7 +42,7 @@ export class LiveApiService extends ApiService {
 
   // auth
 
-  async login(params: T.Tunnel.SetPasswordParams): Promise<null> {
+  async login(params: T.LoginParams): Promise<null> {
     return this.rpcRequest({ method: 'auth.login', params })
   }
 
@@ -214,13 +216,26 @@ export class LiveApiService extends ApiService {
     options: RPCOptions,
     urlOverride?: string,
   ): Promise<T> {
-    const res = await this.http.rpcRequest<T>(options, urlOverride)
+    // A foreign origin must never receive our signature (or a signed message
+    // valid at home).
+    const res = await this.http.rpcRequest<T>(
+      urlOverride
+        ? options
+        : {
+            ...options,
+            headers: {
+              ...options.headers,
+              ...(await this.authKeys.signRpcHeaders(options)),
+            },
+          },
+      urlOverride,
+    )
     const body = res.body
 
     if (isRpcError(body)) {
       if (body.error.code === 34) {
         console.error('Unauthenticated, logging out')
-        this.auth.authenticated.set(false)
+        this.auth.deauthenticate()
       }
       throw new RpcError(body.error)
     }

@@ -5,7 +5,28 @@ All notable changes to StartTunnel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.3]
+## [1.2.0]
+
+### Changed
+
+- **Web UI and CLI authentication moved from session cookies to per-device
+  signing keys.** Logging in now enrolls an Ed25519 public key with the
+  server, and every API request is signed with the matching key instead of
+  carrying a session cookie. Enrolled keys appear in the key list with their
+  user agent and last-active time, and `auth session` commands now manage
+  enrolled keys. All existing sessions are signed out on upgrade — sign in
+  again on each device. Request signatures are bound to a server identity;
+  IPv6 addresses from the TLS certificate's SANs count in their URL form
+  (`[...]`), matching how clients actually address the server. HTTP cookies
+  are gone from the API entirely: the server no longer sets or reads any
+  cookie, and the `start-tunnel` CLI run on the server itself presents the
+  local authcookie as an `Authorization: Bearer` header instead of a `Cookie`
+  (its `--cookie-path` flag is removed).
+
+  The device key is a non-extractable WebCrypto key held in IndexedDB: page
+  scripts can sign with it while the page is open, but can never read the key
+  material out. Logging in requires a browser with Ed25519 WebCrypto support —
+  any evergreen browser (Safari 17, Firefox 130, Chrome/Edge 137, or newer).
 
 ### Added
 
@@ -23,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in place, so the port stayed open to the fallback device until its lease
   lapsed (up to an hour). Both delete paths now clear the fallback immediately;
   named SNI routes on the port are unaffected.
+
+### Security
+
+- **The web UI ships a strict Content-Security-Policy.** Every response from
+  the UI origin now carries a CSP restricting scripts and network connections
+  to the server's own origin (no framing, no plugin content), plus
+  `X-Content-Type-Options: nosniff`. A script injection that slips into the
+  page can no longer pull in outside code or exfiltrate to a foreign host.
 
 ### Documentation
 

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.3]
 
+### Added
+
+- **DNS over the tunnel's IPv6.** Each subnet's DNS proxy now also listens on
+  the server's IPv6 address out of the subnet's delegated prefix, and RFC 2136
+  injection is authorized for a device's tunnel IPv6 on the same terms as its
+  IPv4 — so a StartOS server can publish (and refresh) its automatic records,
+  including the `AAAA` record for its `.local` name, over either family.
+
 ### Fixed
 
 - **Deleting a fallback forward now actually deletes it.** A PCP delete
@@ -15,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in place, so the port stayed open to the fallback device until its lease
   lapsed (up to an hour). Both delete paths now clear the fallback immediately;
   named SNI routes on the port are unaffected.
+
+### Documentation
+
+- **FAQ: `.local` on Android.** New entry explaining why `.local` addresses stop
+  resolving on Android once a WireGuard config carries the `DNS =` line (Android
+  excludes VPN connections from mDNS resolution, so the lookup goes to the
+  tunnel's resolver instead — breaking `.local` even on the home LAN), and how a
+  connected StartOS server now fixes this automatically by injecting a record for
+  its `.local` name over the tunnel (with the manual DNS-record workaround kept
+  for when DNS injection is disabled). The DNS Records page note now mentions the
+  `.local` name is injected too.
 
 ## [1.1.2]
 

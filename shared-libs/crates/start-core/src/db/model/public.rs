@@ -266,6 +266,12 @@ pub struct NetworkInterfaceInfo {
     pub gateway_type: GatewayType,
     #[serde(default)]
     pub port_map: GatewayPortMapCapabilities,
+    /// The gateway's resolver accepted our last RFC 2136 DNS UPDATE — evidence
+    /// from the update client (`net::dns_update`). A WireGuard gateway only
+    /// serves the injected `<hostname>.local` while this is `supported`, so
+    /// only then is the name listed on it.
+    #[serde(default)]
+    pub dns_update: CapabilityVerdict,
 }
 
 /// Whether the gateway reachable via this interface speaks each port-mapping
@@ -330,6 +336,14 @@ impl NetworkInterfaceInfo {
     pub fn secure(&self) -> bool {
         self.secure
             .unwrap_or_else(|| self.is_intrinsically_secure())
+    }
+
+    /// A WireGuard tunnel interface (e.g. a StartTunnel or StartWRT gateway).
+    pub fn is_wireguard(&self) -> bool {
+        matches!(
+            self.ip_info.as_ref().and_then(|i| i.device_type),
+            Some(NetworkInterfaceType::Wireguard)
+        )
     }
 
     // lo and lxcbr0 (the only Loopback/Bridge interfaces on StartOS) never leave the

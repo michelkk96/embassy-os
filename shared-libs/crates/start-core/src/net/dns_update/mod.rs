@@ -32,10 +32,13 @@ use tokio::sync::mpsc;
 use tokio::time::{interval, timeout};
 
 use crate::GatewayId;
+use crate::db::model::Database;
 use crate::db::model::public::NetworkInterfaceInfo;
+use crate::hostname::ServerHostname;
 use crate::net::port_map::candidate_gateways;
 use crate::net::utils::ipv6_is_link_local;
 use crate::prelude::*;
+use crate::util::future::NonDetachingJoinHandle;
 use crate::util::sync::Watch;
 
 const DNS_PORT: u16 = 53;
@@ -131,13 +134,13 @@ impl DnsUpdateController {
                             let changed = desired.get(&fqdn) != Some(&gateways);
                             desired.insert(fqdn.clone(), gateways);
                             if changed {
-                                reconcile_one(&fqdn, &desired, &mut active, &ifaces, &psk, &mut signers).await;
+                                reconcile_one(&fqdn, &desired, &mut active, &net_iface, &ifaces, &psk, &mut signers).await;
                             }
                         }
                         Some(Command::Gc { rm }) => {
                             for fqdn in rm {
                                 desired.remove(&fqdn);
-                                reconcile_one(&fqdn, &desired, &mut active, &ifaces, &psk, &mut signers).await;
+                                reconcile_one(&fqdn, &desired, &mut active, &net_iface, &ifaces, &psk, &mut signers).await;
                             }
                         }
                         None => break,
@@ -146,15 +149,23 @@ impl DnsUpdateController {
                         ifaces = net_iface.read();
                         signers.clear();
                         for fqdn in desired.keys().cloned().collect::<Vec<_>>() {
-                            reconcile_one(&fqdn, &desired, &mut active, &ifaces, &psk, &mut signers).await;
+                            reconcile_one(&fqdn, &desired, &mut active, &net_iface, &ifaces, &psk, &mut signers).await;
                         }
                     }
                     _ = refresh.tick() => {
                         for (fqdn, targets) in &active {
                             if let Ok(name) = fqdn_to_name(fqdn) {
+                                let mut outcomes: BTreeMap<&GatewayId, bool> = BTreeMap::new();
                                 for (gw, server, ip) in targets {
+                                    if recently_failed(&net_iface, gw) {
+                                        continue;
+                                    }
                                     let signer = signer_for(gw, &psk, &mut signers).await;
-                                    apply(&name, *server, *ip, signer.as_ref()).await;
+                                    let ok = apply(&name, *server, *ip, signer.as_ref()).await;
+                                    *outcomes.entry(gw).or_default() |= ok;
+                                }
+                                for (gw, ok) in outcomes {
+                                    report(&net_iface, gw, ok);
                                 }
                             }
                         }
@@ -174,6 +185,75 @@ impl DnsUpdateController {
             self.req.send(Command::Gc { rm }).ok();
         }
     }
+}
+
+/// The live WireGuard gateways among `ifaces`. A `.local` record makes sense to
+/// inject only here: over a plain LAN gateway a client resolves `.local` by mDNS
+/// multicast, but a WireGuard client (e.g. on StartTunnel) can't — Android in
+/// particular excludes VPN connections from mDNS — so the tunnel's resolver must
+/// answer it instead.
+fn wireguard_gateways(ifaces: &OrdMap<GatewayId, NetworkInterfaceInfo>) -> BTreeSet<GatewayId> {
+    ifaces
+        .iter()
+        .filter(|(_, info)| info.is_wireguard())
+        .map(|(gw, _)| gw.clone())
+        .collect()
+}
+
+/// Continuously inject the server's mDNS `.local` name over every WireGuard
+/// gateway — and only those — via RFC 2136, so clients on the tunnel (which
+/// can't do mDNS over a VPN) still resolve `<hostname>.local` to the server's
+/// address on that tunnel. The gateway's own per-device policy still applies: an
+/// UPDATE to a gateway with DNS injection disabled is refused, and the `.local`
+/// name falls back to a manual record there. Re-derives the target gateways on
+/// every network change and the name on every hostname change.
+pub fn spawn_server_mdns_injection(
+    db: TypedPatchDb<Database>,
+    mut net_iface: Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    dns_update: DnsUpdateController,
+) -> NonDetachingJoinHandle<()> {
+    tokio::spawn(async move {
+        let mut hostname_sub = db
+            .subscribe(
+                "/public/serverInfo/hostname"
+                    .parse()
+                    .expect("valid pointer"),
+            )
+            .await;
+        // The name currently asserted as desired, so a hostname change withdraws
+        // the old one instead of leaving it to be re-asserted forever.
+        let mut current: Option<InternedString> = None;
+        loop {
+            // A failed hostname read just skips this pass; we still wait on both
+            // signals below, so a network change is never missed while it's unset.
+            match ServerHostname::load(db.peek().await.as_public().as_server_info()) {
+                Ok(h) => {
+                    let name = h.local_domain_name();
+                    let gateways = net_iface.peek(wireguard_gateways);
+                    if let Some(prev) = &current {
+                        if *prev != name || gateways.is_empty() {
+                            dns_update.gc(std::iter::once(prev.clone()).collect());
+                            current = None;
+                        }
+                    }
+                    if !gateways.is_empty() {
+                        // Idempotent; also picks up a gateway added to / removed from the set.
+                        dns_update.add(name.clone(), gateways);
+                        current = Some(name);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("mDNS injection: could not read server hostname: {e}");
+                    tracing::debug!("{e:?}");
+                }
+            }
+            tokio::select! {
+                _ = net_iface.changed() => {}
+                _ = hostname_sub.recv() => {}
+            }
+        }
+    })
+    .into()
 }
 
 /// The (resolver, our-ip) pairs for a private domain on one gateway: one per
@@ -231,10 +311,46 @@ async fn signer_for(
     }
 }
 
+/// Feed a round's UPDATE outcomes back as the gateway's `dns_update`
+/// capability verdict: supported if any of the gateway's resolvers accepted
+/// the update (a gateway can have a resolver per address family, and e.g.
+/// StartTunnel only accepts v4-sourced updates). Aggregating per round keeps
+/// a per-target report from flapping the verdict — which would rewrite the
+/// watch, retrigger a reconcile, and spin. `set_verdict`'s trust windows then
+/// make a repeat of the same verdict a no-op, so a steady state doesn't
+/// retrigger the `net_iface` watch on every refresh tick.
+/// A gateway whose last UPDATE failed inside the negative trust window — the
+/// same dead-gateway skip the port-map client applies, so a refusing resolver
+/// is retried on the verdict's staleness cadence, not every refresh tick.
+fn recently_failed(
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    gw: &GatewayId,
+) -> bool {
+    let now = chrono::Utc::now();
+    interfaces
+        .read()
+        .get(gw)
+        .map_or(false, |i| i.dns_update.fresh(now) == Some(false))
+}
+
+fn report(
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    gw: &GatewayId,
+    supported: bool,
+) {
+    let now = chrono::Utc::now();
+    interfaces.send_if_modified(|m| {
+        m.get_mut(gw).map_or(false, |info| {
+            crate::net::port_map::set_verdict(&mut info.dns_update, supported, now)
+        })
+    });
+}
+
 async fn reconcile_one(
     fqdn: &InternedString,
     desired: &BTreeMap<InternedString, BTreeSet<GatewayId>>,
     active: &mut BTreeMap<InternedString, BTreeSet<Target>>,
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
     ifaces: &OrdMap<GatewayId, NetworkInterfaceInfo>,
     psk: &PskLookup,
     signers: &mut BTreeMap<GatewayId, Option<TSigner>>,
@@ -258,9 +374,17 @@ async fn reconcile_one(
         let signer = signer_for(gw, psk, signers).await;
         withdraw(&name, *server, *ip, signer.as_ref()).await;
     }
+    let mut outcomes: BTreeMap<&GatewayId, bool> = BTreeMap::new();
     for (gw, server, ip) in &want {
+        if recently_failed(interfaces, gw) {
+            continue;
+        }
         let signer = signer_for(gw, psk, signers).await;
-        apply(&name, *server, *ip, signer.as_ref()).await;
+        let ok = apply(&name, *server, *ip, signer.as_ref()).await;
+        *outcomes.entry(gw).or_default() |= ok;
+    }
+    for (gw, ok) in outcomes {
+        report(interfaces, gw, ok);
     }
     if !want.is_empty() {
         active.insert(fqdn.clone(), want);
@@ -288,7 +412,8 @@ fn record_type_for(ip: IpAddr) -> RecordType {
     }
 }
 
-async fn apply(fqdn: &Name, server: IpAddr, ip: IpAddr, signer: Option<&TSigner>) {
+/// Whether both messages of the replace (delete + add) were accepted.
+async fn apply(fqdn: &Name, server: IpAddr, ip: IpAddr, signer: Option<&TSigner>) -> bool {
     let zone = zone_of(fqdn);
     let rtype = record_type_for(ip);
     let rdata = match ip {
@@ -303,10 +428,11 @@ async fn apply(fqdn: &Name, server: IpAddr, ip: IpAddr, signer: Option<&TSigner>
     for msg in [delete, add] {
         if let Err(e) = send(server, ip, &msg, signer).await {
             crate::dev_log!(debug, "RFC 2136 update of {fqdn} on {server} failed: {e}");
-            return;
+            return false;
         }
     }
     tracing::debug!("published {fqdn} -> {ip} via RFC 2136 on {server}");
+    true
 }
 
 async fn withdraw(fqdn: &Name, server: IpAddr, ip: IpAddr, signer: Option<&TSigner>) {
@@ -365,5 +491,98 @@ async fn send(
             eyre!("DNS UPDATE refused: {other}"),
             ErrorKind::Network,
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use imbl::OrdMap;
+    use imbl_value::InternedString;
+
+    use super::{recently_failed, wireguard_gateways};
+    use crate::GatewayId;
+    use crate::db::model::public::{
+        CapabilityVerdict, IpInfo, NetworkInterfaceInfo, NetworkInterfaceType,
+    };
+    use crate::util::sync::Watch;
+
+    fn iface(device_type: Option<NetworkInterfaceType>) -> NetworkInterfaceInfo {
+        NetworkInterfaceInfo {
+            ip_info: device_type.map(|device_type| {
+                Arc::new(IpInfo {
+                    device_type: Some(device_type),
+                    ..Default::default()
+                })
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn gw(id: &str) -> GatewayId {
+        GatewayId::from(InternedString::intern(id))
+    }
+
+    #[test]
+    fn only_wireguard_gateways_are_selected() {
+        let ifaces: OrdMap<GatewayId, NetworkInterfaceInfo> = [
+            (gw("wg0"), iface(Some(NetworkInterfaceType::Wireguard))),
+            (gw("eth0"), iface(Some(NetworkInterfaceType::Ethernet))),
+            (gw("wlan0"), iface(Some(NetworkInterfaceType::Wireless))),
+            (gw("wg1"), iface(Some(NetworkInterfaceType::Wireguard))),
+            // A gateway with no ip_info (down) is never WireGuard.
+            (gw("down"), iface(None)),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(
+            wireguard_gateways(&ifaces),
+            [gw("wg0"), gw("wg1")].into_iter().collect()
+        );
+    }
+
+    #[test]
+    fn recent_failure_gates_retries() {
+        let ifaces = Watch::new(OrdMap::from_iter([(
+            gw("wg0"),
+            iface(Some(NetworkInterfaceType::Wireguard)),
+        )]));
+        let set = |v: CapabilityVerdict| {
+            ifaces.send_if_modified(|m| {
+                m.get_mut(&gw("wg0"))
+                    .map_or(false, |i: &mut NetworkInterfaceInfo| {
+                        let changed = i.dns_update != v;
+                        i.dns_update = v;
+                        changed
+                    })
+            });
+        };
+
+        // Never probed: attempt.
+        assert!(!recently_failed(&ifaces, &gw("wg0")));
+        assert!(!recently_failed(&ifaces, &gw("missing")));
+        // Fresh success: attempt.
+        set(CapabilityVerdict::supported(true));
+        assert!(!recently_failed(&ifaces, &gw("wg0")));
+        // Fresh failure: skip.
+        set(CapabilityVerdict::supported(false));
+        assert!(recently_failed(&ifaces, &gw("wg0")));
+        // Stale failure (past the 5-minute negative window): retry.
+        set(CapabilityVerdict {
+            supported: Some(false),
+            at: Some(chrono::Utc::now() - chrono::TimeDelta::minutes(6)),
+        });
+        assert!(!recently_failed(&ifaces, &gw("wg0")));
+    }
+
+    #[test]
+    fn no_wireguard_gateways_selects_nothing() {
+        let ifaces: OrdMap<GatewayId, NetworkInterfaceInfo> =
+            [(gw("eth0"), iface(Some(NetworkInterfaceType::Ethernet)))]
+                .into_iter()
+                .collect();
+        assert!(wireguard_gateways(&ifaces).is_empty());
     }
 }

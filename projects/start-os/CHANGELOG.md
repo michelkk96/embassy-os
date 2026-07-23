@@ -116,6 +116,15 @@ file tracks notable changes since the move to the monorepo.
   is rejected with an error that says so, instead of the previous opaque
   "no valid signature context available to verify".
 
+- **Changing the master password no longer asks for the current password.**
+  **System → Change Password** in the UI and `start-cli auth reset-password`
+  now prompt only for the new password — an authenticated session (an enrolled
+  device key, or the local authcookie for `start-cli` on the server itself) is
+  required and sufficient. This also gives "forgot password" a recovery path
+  short of reinstalling: any device that is still signed in can set a new
+  password. Existing backups remain encrypted with the password in effect when
+  they were created.
+
 - **Stable, predictable IPv6 address (EUI-64).** NetworkManager is set to derive
   each interface's IPv6 address from its MAC (modified EUI-64) with RFC 4941
   privacy extensions off. StartOS applies this to existing network connections

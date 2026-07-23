@@ -363,7 +363,6 @@ export default {
   391: 'Neues Passwort muss mindestens 12 Zeichen lang sein',
   392: 'Neues Passwort darf höchstens 64 Zeichen haben',
   394: 'Passwort wurde geändert',
-  395: 'Aktuelles Passwort',
   396: 'Neues Passwort',
   397: 'Neues Passwort erneut eingeben',
   399: 'Aktuelle Sitzung',

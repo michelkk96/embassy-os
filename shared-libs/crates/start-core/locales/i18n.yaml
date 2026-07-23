@@ -2899,13 +2899,6 @@ auth.password-incorrect:
   fr_FR: "Mot de passe incorrect"
   pl_PL: "Nieprawidłowe hasło"
 
-auth.prompt-current-password:
-  en_US: "Current Password: "
-  de_DE: "Aktuelles Passwort: "
-  es_ES: "Contraseña actual: "
-  fr_FR: "Mot de passe actuel : "
-  pl_PL: "Obecne hasło: "
-
 auth.prompt-new-password:
   en_US: "New Password: "
   de_DE: "Neues Passwort: "
@@ -4257,13 +4250,6 @@ help.arg.notification-title:
   es_ES: "Título de notificación"
   fr_FR: "Titre de la notification"
   pl_PL: "Tytuł powiadomienia"
-
-help.arg.old-password:
-  en_US: "Current password"
-  de_DE: "Aktuelles Passwort"
-  es_ES: "Contraseña actual"
-  fr_FR: "Mot de passe actuel"
-  pl_PL: "Aktualne hasło"
 
 help.arg.onion-address:
   en_US: "Tor onion address"

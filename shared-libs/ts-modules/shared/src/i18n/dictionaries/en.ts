@@ -362,7 +362,6 @@ export const ENGLISH: Record<string, number> = {
   'New password must be 12 characters or greater': 391,
   'New password must be less than 65 characters': 392,
   'Password changed': 394,
-  'Current Password': 395,
   'New Password': 396,
   'Retype New Password': 397,
   'Current session': 399,

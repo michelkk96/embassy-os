@@ -363,7 +363,6 @@ export default {
   391: 'Le nouveau mot de passe doit comporter au moins 12 caractères',
   392: 'Le nouveau mot de passe doit comporter moins de 65 caractères',
   394: 'Mot de passe changé',
-  395: 'Mot de passe actuel',
   396: 'Nouveau mot de passe',
   397: 'Retapez le nouveau mot de passe',
   399: 'Session en cours',

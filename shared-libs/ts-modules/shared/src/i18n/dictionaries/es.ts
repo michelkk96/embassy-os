@@ -363,7 +363,6 @@ export default {
   391: 'La nueva contraseña debe tener al menos 12 caracteres',
   392: 'La nueva contraseña debe tener menos de 65 caracteres',
   394: 'Contraseña cambiada',
-  395: 'Contraseña actual',
   396: 'Nueva contraseña',
   397: 'Reingresa nueva contraseña',
   399: 'Sesión actual',

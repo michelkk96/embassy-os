@@ -523,8 +523,6 @@ pub async fn kill<C: SignatureAuthContext>(
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct ResetPasswordParams {
-    #[arg(help = "help.arg.old-password")]
-    old_password: Option<PasswordType>,
     #[arg(help = "help.arg.new-password")]
     new_password: Option<PasswordType>,
 }
@@ -538,8 +536,6 @@ async fn cli_reset_password(
         ..
     }: HandlerArgs<CliContext>,
 ) -> Result<(), RpcError> {
-    let old_password = rpassword::prompt_password(&t!("auth.prompt-current-password"))?;
-
     let new_password = {
         let new_password = rpassword::prompt_password(&t!("auth.prompt-new-password"))?;
         if new_password != rpassword::prompt_password(&t!("auth.prompt-confirm"))? {
@@ -554,7 +550,9 @@ async fn cli_reset_password(
 
     ctx.call_remote::<RpcContext>(
         &parent_method.into_iter().chain(method).join("."),
-        imbl_value::json!({ "old-password": old_password, "new-password": new_password }),
+        to_value(&ResetPasswordParams {
+            new_password: Some(PasswordType::String(new_password)),
+        })?,
     )
     .await?;
 
@@ -564,25 +562,13 @@ async fn cli_reset_password(
 #[instrument(skip_all)]
 pub async fn reset_password_impl(
     ctx: RpcContext,
-    ResetPasswordParams {
-        old_password,
-        new_password,
-    }: ResetPasswordParams,
+    ResetPasswordParams { new_password }: ResetPasswordParams,
 ) -> Result<(), Error> {
-    let old_password = old_password.unwrap_or_default().decrypt(&ctx)?;
     let new_password = new_password.unwrap_or_default().decrypt(&ctx)?;
 
     let account = ctx.account.mutate(|account| {
-        if !argon2::verify_encoded(&account.password, old_password.as_bytes())
-            .with_kind(crate::ErrorKind::IncorrectPassword)?
-        {
-            return Err(Error::new(
-                eyre!("{}", t!("auth.password-incorrect")),
-                crate::ErrorKind::IncorrectPassword,
-            ));
-        }
         account.set_password(&new_password)?;
-        Ok(account.clone())
+        Ok::<_, Error>(account.clone())
     })?;
     ctx.db.mutate(|d| account.save(d)).await.result?;
     write_shadow(&new_password).await?;

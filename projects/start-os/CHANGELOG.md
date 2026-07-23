@@ -190,6 +190,22 @@ file tracks notable changes since the move to the monorepo.
 
 ### Fixed
 
+- **Each package's backup progress stays open until its image finishes
+  writing.** A package's backup phase now completes only once the whole package
+  backup — including streaming its `.s9pk` image to the backup target — is done,
+  so the progress list keeps that package at 100% and still working until it
+  truly finishes, then advances to the next one. Previously the phase was marked
+  complete the moment the service's data procedure returned, while the image
+  (often the larger part) was still writing to the target — which read as the
+  package finishing early, with a visible pause before the next one began. Older
+  packages built against start-sdk ≤ 2.0.6 still self-report completion and see
+  the early "complete" until rebuilt against start-sdk ≥ 2.0.7.
+- **The overall backup progress bar advances with each package's progress.**
+  Every package now contributes equal weight (100) to the overall bar, with the
+  OS-data step a small tail (10), so the top-level percentage climbs as each
+  package's data copies rather than jumping only when a package finishes.
+  Intra-package movement comes from the package's own reported progress, which
+  packages built against start-sdk ≥ 2.0.7 report continuously.
 - **Mixed-case domains now match the browser.** Domain names are lowercased
   when added or removed (UI and CLI alike), so a domain entered with capital
   letters can no longer end up unreachable against the browser's lowercased

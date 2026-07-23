@@ -137,6 +137,7 @@ import { LogsPipe } from './logs.pipe'
     pre {
       overflow: visible;
       white-space: normal;
+      overflow-wrap: anywhere;
       margin: 0;
     }
   `,

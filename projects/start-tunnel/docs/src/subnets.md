@@ -28,7 +28,7 @@ If your VPS has more than one public IPv4 address, you can choose which one a su
 - **System default** — let StartTunnel choose (masquerade through the server's primary address). When the address it resolves to is known, it's shown in parentheses, e.g. `System default (203.0.113.10)`.
 - A specific address — pin egress to one of the VPS's detected public IPv4 addresses.
 
-A single-IP VPS has only one choice, so you can leave this on **System default**. Individual devices can override their subnet's choice — see [Devices › Outbound IP](/start-tunnel/devices.html#outbound-ip).
+A single-IP VPS has only one choice, so you can leave this on **System default**. Individual devices can override their subnet's choice — see [Devices › Outbound IP](/start-tunnel/devices.html#outbound-ip). To add another public IPv4 address to your VPS, see [IPv4](/start-tunnel/ipv4.html).
 
 ## IPv6
 

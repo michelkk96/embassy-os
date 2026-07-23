@@ -7,11 +7,17 @@ default; IPv4 published ports work without it.
 
 ## What your VPS provides
 
-IPv6 addressing depends on the block your provider routes to your VPS. Most
-budget providers give a single **/64** (Hetzner, Vultr, BuyVM); some give less
-(DigitalOcean routes a /124 — 16 addresses); a few give a **/56** or larger on
-request (Linode) or on dedicated servers. Check your provider's dashboard or
-docs for the exact prefix. A **/64 per subnet** is the natural fit.
+IPv6 addressing depends on the block your provider routes to your VPS, and
+providers vary widely. Most route a single **/64** to each server; some route
+only a small slice of one (a /124 holds 16 addresses); larger blocks (a /56 or
+more) are often available, but only on request. Delivery varies too: usually
+the block is **on-link** (your server holds an address inside it on its WAN
+interface), less commonly it is **routed** to your server as a separate block.
+And IPv6 is not always on to begin with — many providers gate it behind an
+option at server creation or a toggle in their panel. Your provider's
+docs/guides — or their support team — are the authority: confirm whether IPv6
+must be enabled, the exact block you get, and how it is delivered. A
+**/64 per subnet** is the natural fit.
 
 ## Requirements
 
@@ -32,6 +38,15 @@ Delegating a prefix only works if the server can actually route it:
   but logs a warning: make sure your provider actually routes the block to this
   host, or the subnet's devices will have no working IPv6.
 
+> [!NOTE]
+> "Enabled with the provider" is not the same as "configured on the host". A
+> provider's IPv6 option typically takes effect through the provisioning that
+> runs at a server's first boot — flip it on an existing server and the panel
+> may say enabled while the host still has no IPv6 address or route, because
+> that provisioning already ran. If `ip -6 route show default` prints nothing
+> after enabling IPv6, configure the address and gateway per your provider's
+> docs, or rebuild the server with IPv6 enabled from the start.
+
 ## Configuring a subnet's prefix
 
 Assign the routed prefix your provider gave you to a subnet:
@@ -47,6 +62,29 @@ To turn IPv6 back off for a subnet, run the command with no `--prefix` argument
 Once set, StartTunnel re-renders the WireGuard configs of that subnet's devices
 to include an IPv6 address. Reconnect (or re-download the config) on each device
 to pick it up.
+
+## Verifying it works
+
+Devices keep their old configuration until refreshed, so after setting a
+prefix, re-import the config (or reconnect) on each device first. Then visit an
+IPv6 connectivity test site from the device: it should report the device's
+tunnel IPv6 — the same address the Devices table shows for it, since there is
+no NAT. If it does, IPv6 works end to end.
+
+When it doesn't:
+
+- **`set-ipv6` refused with "no IPv6 connectivity"** — the server itself has no
+  IPv6 default route. Fix the VPS's own IPv6 first (see Requirements above).
+- **`set-ipv6` warned that the prefix is not on-link** — StartTunnel could not
+  confirm the block reaches this server. If devices then get an address but no
+  connectivity, your provider likely is not routing the block to this host —
+  take it up with them.
+- **A device has no IPv6 address, or a test site shows its native address** —
+  the device is still running a config generated before the prefix was set.
+  Re-import it and reconnect.
+- **Outbound IPv6 works, but the device can't be reached from outside** — by
+  design: unsolicited inbound needs a published port (a pinhole on the device's
+  address). See [Published Ports](./published-ports.md).
 
 > [!NOTE]
 > Devices can make **outbound** IPv6 connections and receive their replies. To
@@ -74,7 +112,8 @@ a smaller block works too but keeps only its low host bits of the IPv4. Every
 host must get a distinct address, so if a block is too small — or two devices'
 low IP bits would collide — StartTunnel rejects adding the device or setting the
 prefix rather than hand out a duplicate. Keep the number of devices (and their
-low IP bits) within what the block can hold.
+low IP bits) within what the block can hold. (The Add Device dialog helps: the
+IP it suggests already avoids colliding addresses.)
 
 ## Routing
 

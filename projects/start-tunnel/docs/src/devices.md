@@ -24,6 +24,9 @@ Every device on a StartTunnel subnet gets its own WireGuard configuration. Devic
    - **Phone or tablet**: Scan the QR code shown in StartTunnel using the [WireGuard app](https://www.wireguard.com/install/).
    - **Laptop or desktop**: Download the config and import it into the [WireGuard app](https://www.wireguard.com/install/).
 
+> [!NOTE]
+> The config's `Endpoint` — the address the device connects to — is the device's [outbound IP](#outbound-ip) if one is assigned (otherwise its subnet's); with neither assigned, StartTunnel uses the address you are accessing it over. The server answers on all of its addresses, so configs generated earlier keep working if you change these later.
+
 ## Server capabilities
 
 A Server has two independently-toggleable capabilities, shown as switches in the Servers table:
@@ -39,7 +42,11 @@ Use a device's actions menu to **Change to Server** or **Change to Client**. Cha
 
 ## Outbound IP
 
-By default a device's outbound traffic leaves from its subnet's [outbound IP](/start-tunnel/subnets.html#outbound-ip). On a VPS with more than one public IPv4 address, you can override this per device with the **WAN IP** field in the device's Add/Edit dialog — choose **Subnet default** to inherit the subnet's setting (the address it resolves to is shown in parentheses), or a specific address to pin this device's egress. On a single-IP VPS there is only one choice, so leave it on **Subnet default**.
+By default a device's outbound traffic leaves from its subnet's [outbound IP](/start-tunnel/subnets.html#outbound-ip). On a VPS with more than one public IPv4 address, you can override this per device with the **WAN IP** field in the device's Add/Edit dialog — choose **Subnet default** to inherit the subnet's setting (the address it resolves to is shown in parentheses), or a specific address to pin this device's egress. On a single-IP VPS there is only one choice, so leave it on **Subnet default**. To add another public IPv4 address to your VPS, see [IPv4](/start-tunnel/ipv4.html).
+
+## IPv6
+
+If a device's subnet carries an [IPv6 prefix](/start-tunnel/ipv6.html), the device gets its own stable, globally-routable IPv6 address, shown in the **IPv6** column of the Servers and Clients tables. The address is computed from the prefix and the device's tunnel IP, so it never changes. It is the address to use when opening a pinhole from the CLI or adding a manual **AAAA** record on the [DNS Records](/start-tunnel/dns-records.html) page.
 
 ## Removing a Device
 

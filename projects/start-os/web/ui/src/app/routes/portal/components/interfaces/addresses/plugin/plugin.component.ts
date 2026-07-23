@@ -57,6 +57,10 @@ import { PluginItemComponent } from './item.component'
       th:first-child {
         width: 5rem;
       }
+
+      td:first-child {
+        white-space: nowrap;
+      }
     }
 
     @media (max-width: 450px) {

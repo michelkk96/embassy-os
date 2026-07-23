@@ -351,6 +351,13 @@ file tracks notable changes since the move to the monorepo.
   snake hit the (invisible) boundary well inside the dark box — a seemingly
   causeless game over. The dark box now shrink-wraps the playfield exactly, so
   its edge is the wall.
+- **Snake turns no longer lag behind held or mashed keys.** Every keypress —
+  including keyboard auto-repeat, which fires faster than the game advances —
+  was queued and consumed one per tick, so held or redundant presses delayed
+  the next real turn by a tick each; a key held for a couple of seconds banked
+  a near-second of input lag, reading as the snake ignoring a well-timed turn.
+  Redundant presses are now dropped and stale ones skipped, so a turn lands on
+  the tick after its keypress.
 
 ### Removed
 

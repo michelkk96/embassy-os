@@ -28,6 +28,13 @@ interface Snake {
 
 type RGB = [number, number, number]
 
+const DIRECTIONS: Record<string, Point> = {
+  ArrowUp: { x: 0, y: -1 },
+  ArrowDown: { x: 0, y: 1 },
+  ArrowLeft: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 },
+}
+
 const HEAD_COLOR: RGB = [47, 223, 117] // #2fdf75
 const TAIL_COLOR: RGB = [20, 90, 48] // #145a30
 const GRID_W = 40
@@ -231,9 +238,7 @@ export class SnakeComponent {
       this.state.set('playing')
       this.lastTime = 0
       // Queue directional input so first keypress sets direction
-      if (e.key.startsWith('Arrow')) {
-        this.moveQueue.push(e.key)
-      }
+      this.queueMove(e.key)
       return
     }
 
@@ -243,7 +248,7 @@ export class SnakeComponent {
     }
 
     if (current === 'playing') {
-      this.moveQueue.push(e.key)
+      this.queueMove(e.key)
     }
   }
 
@@ -278,9 +283,9 @@ export class SnakeComponent {
     const yDiff = this.touchStart.y - yUp
 
     if (Math.abs(xDiff) > Math.abs(yDiff)) {
-      this.moveQueue.push(xDiff > 0 ? 'ArrowLeft' : 'ArrowRight')
+      this.queueMove(xDiff > 0 ? 'ArrowLeft' : 'ArrowRight')
     } else {
-      this.moveQueue.push(yDiff > 0 ? 'ArrowUp' : 'ArrowDown')
+      this.queueMove(yDiff > 0 ? 'ArrowUp' : 'ArrowDown')
     }
 
     this.touchStart = null
@@ -375,22 +380,27 @@ export class SnakeComponent {
     this.drawFrame()
   }
 
+  private queueMove(key: string) {
+    // Dedupe held-key repeats and cap the buffer, so presses can neither
+    // pile up into input lag nor bank turns far ahead
+    if (
+      key in DIRECTIONS &&
+      key !== this.moveQueue.at(-1) &&
+      this.moveQueue.length < 3
+    ) {
+      this.moveQueue.push(key)
+    }
+  }
+
   private update() {
-    // Process next queued move
-    if (this.moveQueue.length) {
-      const move = this.moveQueue.shift()!
-      if (move === 'ArrowLeft' && this.snake.dx === 0) {
-        this.snake.dx = -this.grid
-        this.snake.dy = 0
-      } else if (move === 'ArrowUp' && this.snake.dy === 0) {
-        this.snake.dy = -this.grid
-        this.snake.dx = 0
-      } else if (move === 'ArrowRight' && this.snake.dx === 0) {
-        this.snake.dx = this.grid
-        this.snake.dy = 0
-      } else if (move === 'ArrowDown' && this.snake.dy === 0) {
-        this.snake.dy = this.grid
-        this.snake.dx = 0
+    // Turn on the first applicable queued move; a stale or no-op press is
+    // dropped rather than left to delay a real turn by a tick
+    while (this.moveQueue.length) {
+      const dir = DIRECTIONS[this.moveQueue.shift()!]!
+      if ((dir.x && !this.snake.dx) || (dir.y && !this.snake.dy)) {
+        this.snake.dx = dir.x * this.grid
+        this.snake.dy = dir.y * this.grid
+        break
       }
     }
 

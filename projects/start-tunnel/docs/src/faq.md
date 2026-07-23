@@ -49,13 +49,13 @@ StartTunnel is designed to run on a dedicated VPS. To remove it, simply destroy 
 Any provider that offers Debian 13 with root access and a **dedicated public IPv4 address**. Common choices include Hetzner, DigitalOcean, Linode, Vultr, and OVH. Budget VPS providers (~$5/mo) work fine — StartTunnel has minimal resource requirements.
 
 > [!WARNING]
-> StartTunnel's published ports (clearnet hosting) require a dedicated public IPv4 address. Shared IPv4 addresses (CGNAT, shared NAT, load-balanced IPs) will not work. Some budget providers and IPv6-only tiers do not include a dedicated IPv4 — confirm with your provider before purchasing.
+> StartTunnel's IPv4 published ports (clearnet hosting) require a dedicated public IPv4 address. Shared IPv4 addresses (CGNAT, shared NAT, load-balanced IPs) will not work. Some budget providers and IPv6-only tiers do not include a dedicated IPv4 — confirm with your provider before purchasing.
 
 Some providers (AWS, Google Cloud, Azure, Oracle Cloud, IONOS) have cloud-panel firewalls that block WireGuard (UDP 51820) by default. See [Installing — Cloud firewalls](installing.md#cloud-firewalls) for setup instructions.
 
 ## Does StartTunnel work on an IPv6-only VPS?
 
-Partially. The WireGuard tunnel itself works over IPv6, so devices with IPv6 connectivity can join your private VPN and reach each other through the VPS. However, **published ports for clearnet hosting are IPv4-only** and cannot be used on an IPv6-only VPS. Additionally, any device joining the VPN must have IPv6 connectivity on its current network — most modern carriers and home ISPs are dual-stack, but some are still IPv4-only. For clearnet hosting, choose a VPS with a dedicated public IPv4 address.
+It isn't designed to. StartTunnel assumes a dedicated public IPv4 address; its IPv6 support gives the devices on a subnet their own global IPv6 addresses on top of that, rather than running the tunnel without IPv4. The VPN itself can come up over IPv6, so a device can still join and reach others through the VPS — but only from a network that has IPv6 (most carriers and home ISPs are dual-stack, though some are still IPv4-only). Clearnet hosting expects a public IPv4 too: IPv4 published ports require one, and while a device can also be published over IPv6 (see [IPv6](ipv6.md)), only visitors that themselves have IPv6 can reach it. For clearnet hosting that anyone can reach, choose a VPS with a dedicated public IPv4 address.
 
 ## Does StartTunnel provide DDoS protection?
 

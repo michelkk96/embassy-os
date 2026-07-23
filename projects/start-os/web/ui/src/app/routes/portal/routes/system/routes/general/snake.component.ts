@@ -116,11 +116,12 @@ function lerpColor(from: RGB, to: RGB, t: number): string {
     }
 
     .game-container {
+      /* Shrink-wrap the canvas: the box edge is the collision boundary */
       position: relative;
+      inline-size: fit-content;
+      margin-inline: auto;
       background: #111;
       border-radius: 0.5rem;
-      display: flex;
-      justify-content: center;
     }
 
     canvas {
@@ -167,6 +168,7 @@ function lerpColor(from: RGB, to: RGB, t: number): string {
 export class SnakeComponent {
   private readonly destroyRef = inject(DestroyRef)
   private readonly dialog = injectContext<TuiDialogContext<number, number>>()
+  private readonly el: HTMLElement = inject(ElementRef).nativeElement
   private readonly canvasRef = viewChild<ElementRef<HTMLCanvasElement>>('game')
 
   readonly state = signal<GameState>('ready')
@@ -297,13 +299,14 @@ export class SnakeComponent {
     if (!canvas) return
 
     this.ctx = canvas.getContext('2d')!
-    const container = canvas.parentElement!
     const dpr = window.devicePixelRatio || 1
 
-    // Size grid based on available width, cap so canvas height stays reasonable
+    // Size grid based on available width, cap so canvas height stays reasonable.
+    // Measure the host — the container shrink-wraps the canvas, so its own
+    // width depends on the canvas.
     const maxHeight = window.innerHeight * 0.55
     this.grid = Math.min(
-      Math.floor(container.clientWidth / GRID_W),
+      Math.floor(this.el.clientWidth / GRID_W),
       Math.floor(maxHeight / GRID_H),
     )
 

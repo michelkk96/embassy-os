@@ -346,6 +346,11 @@ file tracks notable changes since the move to the monorepo.
   after time synchronized. A failed query (e.g. a D-Bus activation timeout
   under boot load) is now treated as "not synchronized yet" — logged and
   retried on the existing cadence.
+- **Snake no longer dies at an invisible wall.** The game's dark background
+  extended past the sides of the actual playfield, so on most window shapes the
+  snake hit the (invisible) boundary well inside the dark box — a seemingly
+  causeless game over. The dark box now shrink-wraps the playfield exactly, so
+  its edge is the wall.
 
 ### Removed
 

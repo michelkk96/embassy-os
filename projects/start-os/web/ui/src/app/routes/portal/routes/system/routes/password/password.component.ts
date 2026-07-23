@@ -83,7 +83,6 @@ export default class SystemPasswordComponent {
   private resetPassword({
     newPassword,
     newPasswordConfirm,
-    oldPassword,
   }: ReturnType<typeof this.passwordSpec>['_TYPE']) {
     let error: i18nKey | null = null
 
@@ -101,7 +100,7 @@ export default class SystemPasswordComponent {
     }
 
     this.tasks.run(async () => {
-      await this.api.resetPassword({ oldPassword, newPassword })
+      await this.api.resetPassword({ newPassword })
       this.form()?.form.reset()
       this.alerts
         .open(this.i18n.transform('Password changed'), {
@@ -113,12 +112,6 @@ export default class SystemPasswordComponent {
 
   passwordSpec() {
     return ISB.InputSpec.of({
-      oldPassword: ISB.Value.text({
-        name: this.i18n.transform('Current Password')!,
-        required: true,
-        default: null,
-        masked: true,
-      }),
       newPassword: ISB.Value.text({
         name: this.i18n.transform('New Password')!,
         required: true,

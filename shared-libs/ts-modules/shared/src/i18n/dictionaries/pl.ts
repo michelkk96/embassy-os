@@ -363,7 +363,6 @@ export default {
   391: 'Nowe hasło musi mieć co najmniej 12 znaków',
   392: 'Nowe hasło musi mieć mniej niż 65 znaków',
   394: 'Hasło zostało zmienione',
-  395: 'Bieżące hasło',
   396: 'Nowe hasło',
   397: 'Powtórz nowe hasło',
   399: 'Bieżąca sesja',

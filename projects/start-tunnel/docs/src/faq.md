@@ -53,6 +53,17 @@ Any provider that offers Debian 13 with root access and a **dedicated public IPv
 
 Some providers (AWS, Google Cloud, Azure, Oracle Cloud, IONOS) have cloud-panel firewalls that block WireGuard (UDP 51820) by default. See [Installing — Cloud firewalls](installing.md#cloud-firewalls) for setup instructions.
 
+## The installer says "No internet connectivity detected", but my network works
+
+Some minimal or "Lite" VPS images ship without `ping` (and sometimes `curl`), which the installer uses to check connectivity. Without `ping`, that check misfires and the installer aborts with a misleading connectivity error. Install the base utilities over SSH, then re-run the installer:
+
+```bash
+apt-get update && apt-get install -y curl iputils-ping
+curl -sSL https://start9.com/start-tunnel/install.sh | sh
+```
+
+See [Installing — Minimal or "Lite" images](installing.md#minimal-or-lite-images).
+
 ## Does StartTunnel work on an IPv6-only VPS?
 
 It isn't designed to. StartTunnel assumes a dedicated public IPv4 address; its IPv6 support gives the devices on a subnet their own global IPv6 addresses on top of that, rather than running the tunnel without IPv4. The VPN itself can come up over IPv6, so a device can still join and reach others through the VPS — but only from a network that has IPv6 (most carriers and home ISPs are dual-stack, though some are still IPv4-only). Clearnet hosting expects a public IPv4 too: IPv4 published ports require one, and while a device can also be published over IPv6 (see [IPv6](ipv6.md)), only visitors that themselves have IPv6 can reach it. For clearnet hosting that anyone can reach, choose a VPS with a dedicated public IPv4 address.

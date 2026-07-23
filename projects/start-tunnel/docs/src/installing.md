@@ -35,6 +35,19 @@ Rent a cheap VPS with a dedicated public IP. Minimum CPU/RAM/disk is fine. For b
 > [!TIP]
 > Thinking about IPv6? It's optional, and you configure it per subnet after installing (see [IPv6](ipv6.md)) — but the easiest time to arrange it is server creation: enable IPv6 if your provider offers it as an option, and note the size of the block they route to your VPS. Adding it to an existing server often takes extra host-side configuration.
 
+### Minimal or "Lite" images
+
+Some providers ship minimal or "Lite" Debian 13 images that omit base utilities the installer needs — notably `curl` (used to download the installer) and `ping` (used to check connectivity). On these, the [installer command](#run-the-installer) fails with `curl: command not found`, or the installer aborts partway with a misleading `No internet connectivity detected` error even though the network is fine.
+
+After connecting over SSH, install the base packages first, then run the installer:
+
+```bash
+apt-get update && apt-get install -y curl iputils-ping
+curl -sSL https://start9.com/start-tunnel/install.sh | sh
+```
+
+This has been reported on mynymbox.io's Debian 13 "Lite" image, but can affect any minimal image.
+
 ### Cloud firewalls
 
 Some VPS providers have a **cloud-panel firewall** that sits outside the operating system. This firewall can silently block WireGuard traffic (UDP 51820) before it ever reaches your VPS, even if the OS firewall is correctly configured. If your provider is listed below, you must open UDP 51820 in the cloud panel **before** devices can connect.
@@ -138,6 +151,9 @@ Run:
 ```bash
 curl -sSL https://start9.com/start-tunnel/install.sh | sh
 ```
+
+> [!NOTE]
+> If this fails with `curl: command not found` or a misleading `No internet connectivity detected` error, your VPS image is missing base utilities — see [Minimal or "Lite" images](#minimal-or-lite-images).
 
 > [!NOTE]
 > If DNS resolution is not working on your VPS, the installer will configure public DNS resolvers (Google, Cloudflare, Quad9) and back up your existing `/etc/resolv.conf`.

@@ -61,6 +61,10 @@ End users install a release build with the hosted script:
 curl -fsSL https://start9.com/start-tunnel/install.sh | sudo bash
 ```
 
+On minimal or "Lite" Debian images, first install the base utilities the
+installer needs: `apt-get install -y curl iputils-ping` (see
+[Minimal or "Lite" images](docs/src/installing.md#minimal-or-lite-images)).
+
 See [docs/src/installing.md](docs/src/installing.md) for the full walkthrough
 (VPS requirements, login, creating your first subnet and device).
 

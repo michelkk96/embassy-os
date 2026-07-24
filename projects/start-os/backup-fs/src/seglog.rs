@@ -53,7 +53,7 @@ use std::fs::{File, OpenOptions};
 use std::io::Read;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::FileExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chacha20::Key;
 use serde::{Deserialize, Serialize};
@@ -197,14 +197,14 @@ pub fn seal_content_tombstone(key: &Key, ecc: EccParams, id: u64) -> BkfsResult<
 }
 
 /// Physical location of a record's frame within the log.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Location {
     pub segment: u64,
     pub offset: u64,
     pub len: u32,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Serialize, Deserialize)]
 struct SegMeta {
     total: u64,
     live: u64,
@@ -265,10 +265,58 @@ pub struct SegmentLog {
     /// at open (from `segment_size()`) so it can't shift under us — and so a
     /// test can pin it without racing the process-global env cache.
     segment_size: u64,
+    /// Held write handle for the index checkpoint, opened at mount. The
+    /// checkpoint is written from `Filesystem::destroy`, which runs *after*
+    /// start-core's lazy `umount -l` has detached the backing store from the
+    /// namespace — so a fresh path open (`File::create`) would resolve to the
+    /// empty mountpoint and fail. Writing through this held fd (as the active
+    /// segment and the unmount `syncfs` do) reaches the real backing store.
+    checkpoint_fd: File,
 }
 
 fn segment_path(dir: &std::path::Path, id: u64) -> PathBuf {
     dir.join(format!("{id:016x}.seg"))
+}
+
+/// Name of the sealed index-checkpoint sidecar in the segments dir. Not a
+/// `.seg`, so the replay scan and compaction ignore it.
+const INDEX_CACHE_NAME: &str = "index.cache";
+
+/// Bumped if [`Checkpoint`]'s layout changes; a mismatch just forces a replay.
+const CHECKPOINT_VERSION: u32 = 1;
+
+/// A sealed snapshot of the in-RAM index so a mount can skip replaying and
+/// re-decrypting every segment. Pure cache: adopted only when `segments`
+/// exactly matches the current on-disk segment sizes, else the caller falls
+/// back to a full replay (see [`SegmentLog::try_open_from_checkpoint`]).
+#[derive(Serialize, Deserialize)]
+struct Checkpoint {
+    version: u32,
+    next_seq: u64,
+    max_inode: u64,
+    index: HashMap<u64, Location>,
+    content: HashMap<u64, Location>,
+    seg_meta: HashMap<u64, SegMeta>,
+    /// `(id, on-disk size)` for every segment the index reflects, sorted. Any
+    /// append or compaction changes a size or the set and invalidates it.
+    segments: Vec<(u64, u64)>,
+}
+
+/// `(id, size)` for every `*.seg` in `dir`, sorted by id.
+fn list_segments(dir: &Path) -> BkfsResult<Vec<(u64, u64)>> {
+    let mut segs = Vec::new();
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if let Some(hex) = name.strip_suffix(".seg") {
+            if let Ok(id) = u64::from_str_radix(hex, 16) {
+                segs.push((id, entry.metadata()?.len()));
+            }
+        }
+    }
+    segs.sort_unstable();
+    Ok(segs)
 }
 
 impl SegmentLog {
@@ -285,6 +333,10 @@ impl SegmentLog {
     /// mount; pinned per-test elsewhere) instead of the env-cached default.
     pub(crate) fn open_sized(dir: PathBuf, key: Key, segment_size: u64) -> BkfsResult<Self> {
         std::fs::create_dir_all(&dir)?;
+        if let Some(log) = Self::try_open_from_checkpoint(&dir, &key, segment_size) {
+            return Ok(log);
+        }
+        let replay_start = std::time::Instant::now();
         let mut segment_ids = Vec::new();
         for entry in std::fs::read_dir(&dir)? {
             let entry = entry?;
@@ -399,6 +451,17 @@ impl SegmentLog {
             .open(segment_path(&dir, active_id))?;
         let active_offset = active.metadata()?.len();
 
+        log::info!(
+            "replayed {} segment(s), {} bytes, in {:?}",
+            segment_ids.len(),
+            seg_meta.values().map(|m| m.total).sum::<u64>(),
+            replay_start.elapsed()
+        );
+        let checkpoint_fd = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(dir.join(INDEX_CACHE_NAME))?;
         Ok(Self {
             dir,
             key,
@@ -411,7 +474,92 @@ impl SegmentLog {
             seg_meta,
             max_inode,
             segment_size,
+            checkpoint_fd,
         })
+    }
+
+    /// Adopt the sealed index checkpoint if present and still current, skipping
+    /// the full segment replay. Best-effort: any problem — absent, unreadable,
+    /// wrong key, version/layout change, or a segment set that no longer matches
+    /// the fingerprint — returns `None` so the caller full-replays. Correctness
+    /// never depends on the checkpoint.
+    fn try_open_from_checkpoint(dir: &Path, key: &Key, segment_size: u64) -> Option<Self> {
+        let sealed = std::fs::read(dir.join(INDEX_CACHE_NAME)).ok()?;
+        let cp: Checkpoint = decode(&vault::open(&sealed, key).ok()?, data_config()).ok()?;
+        if cp.version != CHECKPOINT_VERSION || list_segments(dir).ok()? != cp.segments {
+            log::info!("index checkpoint present but stale — replaying");
+            return None;
+        }
+        let active_id = cp.segments.last().map(|&(id, _)| id).unwrap_or(0);
+        let active = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(segment_path(dir, active_id))
+            .ok()?;
+        let active_offset = active.metadata().ok()?.len();
+        log::info!(
+            "loaded index from checkpoint ({} segments) — skipping replay",
+            cp.segments.len()
+        );
+        let checkpoint_fd = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(dir.join(INDEX_CACHE_NAME))
+            .ok()?;
+        Some(Self {
+            dir: dir.to_path_buf(),
+            key: *key,
+            active,
+            active_id,
+            active_offset,
+            next_seq: cp.next_seq,
+            index: cp.index,
+            content: cp.content,
+            seg_meta: cp.seg_meta,
+            max_inode: cp.max_inode,
+            segment_size,
+            checkpoint_fd,
+        })
+    }
+
+    /// Persist the in-RAM index as a sealed checkpoint so the next mount can
+    /// skip replaying the log.
+    ///
+    /// This runs from `Filesystem::destroy`, which fires *after* start-core's
+    /// lazy `umount -l` has detached the backing store from the mount namespace.
+    /// So it must not do any fresh path lookup (they'd resolve to the now-empty
+    /// mountpoint and fail — the same reason the unmount `syncfs` and segment
+    /// appends use held fds): the fingerprint is taken from the in-RAM
+    /// `seg_meta` (whose `total` tracks each segment's on-disk size) instead of
+    /// re-reading the directory, and the bytes are written through the held
+    /// `checkpoint_fd`. Not fsynced or tmp+renamed — a torn, stale, or lost
+    /// checkpoint is safely ignored on load (the mount falls back to a full
+    /// replay), so it's a pure rebuildable cache.
+    pub fn save_checkpoint(&self) -> BkfsResult<()> {
+        let mut segments: Vec<(u64, u64)> =
+            self.seg_meta.iter().map(|(&id, m)| (id, m.total)).collect();
+        segments.sort_unstable();
+        let n = segments.len();
+        let cp = Checkpoint {
+            version: CHECKPOINT_VERSION,
+            next_seq: self.next_seq,
+            max_inode: self.max_inode,
+            index: self.index.clone(),
+            content: self.content.clone(),
+            seg_meta: self.seg_meta.clone(),
+            segments,
+        };
+        let sealed = vault::seal(
+            &encode(&cp, data_config())?,
+            &self.key,
+            EccParams::default(),
+        );
+        self.checkpoint_fd.set_len(0)?;
+        self.checkpoint_fd.write_all_at(&sealed, 0)?;
+        log::info!("wrote index checkpoint ({n} segments)");
+        Ok(())
     }
 
     pub fn contains(&self, inode: Inode) -> bool {
@@ -783,6 +931,56 @@ mod tests {
         for i in 1..=200u64 {
             assert_eq!(log.load(Inode(i)).unwrap().unwrap().size, i);
         }
+    }
+
+    #[test]
+    fn checkpoint_roundtrips_without_replay() {
+        const SEG: u64 = 8192;
+        let tmp = tempdir::TempDir::new("seglog").unwrap();
+        let dir = tmp.path().join("segments");
+        {
+            let mut log = SegmentLog::open_sized(dir.clone(), key(), SEG).unwrap();
+            for i in 1..=100u64 {
+                log.put(Inode(i), &attrs(i * 10)).unwrap();
+            }
+            log.tombstone(Inode(7)).unwrap();
+            log.sync().unwrap();
+            log.save_checkpoint().unwrap();
+        }
+        // index.cache exists and matches the on-disk segments → the fast path
+        // reconstructs the index without replaying, and it must agree with what
+        // a replay would have produced.
+        assert!(dir.join(INDEX_CACHE_NAME).exists());
+        let log = SegmentLog::open_sized(dir, key(), SEG).unwrap();
+        assert_eq!(log.index_len(), 99);
+        assert!(log.load(Inode(7)).unwrap().is_none());
+        assert_eq!(log.load(Inode(50)).unwrap().unwrap().size, 500);
+        assert_eq!(log.max_inode(), 100);
+    }
+
+    #[test]
+    fn stale_checkpoint_falls_back_to_replay() {
+        const SEG: u64 = 1 << 20;
+        let tmp = tempdir::TempDir::new("seglog").unwrap();
+        let dir = tmp.path().join("segments");
+        {
+            let mut log = SegmentLog::open_sized(dir.clone(), key(), SEG).unwrap();
+            for i in 1..=10u64 {
+                log.put(Inode(i), &attrs(i)).unwrap();
+            }
+            log.save_checkpoint().unwrap();
+            // Append after the checkpoint without re-saving → its segment
+            // fingerprint is now stale.
+            for i in 11..=20u64 {
+                log.put(Inode(i), &attrs(i)).unwrap();
+            }
+            log.sync().unwrap();
+        }
+        // Fingerprint no longer matches → full replay, so records written after
+        // the checkpoint must still be present.
+        let log = SegmentLog::open_sized(dir, key(), SEG).unwrap();
+        assert_eq!(log.index_len(), 20);
+        assert_eq!(log.load(Inode(20)).unwrap().unwrap().size, 20);
     }
 
     #[test]

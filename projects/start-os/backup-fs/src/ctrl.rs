@@ -87,17 +87,21 @@ impl Controller {
         // The superblock is the anchor: it yields the master key and the
         // authoritative format constants (validated/version-gated on open).
         let superblock_path = config.data_dir.join("superblock");
+        let t = std::time::Instant::now();
         let sb = Superblock::open_or_create(&superblock_path, &config.password, config.readonly)?;
+        log::info!("superblock opened in {:?}", t.elapsed());
         let key = sb.key;
         let constants = sb.constants;
         // Opening the log replays existing segments, rebuilding the in-RAM
         // index and the max-inode high-water mark. The segment size is pinned
         // by the superblock, not the environment.
+        let t = std::time::Instant::now();
         let log = SegmentLog::open_sized(
             config.data_dir.join("segments"),
             key,
             constants.segment_size,
         )?;
+        log::info!("segment log opened in {:?}", t.elapsed());
         let next_inode = (log.max_inode() + 1).max(FUSE_ROOT_ID + 1);
         Ok(Self(Arc::new(ControllerSeed {
             key,
@@ -251,6 +255,18 @@ impl Controller {
             return Ok(0);
         }
         self.0.log.lock().unwrap().compact(ratio)
+    }
+
+    /// Persist the in-RAM index checkpoint so the next mount can skip the log
+    /// replay. Best-effort and skipped on a read-only mount; a failure just
+    /// means the next mount replays as before.
+    pub fn save_checkpoint(&self) {
+        if self.0.config.readonly {
+            return;
+        }
+        if let Err(e) = self.0.log.lock().unwrap().save_checkpoint() {
+            log::warn!("failed to write backup index checkpoint (non-fatal): {e}");
+        }
     }
 
     pub fn fsck(&self, find_orphans: bool) -> BkfsResult<()> {

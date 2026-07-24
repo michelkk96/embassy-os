@@ -1,5 +1,3 @@
-# Welcome to stable StartOS 0.4.0
-
 StartOS 0.4.0 has left early access. You updated from a pre-release, so here is what's new since the previous beta:
 
 ## Backups — please read

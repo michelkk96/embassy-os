@@ -25,6 +25,18 @@
 # 0.4.0 (the default; override with --version). Boxes on other arches are
 # untouched until a payload for their arch is deployed.
 #
+# Redeploying a version that is already live (its os_version row exists)
+# requires --replace: the new payload is remounted over the live one,
+# superseded payload files for that platform are pruned, and the os_version
+# row's headline/notes are updated in place.
+#
+# Staging and go-live can also be split across two runs: --skip-publish stages
+# and verifies but stops before the os_version insert; a later --publish-only
+# skips straight to that insert against the already-staged payloads, so the
+# squashfs files need not still be on local disk (only their names are read, for
+# the version and platform). The external pull is re-verified either way, so
+# --publish-only still proves the staging is live before flipping the switch.
+#
 # Assumes the standard legacy registry droplet: root ssh, the Haskell app as
 # registry.service (its Environment supplies RESOURCES_PATH / PG_DATABASE /
 # REGISTRY_HOSTNAME), postgres peer auth, and Debian/Ubuntu's rsync.service.
@@ -49,6 +61,13 @@ options:
   --skip-publish       stage + verify everything but skip the os_version DB
                        insert (the go-live switch); rerun without this to
                        publish
+  --publish-only       skip staging (upload/mount) and go straight to the
+                       go-live insert against payloads a prior --skip-publish
+                       run already staged; the squashfs files need not exist
+                       locally (only their names are read for version/platform)
+  --replace            allow redeploying a version that is already published:
+                       swap the payload under the live mount and update the
+                       existing os_version row's headline/notes
 EOF
     exit 1
 }
@@ -60,6 +79,8 @@ NOTES=
 HOSTNAME_OVERRIDE=
 RESOURCES_OVERRIDE=
 SKIP_PUBLISH=
+PUBLISH_ONLY=
+REPLACE=
 TARGET=
 PAYLOADS=()
 
@@ -71,6 +92,8 @@ while [ $# -gt 0 ]; do
         --hostname)     HOSTNAME_OVERRIDE="$2"; shift 2 ;;
         --resources)    RESOURCES_OVERRIDE="$2"; shift 2 ;;
         --skip-publish) SKIP_PUBLISH=1; shift ;;
+        --publish-only) PUBLISH_ONLY=1; shift ;;
+        --replace)      REPLACE=1; shift ;;
         -*)             usage ;;
         *)
             if [ -z "$TARGET" ]; then TARGET="$1"; else PAYLOADS+=("$1"); fi
@@ -78,11 +101,16 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$TARGET" ] && [ "${#PAYLOADS[@]}" -gt 0 ] || usage
+# One skips the go-live switch, the other skips everything but it.
+[ -z "$SKIP_PUBLISH" ] || [ -z "$PUBLISH_ONLY" ] \
+    || { >&2 echo "--skip-publish and --publish-only are contradictory"; exit 1; }
 
 # startos-<version>-<hash>[~env]_<platform>.migration.squashfs
 PLATFORMS=()
 for payload in "${PAYLOADS[@]}"; do
-    [ -f "$payload" ] || { >&2 echo "no such file: $payload"; exit 1; }
+    # --publish-only stages nothing, so the squashfs need not still be on disk;
+    # only its name is parsed below, for the version and platform.
+    [ -n "$PUBLISH_ONLY" ] || [ -f "$payload" ] || { >&2 echo "no such file: $payload"; exit 1; }
     base="$(basename "$payload")"
     stem="${base%.migration.squashfs}"
     [ "$stem" != "$base" ] || { >&2 echo "$base: not a .migration.squashfs"; exit 1; }
@@ -177,7 +205,23 @@ REG_HOST="${HOSTNAME_OVERRIDE:-$(reg_env REGISTRY_HOSTNAME)}"
     || { >&2 echo "$TARGET: could not read RESOURCES_PATH/PG_DATABASE/REGISTRY_HOSTNAME from registry.service — is this a legacy registry? (--resources/--hostname to override)"; exit 1; }
 echo "== registry: $REG_HOST   resources: $RESOURCES   db: $PG_DB"
 
+# ADVERTISED/platform are format-validated above, safe to inline into SQL
+for platform in "${PLATFORMS[@]}"; do
+    published="$(ssh "$TARGET" "cd /tmp && sudo -u postgres psql -tA -d $(printf '%q' "$PG_DB") -c \"select count(*) from os_version where number='$ADVERTISED' and arch='$platform'\"")"
+    if [ "$published" != 0 ]; then
+        [ -n "$REPLACE" ] || { >&2 echo "$ADVERTISED/$platform is already published (os_version row exists); pass --replace to redeploy over it"; exit 1; }
+        echo "== $ADVERTISED/$platform is already live — replacing (--replace)"
+    fi
+done
+
+# --publish-only trusts a prior --skip-publish run for everything below, which is
+# the whole of what touches the local squashfs files; the external pull further
+# down re-proves the staging is live before the go-live switch.
+if [ -n "$PUBLISH_ONLY" ]; then
+    echo "== skipping upload/mount (--publish-only); re-verifying the staged payloads instead"
+fi
 for i in "${!PAYLOADS[@]}"; do
+    [ -z "$PUBLISH_ONLY" ] || break
     payload="${PAYLOADS[$i]}" platform="${PLATFORMS[$i]}"
     base="$(basename "$payload")"
 
@@ -207,6 +251,8 @@ systemctl daemon-reload
 mount "$MNT"
 test -f "$MNT/.startos-migration" && test -f "$MNT/usr/lib/startos/migration-boot" \
     || { >&2 echo "$SQFS does not look like a migration payload (missing sentinel/migration-boot)"; exit 1; }
+# same-platform payloads with another hash are orphaned now that fstab points here
+find "${SQFS%/*}" -maxdepth 1 -name "*_$PLATFORM.migration.squashfs" ! -name "${SQFS##*/}" -print -delete
 REMOTE
 done
 
@@ -238,12 +284,18 @@ fi
 
 for platform in "${PLATFORMS[@]}"; do
     echo "== publishing os_version $ADVERTISED/$platform (go-live)"
-    ssh "$TARGET" "bash -es -- $(printf '%q ' "$PG_DB" "$ADVERTISED" "$platform" "$HEADLINE" "$NOTES")" <<'REMOTE'
+    ssh "$TARGET" "bash -es -- $(printf '%q ' "$PG_DB" "$ADVERTISED" "$platform" "$HEADLINE" "$NOTES" "$REPLACE")" <<'REMOTE'
 set -euo pipefail
-DB="$1" VERSION="$2" PLATFORM="$3" HEADLINE="${4//\'/\'\'}" NOTES="${5//\'/\'\'}"
+DB="$1" VERSION="$2" PLATFORM="$3" HEADLINE="${4//\'/\'\'}" NOTES="${5//\'/\'\'}" REPLACE="$6"
 cd /tmp # postgres user can't read root's cwd
 if [ "$(sudo -u postgres psql -tA -d "$DB" -c "select count(*) from os_version where number='$VERSION' and arch='$PLATFORM'")" != 0 ]; then
-    echo "os_version $VERSION/$PLATFORM already present — skipping insert"
+    if [ -n "$REPLACE" ]; then
+        echo "os_version $VERSION/$PLATFORM already present — updating in place (--replace)"
+        sudo -u postgres psql -d "$DB" -c "update os_version set updated_at=now(), headline='$HEADLINE', release_notes='$NOTES' \
+            where number='$VERSION' and arch='$PLATFORM'"
+    else
+        echo "os_version $VERSION/$PLATFORM already present — skipping insert"
+    fi
     exit 0
 fi
 sudo -u postgres psql -d "$DB" -c "insert into os_version (id, created_at, updated_at, number, headline, release_notes, arch) \

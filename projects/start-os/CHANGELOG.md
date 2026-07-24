@@ -190,6 +190,14 @@ file tracks notable changes since the move to the monorepo.
 
 ### Fixed
 
+- **Backups wait for the service to fully stop before its data is copied.** A
+  package's data is now captured only after its service has completely stopped,
+  and the package isn't reported finished until it has left the backing-up
+  state. Previously the backup could begin as soon as the package's `.s9pk`
+  image finished serializing — often before the graceful shutdown had
+  completed — so a slow-to-stop service could still be writing while its files
+  were read, risking a torn or inconsistent snapshot of databases and other
+  stateful data.
 - **Migrating a 0.3.5.1 package that lacks instructions no longer fails.**
   Converting a legacy (Embassy) package to the new s9pk format now carries over
   its instructions when present and falls back to a placeholder when absent, so a

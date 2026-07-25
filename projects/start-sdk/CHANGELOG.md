@@ -9,7 +9,7 @@
   resolved a dependency by reading `bindings[<internalPort>].net.assignedPort`
   and prefixing `getOsIp`. That field is raw metadata: only one of
   `assignedPort` / `assignedSslPort` is ever populated, and which one is a
-  property of how the *dependency* bound the port — a binding with `addSsl` and
+  property of how the _dependency_ bound the port — a binding with `addSsl` and
   `secure.ssl` frees `assignedPort` entirely and carries only
   `assignedSslPort`, a passthrough binding is the reverse. So every caller was
   implicitly asserting how its dependency terminates TLS, and resolved `null`

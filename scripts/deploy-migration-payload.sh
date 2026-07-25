@@ -142,8 +142,9 @@ HEADLINE="${HEADLINE:-StartOS $ADVERTISED}"
 # 0.3.5.1's OS-update modal renders these notes as markdown (marked + DOMPurify;
 # GitHub-style `> [!WARNING]` admonitions are NOT supported) directly above its
 # "Begin Update" button. The default carries the pre-update portion of the 0.4.0
-# migration guide (projects/start-os/docs/src/update-040.md), adapted to the OTA
-# path (no USB steps) — keep the two in sync.
+# migration guide (projects/start-os/docs/src/update-040.md) plus its "Over the
+# Air" tab's what-to-expect and browser-cache steps, with the guide's USB path
+# dropped — keep the two in sync.
 if [ -z "$NOTES" ]; then
     NOTES="$(cat <<'EOF'
 StartOS 0.4.0 is a completely new operating system. This update replaces StartOS in place: it downloads ~3 GB, reboots your server, and migrates your services and data to the new format. It requires StartOS 0.3.5.1.
@@ -183,7 +184,11 @@ With all services stopped, create a full system backup covering every service. *
 
 **What to expect**
 
-After you begin, the update downloads (~3 GB), your server reboots, and the migration runs. It can take **hours**, depending on how much data you have — be patient, and do not power off or unplug your server. When it completes: sign in, update **all** of your services from the marketplace before doing anything else (the 0.4.0 versions are repackaged for the new system even when the app version looks the same), start them, and create a fresh backup.
+After you begin, the update downloads (~3 GB), your server reboots, and the migration runs. It can take **hours**, depending on how much data you have — be patient, and do not power off or unplug your server.
+
+**Your browser will not show you 0.4.0 on its own.** Your server is unreachable for part of the restart, and your browser has this 0.3.5.1 interface cached — reloading this tab will keep showing you the old UI or a "cannot connect" error indefinitely, long after 0.4.0 is up and serving. So check on your server every few minutes by opening its address (the `.local` address you are using right now) in a **new private/incognito window** — a fresh window each time. That bypasses the cache, and is the reliable way to see whether your server is back: first an initialization screen with migration progress, then the 0.4.0 login page. Once a private window loads, bring your normal window over with a hard refresh (`ctrl+shift+R`; on macOS Firefox `cmd+shift+R`, on macOS Safari `cmd+option+E` then `cmd+R`) or by clearing your browser's cache.
+
+When the migration completes: sign in, update **all** of your services from the marketplace before doing anything else (the 0.4.0 versions are repackaged for the new system even when the app version looks the same), start them, and create a fresh backup.
 
 Full guide: https://docs.start9.com/start-os/update-040.html
 EOF

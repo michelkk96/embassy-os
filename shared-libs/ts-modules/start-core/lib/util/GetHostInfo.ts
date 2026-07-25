@@ -109,7 +109,9 @@ export function getHost<Mapped>(
  * `null` while the dependency is absent. Only for a flag that should be passed
  * unconditionally against an allocator-guaranteed port, such as tor's 9050.
  */
-export class GetBridgeAddress extends Watchable<string | null> {
+export class GetBridgeAddress<
+  A extends string | null = string | null,
+> extends Watchable<A> {
   protected readonly label = 'GetBridgeAddress'
 
   constructor(
@@ -125,7 +127,7 @@ export class GetBridgeAddress extends Watchable<string | null> {
     super(effects)
   }
 
-  protected async fetch(callback?: () => void): Promise<string | null> {
+  protected async fetch(callback?: () => void): Promise<A> {
     const { hostId, packageId, internalPort, ssl, fallbackPort } = this.opts
     const host = await this.effects.getHostInfo({ hostId, packageId, callback })
     const addr =
@@ -141,9 +143,9 @@ export class GetBridgeAddress extends Watchable<string | null> {
         kind: 'ipv4',
         predicate: a => ssl === undefined || a.ssl === ssl,
       }).hostnames[0]
-    if (addr?.port != null) return `${addr.hostname}:${addr.port}`
-    if (fallbackPort === undefined) return null
-    return `${await this.effects.getOsIp()}:${fallbackPort}`
+    if (addr?.port != null) return `${addr.hostname}:${addr.port}` as A
+    if (fallbackPort === undefined) return null as A
+    return `${await this.effects.getOsIp()}:${fallbackPort}` as A
   }
 }
 
@@ -155,8 +157,28 @@ export function getBridgeAddress(
     packageId?: PackageId
     internalPort: number
     ssl?: boolean
+    fallbackPort: number
+  },
+): GetBridgeAddress<string>
+export function getBridgeAddress(
+  effects: Effects,
+  opts: {
+    hostId: HostId
+    packageId?: PackageId
+    internalPort: number
+    ssl?: boolean
+    fallbackPort?: undefined
+  },
+): GetBridgeAddress<string | null>
+export function getBridgeAddress(
+  effects: Effects,
+  opts: {
+    hostId: HostId
+    packageId?: PackageId
+    internalPort: number
+    ssl?: boolean
     fallbackPort?: number
   },
-): GetBridgeAddress {
+): GetBridgeAddress<string> | GetBridgeAddress<string | null> {
   return new GetBridgeAddress(effects, opts)
 }

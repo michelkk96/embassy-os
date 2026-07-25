@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.9 — StartOS 0.4.0-beta.10 (2026-07-25)
+
+### Fixed
+
+- **`sdk.host.getBridgeAddress` now types its result as non-null when
+  `fallbackPort` is given.** `fallbackPort` exists precisely so the value is
+  never `null` — it resolves to `<osIp>:<fallbackPort>` while the dependency is
+  absent — but 2.0.8 typed every call `string | null` regardless, so the one
+  case the option exists for still forced callers to handle a `null` that cannot
+  occur. Assigning it straight to a non-nullable config field (Bitcoin's
+  `proxy`, LND's `tor.socks`) failed to compile. `getBridgeAddress` is now
+  overloaded on the presence of `fallbackPort`, matching the per-package helper
+  it replaced, which carried the same overload
+
 ## 2.0.8 — StartOS 0.4.0-beta.10 (2026-07-25)
 
 ### Added

@@ -1,7 +1,7 @@
 import { Effects } from '../Effects'
 import { HostId, PackageId } from '../osBindings'
 import { deepEqual } from './deepEqual'
-import { fillHost, FilledHost } from './filledAddress'
+import { fillHost, filledAddress, FilledHost } from './filledAddress'
 import { Watchable } from './Watchable'
 
 export class GetHostInfo<Mapped = FilledHost | null> extends Watchable<
@@ -86,4 +86,77 @@ export function getHost<Mapped>(
     map: map ?? (a => a as Mapped),
     eq: eq ?? ((a, b) => deepEqual(a, b)),
   })
+}
+
+/**
+ * Reactive reader for the bridge address (`10.0.3.1:<port>`) a dependency's
+ * binding is reachable at from another container.
+ *
+ * Resolves the binding's own derived address rather than `net.assignedPort` /
+ * `net.assignedSslPort`: only one of those is ever populated, and which one is
+ * a property of how the *dependency* bound the port — a binding with `addSsl`
+ * and `secure.ssl` carries only `assignedSslPort`, a passthrough binding only
+ * `assignedPort`. Reading either directly asserts how a dependency terminates
+ * TLS and resolves `null` the day that changes.
+ *
+ * Works for a binding with no exported interface, so it also resolves
+ * bridge-only ports such as tor's SOCKS proxy.
+ *
+ * @param opts.ssl - Only for a binding that publishes both a plaintext and a
+ * TLS address (`protocol: 'http'`/`'ws'`, or `secure: null` with `addSsl`);
+ * omit it otherwise, where it would select nothing.
+ * @param opts.fallbackPort - Resolve to `<osIp>:<fallbackPort>` instead of
+ * `null` while the dependency is absent. Only for a flag that should be passed
+ * unconditionally against an allocator-guaranteed port, such as tor's 9050.
+ */
+export class GetBridgeAddress extends Watchable<string | null> {
+  protected readonly label = 'GetBridgeAddress'
+
+  constructor(
+    effects: Effects,
+    readonly opts: {
+      hostId: HostId
+      packageId?: PackageId
+      internalPort: number
+      ssl?: boolean
+      fallbackPort?: number
+    },
+  ) {
+    super(effects)
+  }
+
+  protected async fetch(callback?: () => void): Promise<string | null> {
+    const { hostId, packageId, internalPort, ssl, fallbackPort } = this.opts
+    const host = await this.effects.getHostInfo({ hostId, packageId, callback })
+    const addr =
+      host &&
+      filledAddress(host, {
+        hostId,
+        internalPort,
+        username: null,
+        scheme: null,
+        sslScheme: null,
+        suffix: '',
+      }).bridge.filter({
+        kind: 'ipv4',
+        predicate: a => ssl === undefined || a.ssl === ssl,
+      }).hostnames[0]
+    if (addr?.port != null) return `${addr.hostname}:${addr.port}`
+    if (fallbackPort === undefined) return null
+    return `${await this.effects.getOsIp()}:${fallbackPort}`
+  }
+}
+
+/** @see {@link GetBridgeAddress} */
+export function getBridgeAddress(
+  effects: Effects,
+  opts: {
+    hostId: HostId
+    packageId?: PackageId
+    internalPort: number
+    ssl?: boolean
+    fallbackPort?: number
+  },
+): GetBridgeAddress {
+  return new GetBridgeAddress(effects, opts)
 }

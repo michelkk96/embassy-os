@@ -41,7 +41,11 @@ import { setupServiceInterfaces } from '@start9labs/start-core/interfaces/setupI
 import * as T from '@start9labs/start-core/types'
 import { Effects, ServiceInterfaceType } from '@start9labs/start-core/types'
 import { GetContainerIp } from '@start9labs/start-core/util/GetContainerIp'
-import { getHost, getOwnHost } from '@start9labs/start-core/util/GetHostInfo'
+import {
+  getBridgeAddress,
+  getHost,
+  getOwnHost,
+} from '@start9labs/start-core/util/GetHostInfo'
 import { GetStatus } from '@start9labs/start-core/util/GetStatus'
 import * as patterns from '@start9labs/start-core/util/patterns'
 import { Backups } from './backup/Backups'
@@ -318,6 +322,25 @@ export class StartSdk<Manifest extends T.SDKManifest> {
          * @param eq - optional equality for the mapped value (default deep-equal)
          */
         get: getHost,
+        /**
+         * Resolve the bridge address (`10.0.3.1:<port>`) a dependency's binding
+         * is reachable at from this container, with the same reactive read
+         * strategies as `get`/`getOwn`.
+         *
+         * Prefer this over reading `net.assignedPort` / `net.assignedSslPort`:
+         * only one of those is ever populated, and which one is a property of
+         * how the *dependency* bound the port, so reading either directly
+         * resolves `null` the day the dependency changes how it serves TLS. It
+         * also resolves bindings with no exported interface, such as tor's
+         * SOCKS proxy.
+         *
+         * @param effects - The effects context
+         * @param opts - `{ hostId, packageId?, internalPort, ssl?, fallbackPort? }`.
+         * Pass `ssl` only for a binding publishing both a plaintext and a TLS
+         * address; `fallbackPort` only for a flag that must be passed even while
+         * the dependency is absent (tor's SOCKS 9050).
+         */
+        getBridgeAddress,
       },
       /**
        * Get the container IP address with reactive subscription support.

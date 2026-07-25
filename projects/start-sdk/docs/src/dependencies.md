@@ -38,6 +38,29 @@ dependencies: {
 }
 ```
 
+### Adding the Dependency to `package.json`
+
+Importing a dependency's types — its manifest, its interface constants, an action object — means installing its packaging repo as an npm dependency, pinned to a branch:
+
+```json
+"dependencies": {
+  "@start9labs/start-sdk": "2.0.9",
+  "synapse-startos": "github:Start9Labs/synapse-startos#next"
+},
+"overrides": {
+  "@start9labs/start-sdk": "$@start9labs/start-sdk"
+}
+```
+
+Nothing from that repo ships in your package. StartOS installs each service separately; the dependency is present purely so your code compiles against its real types instead of hand-copied string literals.
+
+> [!IMPORTANT]
+> **The `overrides` entry is required whenever you depend on another packaging repo.** That repo declares its own `@start9labs/start-sdk` version, and if it differs from yours by even a patch, npm nests a second copy of the SDK under it. Both copies then get bundled into your `javascript/index.js` — roughly doubling it — and the two sets of SDK classes are distinct types at runtime.
+>
+> The `$` form points at your own root pin, so it keeps tracking your SDK version with no further edits. It also makes a genuine mismatch _loud_: your `tsconfig.json` includes `node_modules/**/startos`, so the dependency's source is type-checked against **your** SDK. If it uses an API your version doesn't have, you get a build error naming the file — rather than a silently duplicated SDK. Fix that by bumping your own SDK to match.
+>
+> It costs nothing where it isn't needed: with no nested copy to collapse, the lockfile and the built bundle are byte-identical.
+
 ## What `setupDependencies` Returns
 
 The object you return from `setupDependencies()` declares what state each dependency should be in for your service to be considered "fully operational." It drives the **warning UI** the user sees on the service detail page — if a listed dependency isn't installed, isn't running, or has a listed health check failing, StartOS shows them a warning indicator and links them to the offending service.
@@ -106,7 +129,7 @@ sdk.action.createTask(
 > [!NOTE]
 >
 > - Import the action object from the dependency's published package.
-> - The dependency must be listed in your `package.json` (e.g., `"synapse-startos": "file:../synapse-wrapper"`).
+> - The dependency must be listed in your `package.json` — see [Adding the Dependency to `package.json`](#adding-the-dependency-to-packagejson), including the required `overrides` entry.
 > - `when: { condition: 'input-not-matches', once: false }` re-triggers until the action's input matches.
 > - `replayId` prevents duplicate tasks across restarts.
 

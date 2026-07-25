@@ -113,7 +113,7 @@ export const setDependencies = sdk.setupDependencies(async ({ effects }) => {
 With `condition: 'input-not-matches'`, the task is **satisfied** when the action's current input is a superset of **any** entry in `accept` (each entry is matched partially — only the fields you list must agree). When none match, the task is shown and the action form is pre-filled with `set`. Use multiple `accept` entries to tolerate several already-good configurations while still steering the user to one recommended value; for the common case where any value but one specific target is unacceptable, pass a single `accept` entry equal to `set`.
 
 > [!NOTE]
-> The dependency must be listed in your `package.json` so the action can be imported (e.g., `"synapse-startos": "file:../synapse-wrapper"`). See [Dependencies](./dependencies.md) for more on cross-service integration.
+> The dependency must be listed in your `package.json` so the action can be imported — as a branch-pinned git dependency, alongside the `overrides` entry that keeps a single copy of the SDK in your bundle. See [Adding the Dependency to `package.json`](./dependencies.md#adding-the-dependency-to-packagejson), and [Dependencies](./dependencies.md) for more on cross-service integration.
 
 ### Idempotency and `replayId`
 

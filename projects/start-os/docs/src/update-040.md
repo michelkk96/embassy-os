@@ -1,9 +1,14 @@
 # Update to StartOS 0.4.0
 
-StartOS 0.4.0 is a completely new operating system. The update is delivered **over the air**: your server updates itself in place through **System → Software Update**, preserving your services and data.
+StartOS 0.4.0 is a completely new operating system. There are two ways to update to it, both of which preserve your services and data and migrate them to the new format — but they are not equally reliable:
+
+- A **flash update** — you boot the 0.4.0 installer from a USB drive and install it over your existing server. **This is the recommended method.**
+- An **over-the-air update** — your server downloads 0.4.0 itself and applies it on the next restart.
+
+Both are covered in [Install StartOS 0.4.0](#install-startos-040) below.
 
 > [!NOTE]
-> **Raspberry Pi cannot update over the air.** Updating a Raspberry Pi means reflashing its microSD card with the 0.4.0 Raspberry Pi image. Complete [Prepare Your Server](#prepare-your-server) below, then follow the [Raspberry Pi flashing instructions](installing-startos.md#raspberry-pi).
+> **Raspberry Pi cannot update over the air.** A Pi flash update uses the 0.4.0 Raspberry Pi microSD image rather than a USB installer. Complete [Prepare Your Server](#prepare-your-server) below, then follow the [Raspberry Pi flashing instructions](installing-startos.md#raspberry-pi).
 
 The preparation steps are **not optional**: complete [Prepare Your Server](#prepare-your-server) before updating.
 
@@ -71,53 +76,103 @@ With all services stopped, create a [full system backup](/0.3.5.x/user-manual/ba
 > [!WARNING]
 > Do **not** skip this step. Migration failures are possible, and without a backup your data could be lost permanently.
 
-## Update Over the Air
+## Install StartOS 0.4.0
 
-Once StartOS 0.4.0 is available for your server, it is offered under **System → Software Update**. If it is not offered yet, check again later. (Raspberry Pi is not offered the update — follow the [Raspberry Pi flashing instructions](installing-startos.md#raspberry-pi) instead.)
+> [!WARNING]
+> **Flash updating is the more reliable method, and the one we recommend.** If you can physically reach your server and boot it from a USB drive, update that way.
+>
+> The over-the-air update needs neither a USB drive nor physical access, but it is the more failure-prone of the two. If you take it, the backup from Step 6 is your fallback.
 
-### Step 7: Begin the Update
+### Step 7: Install 0.4.0
 
-Go to **System → Software Update**, review the release notes, and click **Begin Update**. The download (~3 GB) runs in the background while your server continues running.
+Pick your method below. Everything above applies to both.
 
-### Step 8: Restart to Apply
+{{#tabs}}
+{{#tab name="Flash Update (Recommended)"}}
 
-When the download completes, the System page shows **Update Complete. Restart to apply changes**. Restart your server through the StartOS UI.
+1. Flash the 0.4.0 installer to a USB drive from any computer, following the [Download](installing-startos.md#download) and [Flash](installing-startos.md#flash) sections of the install guide. Your server can keep running while you do this.
 
-### Step 9: Reach the 0.4.0 UI
+   > [!NOTE]
+   > On a Raspberry Pi, there is no USB installer — flash the 0.4.0 Raspberry Pi image to the Pi's microSD card instead. Follow the [Raspberry Pi flashing instructions](installing-startos.md#raspberry-pi) in place of the steps below, then continue with [After the Update](#after-the-update).
 
-Your server is genuinely offline for the first part of this restart while the disk layout is converted, so give it a few minutes before you start checking on it.
+1. Shut down your server through the StartOS UI.
 
-**Then check every few minutes by opening your server's address (`https://adjective-noun.local`) in a new private/incognito window — a fresh window each time.** Do not just reload the tab you already had open. Your browser has the 0.3.5.1 UI cached, and that cached page will keep showing you the old interface or a "cannot connect" error indefinitely, long after 0.4.0 is up and serving. A private window bypasses the cache, so it is the reliable way to see whether your server is actually back.
+1. Insert the flashed USB drive into your server and power it on. The installer should boot from the USB drive and become available at `http://start.local`.
 
-Once a private window loads, your normal window is still stale. Bring it up to date with either:
+   > [!TIP]
+   > If the installer fails to boot and instead your normal StartOS boots, it means you will need to attach a monitor and keyboard (Kiosk mode) in order to enter the BIOS settings to change the boot priorities. The Server Pure should always boot from USB if present. For the Server One, this is done by hitting the ESC key repeatedly at boot time until the BIOS appears. Arrow over to the boot tab, and change Boot Option #1 to your inserted USB thumb drive, then restart.
 
-- A hard refresh:
-  - Linux/Windows: `ctrl+shift+R`
-  - macOS Firefox: `cmd+shift+R`
-  - macOS Safari: `cmd+option+E`, then `cmd+R`
-- Clearing your browser's cache, then reloading.
+1. Select your language.
 
-If a hard refresh still shows you the old UI, fully quit and restart the browser — browsers cache connections more aggressively than page content.
+1. Select the **OS drive** and the **data drive**. These can be the same drive if your server only has one. Double-check that you have selected the correct drive for each.
 
-### Step 10: Wait
+   > [!WARNING]
+   > You must select the **same drive layout** you had on 0.3.5.1. If 0.3.5.1 (OS and data) lived on a single drive, select **that same drive for both** the OS drive and the data drive. If your 0.3.5.1 data was on a separate drive, select a different drive for the OS. Choosing a different layout than your existing install cannot preserve your data, and the installer will refuse rather than erase the drive.
 
-On this restart, StartOS converts your system to the 0.4.0 format and then migrates every installed service. Once StartOS 0.4.0 boots, an initialization screen at your server's address shows migration progress.
+1. When prompted, select **Preserve** to keep your existing data.
 
-The migration can take **hours**, depending on how much data you have. Be patient and do not power off or unplug your server.
+   > [!WARNING]
+   > If you do not select "Preserve", all data on the drive will be erased.
 
-When the migration completes, the login page becomes available at the same address. Continue with [After the Update](#after-the-update).
+1. Optionally set a new password, or skip to keep your current password.
+
+1. Wait. StartOS converts your system to the 0.4.0 format and then migrates every installed service. This can take **hours**, depending on how much data you have. Be patient and do not power off or unplug your server.
+
+   > [!TIP]
+   > Expect progress to sit at **85%** for a long time — potentially hours. This is when your installed packages are being migrated to the 0.4.0 format, and the time scales with how many packages you have and how much data each one contains. The installer is not stuck.
+
+1. When the update is complete, follow the on-screen instructions to remove the USB drive and reboot.
+
+1. Once your server has rebooted, go to your server's own address (`https://adjective-noun.local`) — the address you used on 0.3.5.1, not the installer's `start.local`.
+
+   **If you get the old 0.3.5.1 interface, a blank page, or a "cannot connect" error, your browser is serving you its cached copy of the old UI.** The server is fine; the page is stale. Any of these will get you the 0.4.0 UI:
+   - Open the address in a new private/incognito window.
+   - Hard refresh the page:
+     - Linux/Windows: `ctrl+shift+R`
+     - macOS Firefox: `cmd+shift+R`
+     - macOS Safari: `cmd+option+E`, then `cmd+R`
+   - Clear your browser's cache, then reload.
+
+   If a hard refresh still shows the old UI, fully quit and restart the browser — browsers cache connections more aggressively than page content.
+
+{{#endtab}}
+{{#tab name="Over the Air"}}
+
+Once StartOS 0.4.0 is available for your server, it is offered under **System → Software Update**. If it is not offered yet, check again later. (Raspberry Pi is never offered the update — use the flash update.)
+
+1. Go to **System → Software Update**, review the release notes, and click **Begin Update**. The download (~3 GB) runs in the background while your server continues running.
+
+1. When the download completes, the System page shows **Update Complete. Restart to apply changes**. Restart your server through the StartOS UI.
+
+1. On this restart, StartOS converts your system to the 0.4.0 format and then migrates every installed service. Your server is unreachable while the disk layout is converted; once StartOS 0.4.0 boots, an initialization screen at your server's address (`https://adjective-noun.local`) shows migration progress. The migration can take **hours**, depending on how much data you have. Be patient and do not power off or unplug your server.
+
+1. **Check on it every few minutes by opening your server's address in a new private/incognito window — a fresh window each time.** Do not just reload the tab you already had open. Your browser has the 0.3.5.1 UI cached for that address, and the cached page will keep showing you the old interface or a "cannot connect" error indefinitely, long after 0.4.0 is up and serving. A private window bypasses the cache, so it is the reliable way to see whether your server is actually back — first with the initialization screen, then with the 0.4.0 login page.
+
+   Once a private window loads, your normal window is still stale. Bring it up to date with either:
+   - A hard refresh:
+     - Linux/Windows: `ctrl+shift+R`
+     - macOS Firefox: `cmd+shift+R`
+     - macOS Safari: `cmd+option+E`, then `cmd+R`
+   - Clearing your browser's cache, then reloading.
+
+   If a hard refresh still shows you the old UI, fully quit and restart the browser — browsers cache connections more aggressively than page content.
+
+{{#endtab}}
+{{#endtabs}}
+
+When the migration completes and you can sign in, continue below.
 
 ## After the Update
 
-### Step 11: Update All Services
+### Step 8: Update All Services
 
 Every installed service will have an update available for the 0.4.0 marketplace. Update **all** of them — including Bitcoin (again, to the latest **minor** of your selected **major** version) — before doing anything else. The 0.4.0 versions are repackaged for the new system, even if the underlying software version is the same.
 
-### Step 12: Start All Services
+### Step 9: Start All Services
 
 Once all services are updated, you can start them. Wait for all services to fully start and confirm they are running correctly.
 
-### Step 13: Create a Backup!
+### Step 10: Create a Backup!
 
 Create a [full system backup](backup-create.md). Ideally this is to a separate drive (or network folder) than 0.3.5.
 

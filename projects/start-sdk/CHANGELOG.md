@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.0.8 — StartOS 0.4.0-beta.10 (2026-07-25)
+
+### Added
+
+- **`sdk.host.getBridgeAddress` resolves the address another container reaches a
+  dependency at, replacing a helper every package was copy-pasting.** Packages
+  resolved a dependency by reading `bindings[<internalPort>].net.assignedPort`
+  and prefixing `getOsIp`. That field is raw metadata: only one of
+  `assignedPort` / `assignedSslPort` is ever populated, and which one is a
+  property of how the *dependency* bound the port — a binding with `addSsl` and
+  `secure.ssl` frees `assignedPort` entirely and carries only
+  `assignedSslPort`, a passthrough binding is the reverse. So every caller was
+  implicitly asserting how its dependency terminates TLS, and resolved `null`
+  the day that changed, which is exactly what happened to LND's dependents when
+  LND moved its REST interface behind the OS reverse proxy. The new helper
+  resolves the binding's own derived address instead, which is correct under
+  either arrangement, and returns a `Watchable` so callers get the same
+  `const`/`once`/`watch`/`onChange`/`waitFor` strategies as `sdk.host.get`.
+  Because it keys off the binding rather than an exported interface, it also
+  resolves bridge-only ports such as tor's SOCKS proxy. `ssl` narrows a binding
+  that publishes both a plaintext and a TLS address (`protocol: 'http'`/`'ws'`,
+  or `secure: null` with `addSsl` — bitcoind's RPC is reachable at both);
+  `fallbackPort` keeps the value non-null while the dependency is absent, for a
+  flag that must be passed unconditionally against an allocator-guaranteed port
+
 ## 2.0.7 — StartOS 0.4.0-beta.10 (2026-07-23)
 
 ### Changed

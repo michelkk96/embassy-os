@@ -2,7 +2,7 @@
 
 [Interfaces](interfaces.md) covers how your service exposes ports **inbound**. This page covers the reverse: how your service reaches **another** service at runtime — a wallet dialing Bitcoin's RPC, an indexer dialing Bitcoin's P2P port, anything dialing Tor's SOCKS proxy.
 
-There is exactly one supported way to do this, and two once-common patterns that are now forbidden.
+There is exactly one supported way to do this, and three once-common patterns that are now forbidden.
 
 ## The host bridge
 
@@ -21,22 +21,28 @@ Every port a service **binds** (via `sdk.MultiHost.of(...).bindPort(...)` in [in
 
 ## Reaching a dependency
 
-Resolve a dependency's bridge address by reading its host and mapping to `<osIp>:<assignedPort>`:
+Resolve a dependency's bridge address from its binding's own derived address list, keyed by the dependency's internal port:
 
 ```typescript
-const osIp = await sdk.getOsIp(effects)
-
 const rpcAddr = await sdk.host
-  .get(effects, { packageId: 'bitcoind', hostId: rpcHostId }, host => {
-    const port = host?.bindings[rpcInternalPort]?.net.assignedPort
-    return port != null ? `${osIp}:${port}` : null
+  .getBridgeAddress(effects, {
+    packageId: 'bitcoind',
+    hostId: rpcHostId,
+    internalPort: rpcInternalPort,
+    ssl: false, // bitcoind's RPC publishes a plaintext *and* a TLS address
   })
   .const()
 ```
 
 Three things make this correct, and each matters:
 
-1. **Read `net.assignedPort`, keyed by the dependency's internal port** — not an `addressInfo` hostname. `assignedPort` is the minimal thing that identifies the bridge address, and it changes _only_ when the external port changes. A binding's `addressInfo` hostname list, by contrast, folds in things that have nothing to do with reaching it over the bridge — the box's LAN IP changing, a Tor or clearnet address being added or removed — any of which would change a hostname-derived value and needlessly restart your service. `osIp` + `assignedPort` is stable against all of that. `rpcHostId` and `rpcInternalPort` are imported from the dependency's package (`bitcoin-core-startos/startos/utils`), not hardcoded — the internal port and host id are the stable contract.
+1. **Read the binding's bridge address, keyed by the dependency's internal port — never `net.assignedPort` or `net.assignedSslPort`.** Those two fields are raw metadata, and _which_ of them is populated depends on how the dependency bound the port. A binding with `addSsl` and `secure.ssl` frees `assignedPort` entirely and carries only `assignedSslPort`; a passthrough binding is the reverse. So a caller reading either field directly is asserting how its dependency terminates TLS — and silently resolves `null` the day that changes. This is not hypothetical: it is exactly what broke every LND dependent when LND moved REST behind the OS proxy.
+
+   `getBridgeAddress` keys off the binding rather than an exported interface, so it also resolves **bridge-only bindings** — tor's SOCKS proxy resolves through it — and it narrows reactivity to that one address, so `.const()` is unaffected by the box's LAN IP changing or a Tor/clearnet address being added. Don't hand-roll it by matching `metadata.gateway === 'lxcbr0'`.
+
+   `rpcHostId` and `rpcInternalPort` are imported from the dependency's package (`bitcoin-core-startos/startos/utils`), not hardcoded — the internal port and host id are the stable contract.
+
+   **On `ssl`:** most bindings publish one bridge address and need no discriminator. A binding that uses `protocol: 'http'`/`'ws'`, or `secure: null` with `addSsl`, publishes **two** — bitcoind's RPC is reachable at both `10.0.3.1:8332` (plaintext) and `10.0.3.1:54404` (TLS-terminated). Only there does filtering on `ssl` matter; adding it elsewhere selects nothing and re-introduces the very assumption this rule removes.
 
 2. **`.const()` on a minimal mapped value.** `.const()` re-runs `main` only when the **mapped** value changes, not on every churn of the dependency's host record. Because the mapped value is just the address string, the restart behavior is exactly what you want:
 
@@ -53,28 +59,12 @@ Three things make this correct, and each matters:
 
 3. **Absent means absent — never fabricate an address.** When the map returns `null` (dependency not installed), write _nothing_ for that dependency: leave the config key out, make the file-model field `.optional().catch(undefined)`, omit the env var. Let the dial fail and the health check go red. **Never** write a placeholder like `127.0.0.1:8332` for a cross-container dependency — that address can't reach the dependency's container and only masks the real state. The `.const()` heals the moment the dependency appears.
 
-### A reusable helper
+### Reading it in an action
 
-Packages wrap the pattern above in a small `utils.ts` helper so each call site stays a one-liner. This is the fleet convention and a drop-in for the planned `sdk.host.getBridgeAddress`:
+`getBridgeAddress` returns the same `Watchable` as `sdk.host.get`, so it carries every read strategy. Use `.const()` in `setupMain` and `setupOnInit`; use `.once()` only inside an action, where a live snapshot rather than a subscription is what you want.
 
-```typescript
-export function bridgeAddress(effects: T.Effects, opts: { packageId: string; hostId: string; internalPort: number; fallbackPort?: number }) {
-  const watchable = async () => {
-    const osIp = await sdk.getOsIp(effects)
-    return sdk.host.get(effects, { packageId: opts.packageId, hostId: opts.hostId }, host => {
-      const port = host?.bindings[opts.internalPort]?.net.assignedPort ?? opts.fallbackPort
-      if (port == null) return null
-      return `${osIp}:${port}`
-    })
-  }
-  return {
-    const: async () => (await watchable()).const(), // reactive, in main / init
-    once: async () => (await watchable()).once(), // snapshot, in an action
-  }
-}
-```
-
-Use `.const()` in `setupMain` and `setupOnInit`; use `.once()` only inside an action, where a live snapshot (not a subscription) is what you want.
+> [!NOTE]
+> Packages written before start-sdk 2.0.8 carry a local `bridgeAddress` helper in their `utils.ts` doing this by hand. Delete it and call `sdk.host.getBridgeAddress` instead.
 
 ## The Tor exception: always-on flags
 
@@ -83,12 +73,14 @@ Some flags should be passed **unconditionally**, even when the dependency is abs
 For this, and only this, use `fallbackPort` so the value is never `null`:
 
 ```typescript
-const torSocks = await bridgeAddress(effects, {
-  packageId: 'tor',
-  hostId: socksHostId,
-  internalPort: socksPort, // 9050
-  fallbackPort: socksPort, // keeps the value at `${osIp}:9050` when Tor is absent
-}).const()
+const torSocks = await sdk.host
+  .getBridgeAddress(effects, {
+    packageId: 'tor',
+    hostId: socksHostId,
+    internalPort: socksPort, // 9050
+    fallbackPort: socksPort, // keeps the value at `${osIp}:9050` when Tor is absent
+  })
+  .const()
 ```
 
 Tor's SOCKS port (9050) is the one external port StartOS guarantees is claimable, so `${osIp}:9050` is always valid. This is not a license to fabricate addresses generally (see rule 3 above) — it applies to Tor's SOCKS proxy, whose address is fixed and whose flag is inert when unreachable.
@@ -130,13 +122,14 @@ Export the host id and internal port as constants so dependents import them rath
 
 ## Forbidden patterns
 
-Two patterns that older packages used are being removed. Do not introduce them:
+Three patterns that older packages used are being removed. Do not introduce them:
 
 - **`<package-id>.startos` DNS names** (`http://bitcoind.startos:8332`). The overlay DNS that resolved these is deprecated and will be removed. Resolve the bridge address instead.
 - **Cross-package container IPs** (`sdk.getContainerIp(effects, { packageId })`). A dependency's container IP is not stable across its restarts/updates and reading it reactively restarts your service on every dependency churn. Use the bridge. (`getContainerIp` with **no** `packageId` — your _own_ container IP — remains fine.)
+- **Reading `net.assignedPort` / `net.assignedSslPort` directly, or matching `metadata.gateway === 'lxcbr0'` by hand.** Only one of the two is ever populated, and which one is a property of how the dependency bound the port — not something a caller may assume. Read the binding's bridge address, which is correct either way.
 
 ## Reference implementations
 
-- **`bitcoin-core`** — `startos/utils.ts` (`bridgeAddress` helper) and `startos/main.ts` (`torSocks` with the `fallbackPort` case).
+- **`bitcoin-core`** — `startos/main.ts` (`torSocks` with the `fallbackPort` case).
 - **`lnd`** — `startos/utils.ts` resolves bitcoind's RPC and ZMQ hosts; a conditional (unlock-gated) binding handled by the same `.const()` pattern.
 - **`mempool`** — `startos/utils.ts` + `startos/file-models/store.json.ts`: the backend-selection choice in `store.json`, the resolved address written to the upstream config's real keys.

@@ -242,6 +242,11 @@ pub fn cli(args: impl IntoIterator<Item = OsString>) {
 }
 
 #[test]
+fn no_shadowed_args_start_tunnel() {
+    super::assert_no_shadowed_args(app().into_command());
+}
+
+#[test]
 fn export_manpage_start_tunnel() {
     // Pages live with the start-tunnel product; anchored to start-core's crate dir.
     let dir = concat!(

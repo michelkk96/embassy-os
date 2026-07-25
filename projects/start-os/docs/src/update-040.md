@@ -83,9 +83,25 @@ Go to **System → Software Update**, review the release notes, and click **Begi
 
 When the download completes, the System page shows **Update Complete. Restart to apply changes**. Restart your server through the StartOS UI.
 
-### Step 9: Wait
+### Step 9: Reach the 0.4.0 UI
 
-On this restart, StartOS converts your system to the 0.4.0 format and then migrates every installed service. Your server will be unreachable while the disk layout is converted; once StartOS 0.4.0 boots, an initialization screen at your server's address (`https://adjective-noun.local`) shows migration progress.
+Your server is genuinely offline for the first part of this restart while the disk layout is converted, so give it a few minutes before you start checking on it.
+
+**Then check every few minutes by opening your server's address (`https://adjective-noun.local`) in a new private/incognito window — a fresh window each time.** Do not just reload the tab you already had open. Your browser has the 0.3.5.1 UI cached, and that cached page will keep showing you the old interface or a "cannot connect" error indefinitely, long after 0.4.0 is up and serving. A private window bypasses the cache, so it is the reliable way to see whether your server is actually back.
+
+Once a private window loads, your normal window is still stale. Bring it up to date with either:
+
+- A hard refresh:
+  - Linux/Windows: `ctrl+shift+R`
+  - macOS Firefox: `cmd+shift+R`
+  - macOS Safari: `cmd+option+E`, then `cmd+R`
+- Clearing your browser's cache, then reloading.
+
+If a hard refresh still shows you the old UI, fully quit and restart the browser — browsers cache connections more aggressively than page content.
+
+### Step 10: Wait
+
+On this restart, StartOS converts your system to the 0.4.0 format and then migrates every installed service. Once StartOS 0.4.0 boots, an initialization screen at your server's address shows migration progress.
 
 The migration can take **hours**, depending on how much data you have. Be patient and do not power off or unplug your server.
 
@@ -93,15 +109,15 @@ When the migration completes, the login page becomes available at the same addre
 
 ## After the Update
 
-### Step 10: Update All Services
+### Step 11: Update All Services
 
 Every installed service will have an update available for the 0.4.0 marketplace. Update **all** of them — including Bitcoin (again, to the latest **minor** of your selected **major** version) — before doing anything else. The 0.4.0 versions are repackaged for the new system, even if the underlying software version is the same.
 
-### Step 11: Start All Services
+### Step 12: Start All Services
 
 Once all services are updated, you can start them. Wait for all services to fully start and confirm they are running correctly.
 
-### Step 12: Create a Backup!
+### Step 13: Create a Backup!
 
 Create a [full system backup](backup-create.md). Ideally this is to a separate drive (or network folder) than 0.3.5.
 

@@ -10,6 +10,30 @@ file tracks notable changes since the move to the monorepo.
 
 ## [0.4.0.1]
 
+### Changed
+
+- **A service that serves its own TLS certificate now reports its external port
+  as an SSL port, and StartOS serves it like one.** Every interface whose
+  external port speaks TLS — whether StartOS terminates it or the service
+  presents its own certificate — now carries that port in `assignedSslPort`,
+  and `assignedPort` means a plaintext port. A self-TLS port is now answered by
+  the StartOS SNI router, which pipes the raw TLS stream to the service with
+  the client's address preserved, instead of a kernel port-forward — so every
+  TLS-carrying port behaves uniformly, and a self-TLS service's domains are
+  advertised on its preferred port (e.g. 443) exactly as when StartOS
+  terminates TLS. This also means such a port accepts TLS connections only,
+  and no longer relays UDP. The port number itself is
+  unchanged, so existing addresses, bookmarks and router port-forwards keep
+  working. Packages resolve a dependency's address with
+  `sdk.host.getBridgeAddress`, which is correct under either arrangement; see
+  [Service-to-Service Networking](https://docs.start9.com/packaging/service-to-service.html).
+
+- **The StartOS web interface holds ports 80 and 443.** StartOS runs as root, so
+  its own interface is the one binding that may claim the privileged range, and
+  it now does so through the same port allocator every service uses. HTTPS was
+  already served on 443; the plaintext address — offered only over loopback and
+  the service bridge — moves from a random high port to 80.
+
 ### Fixed
 
 - **The over-the-air update to 0.4.0 boots on the Server Pure.** The Server

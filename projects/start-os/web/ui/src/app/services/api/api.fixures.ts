@@ -2252,10 +2252,10 @@ Full changelog: https://github.com/Kixunil/btc-rpc-proxy/blob/master/CHANGELOG.m
     hosts: {
       abcdefg: {
         bindings: {
-          80: {
+          443: {
             enabled: true,
             net: {
-              assignedPort: 80,
+              assignedPort: null,
               assignedSslPort: 443,
             },
             addresses: {
@@ -2326,7 +2326,7 @@ Full changelog: https://github.com/Kixunil/btc-rpc-proxy/blob/master/CHANGELOG.m
                 addressInfo: {
                   username: null,
                   hostId: 'abcdefg',
-                  internalPort: 80,
+                  internalPort: 443,
                   scheme: 'http',
                   sslScheme: 'https',
                   suffix: '',

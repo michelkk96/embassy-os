@@ -147,7 +147,7 @@ impl Model<Host> {
                     };
                     if let Some(port) = net.assigned_port.filter(|_| {
                         opt.secure
-                            .map_or(gateway_secure, |s| !(s.ssl && opt.add_ssl.is_some()))
+                            .map_or(gateway_secure, |_| opt.wants_plain_port())
                     }) {
                         let mut hi = HostnameInfo {
                             ssl: opt.secure.map_or(false, |s| s.ssl),
@@ -184,7 +184,7 @@ impl Model<Host> {
                     if let Some(port) = net.assigned_port.filter(|_| {
                         opt.secure.map_or(
                             false, // the public internet is never secure
-                            |s| !(s.ssl && opt.add_ssl.is_some()),
+                            |_| opt.wants_plain_port(),
                         )
                     }) {
                         available.insert(HostnameInfo {
@@ -210,10 +210,10 @@ impl Model<Host> {
             // mdns
             let mdns_host = mdns.local_domain_name();
             let mdns_gateways = mdns_gateways(gateways);
-            if let Some(port) = net.assigned_port.filter(|_| {
-                opt.secure
-                    .map_or(true, |s| !(s.ssl && opt.add_ssl.is_some()))
-            }) {
+            if let Some(port) = net
+                .assigned_port
+                .filter(|_| opt.secure.map_or(true, |_| opt.wants_plain_port()))
+            {
                 let mdns_gateways = if opt.secure.is_some() {
                     mdns_gateways.clone()
                 } else {
@@ -235,7 +235,7 @@ impl Model<Host> {
                     });
                 }
             }
-            if let Some(port) = net.assigned_ssl_port {
+            if let Some(port) = net.assigned_ssl_port.filter(|_| !mdns_gateways.is_empty()) {
                 available.insert(HostnameInfo {
                     ssl: true,
                     public: false,
@@ -255,7 +255,7 @@ impl Model<Host> {
                 if let Some(port) = net.assigned_port.filter(|_| {
                     opt.secure.map_or(
                         false, // the public internet is never secure
-                        |s| !(s.ssl && opt.add_ssl.is_some()),
+                        |_| opt.wants_plain_port(),
                     )
                 }) {
                     available.insert(HostnameInfo {
@@ -267,10 +267,11 @@ impl Model<Host> {
                     });
                 }
                 if let Some(mut port) = net.assigned_ssl_port {
+                    // The domain rides the preferred port whenever one of our
+                    // TLS listeners answers there — SNI routes it, terminating
+                    // (add_ssl) or passthrough (self-TLS) alike.
                     if let Some(preferred) = opt
-                        .add_ssl
-                        .as_ref()
-                        .map(|s| s.preferred_external_port)
+                        .preferred_ssl_port()
                         .filter(|p| available_ports.is_ssl(*p))
                     {
                         port = preferred;
@@ -282,29 +283,15 @@ impl Model<Host> {
                         port: Some(port),
                         metadata,
                     });
-                } else if opt.secure.map_or(false, |s| s.ssl)
-                    && opt.add_ssl.is_none()
-                    && available_ports.is_ssl(opt.preferred_external_port)
-                    && net.assigned_port != Some(opt.preferred_external_port)
-                {
-                    // Service handles its own TLS and the preferred port is
-                    // allocated as SSL — add an address for passthrough vhost.
-                    available.insert(HostnameInfo {
-                        ssl: true,
-                        public: true,
-                        hostname: domain,
-                        port: Some(opt.preferred_external_port),
-                        metadata,
-                    });
                 }
             }
 
             // private domains
             for (domain, domain_gateways) in this.private_domains.de()? {
-                if let Some(port) = net.assigned_port.filter(|_| {
-                    opt.secure
-                        .map_or(true, |s| !(s.ssl && opt.add_ssl.is_some()))
-                }) {
+                if let Some(port) = net
+                    .assigned_port
+                    .filter(|_| opt.secure.map_or(true, |_| opt.wants_plain_port()))
+                {
                     let gateways = if opt.secure.is_some() {
                         domain_gateways.clone()
                     } else {
@@ -324,9 +311,7 @@ impl Model<Host> {
                 }
                 if let Some(mut port) = net.assigned_ssl_port {
                     if let Some(preferred) = opt
-                        .add_ssl
-                        .as_ref()
-                        .map(|s| s.preferred_external_port)
+                        .preferred_ssl_port()
                         .filter(|p| available_ports.is_ssl(*p))
                     {
                         port = preferred;
@@ -336,20 +321,6 @@ impl Model<Host> {
                         public: false,
                         hostname: domain,
                         port: Some(port),
-                        metadata: HostnameMetadata::PrivateDomain {
-                            gateways: domain_gateways,
-                        },
-                    });
-                } else if opt.secure.map_or(false, |s| s.ssl)
-                    && opt.add_ssl.is_none()
-                    && available_ports.is_ssl(opt.preferred_external_port)
-                    && net.assigned_port != Some(opt.preferred_external_port)
-                {
-                    available.insert(HostnameInfo {
-                        ssl: true,
-                        public: false,
-                        hostname: domain,
-                        port: Some(opt.preferred_external_port),
                         metadata: HostnameMetadata::PrivateDomain {
                             gateways: domain_gateways,
                         },
@@ -613,12 +584,13 @@ impl Model<Host> {
         available_ports: &mut AvailablePorts,
         internal_port: u16,
         options: BindOptions,
+        privileged: bool,
     ) -> Result<(), Error> {
         self.as_bindings_mut().mutate(|b| {
             let info = if let Some(info) = b.remove(&internal_port) {
-                info.update(available_ports, options)?
+                info.update(available_ports, options, privileged)?
             } else {
-                BindInfo::new(available_ports, options)?
+                BindInfo::new(available_ports, options, privileged)?
             };
             b.insert(internal_port, info);
             Ok(())
@@ -636,6 +608,7 @@ impl Model<Host> {
         internal_start_port: u16,
         external_start_port: u16,
         number_of_ports: u16,
+        privileged: bool,
     ) -> Result<(), Error> {
         if number_of_ports < 2 {
             return Err(Error::new(
@@ -679,7 +652,11 @@ impl Model<Host> {
                         e.external_start_port..=e.external_start_port + (e.number_of_ports - 1),
                     );
                 }
-                available_ports.try_alloc_range(external_start_port, number_of_ports)?;
+                available_ports.try_alloc_range(
+                    external_start_port,
+                    number_of_ports,
+                    privileged,
+                )?;
             }
             ranges.insert(
                 internal_start_port,

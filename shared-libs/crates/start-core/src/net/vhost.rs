@@ -5,7 +5,7 @@ use std::future::Future;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, LazyLock, Weak};
 use std::task::{Poll, ready};
 use std::time::{Duration, Instant};
 
@@ -16,7 +16,7 @@ use futures::FutureExt;
 use futures::future::BoxFuture;
 use imbl::{OrdMap, OrdSet};
 use imbl_value::{InOMap, InternedString};
-use ipnet::IpNet;
+use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use rpc_toolkit::{Context, HandlerArgs, HandlerExt, ParentHandler, from_fn, from_fn_async};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -38,6 +38,7 @@ use crate::db::{DbAccessByKey, DbAccessMut};
 use crate::net::acme::{
     AcmeCertStore, AcmeProvider, AcmeTlsAlpnCache, AcmeTlsHandler, GetAcmeProvider,
 };
+use crate::net::forward::START9_BRIDGE_V6_SUBNET;
 use crate::net::gateway::{
     GatewayInfo, NetworkInterfaceController, NetworkInterfaceListenerAcceptMetadata,
 };
@@ -52,7 +53,7 @@ use crate::util::future::NonDetachingJoinHandle;
 use crate::util::io::ReadWriter;
 use crate::util::serde::{HandlerExtSerde, MaybeUtf8String, display_serializable};
 use crate::util::sync::{SyncMutex, Watch};
-use crate::{GatewayId, HostId, PackageId, ResultExt};
+use crate::{GatewayId, HOST_IP, HostId, PackageId, ResultExt};
 
 /// Identifies which service+host contributed a set of SNI hostname mappings, so
 /// each can be reconciled independently — a service only ever adds or removes
@@ -358,6 +359,8 @@ impl VHostController {
             private: private.clone(),
             acme: None,
             addr: backend,
+            // A manual passthrough is not a container the box gateways.
+            addr_v6: None,
             add_x_forwarded_headers: false,
             auth: None,
             connect_ssl: Err(AlpnInfo::Reflect),
@@ -923,6 +926,10 @@ pub struct ProxyTarget {
     pub private: BTreeSet<IpAddr>,
     pub acme: Option<AcmeProvider>,
     pub addr: SocketAddr,
+    /// The container's IPv6 address on the bridge, when it has one. Only the
+    /// source-preserving leg uses it — the plain connect stays on `addr` — since
+    /// a v6 client's source can only be bound on a socket dialing v6.
+    pub addr_v6: Option<SocketAddrV6>,
     pub add_x_forwarded_headers: bool,
     /// Optional `Authorization` header value to inject on upstream
     /// requests. Implies HTTP-aware proxying (same path as forwarded headers).
@@ -942,6 +949,7 @@ impl PartialEq for ProxyTarget {
             && self.private == other.private
             && self.acme == other.acme
             && self.addr == other.addr
+            && self.addr_v6 == other.addr_v6
             && self.add_x_forwarded_headers == other.add_x_forwarded_headers
             && self.auth == other.auth
             && self.passthrough == other.passthrough
@@ -959,12 +967,28 @@ impl fmt::Debug for ProxyTarget {
             .field("private", &self.private)
             .field("acme", &self.acme)
             .field("addr", &self.addr)
+            .field("addr_v6", &self.addr_v6)
             .field("add_x_forwarded_headers", &self.add_x_forwarded_headers)
             .field("auth", &self.auth.as_ref().map(|_| "<redacted>"))
             .field("connect_ssl", &self.connect_ssl.as_ref().map(|_| ()))
             .field("passthrough", &self.passthrough)
             .field("preserve_source_ip", &self.preserve_source_ip)
             .finish()
+    }
+}
+
+/// Whether `ip` sits on lxcbr0, where the containers are.
+fn on_container_bridge(ip: IpAddr) -> bool {
+    static V6: LazyLock<Ipv6Net> =
+        LazyLock::new(|| START9_BRIDGE_V6_SUBNET.parse().expect("const subnet"));
+    static V4: LazyLock<Ipv4Net> = LazyLock::new(|| {
+        Ipv4Net::new(HOST_IP.into(), 24)
+            .expect("const prefix")
+            .trunc()
+    });
+    match ip {
+        IpAddr::V4(v4) => V4.contains(&v4),
+        IpAddr::V6(v6) => V6.contains(&v6),
     }
 }
 
@@ -990,6 +1014,34 @@ impl ProxyTarget {
         };
         wan || (self.private.contains(&dst)
             && (subnets.iter().any(|s| s.contains(&src)) || is_private_ip(src)))
+    }
+
+    /// Whether the box gateways `client`, which source preservation requires:
+    /// the backend's reply is addressed to the client, and only reaches our
+    /// transparent socket if it transits this host to be diverted. It doesn't
+    /// for a client on the box (also its own peer — its `(ip, port)` is already
+    /// bound to its own socket) nor for one on the container bridge, which the
+    /// backend answers directly over that link.
+    fn gateways_client(&self, client: IpAddr) -> bool {
+        !client.is_loopback() && !self.private.contains(&client) && !on_container_bridge(client)
+    }
+
+    /// The `(client, container)` pair to open the internal leg with when the
+    /// client's source address is to be preserved; `None` to connect plainly.
+    /// Both ends must be one family, so a v6 client needs the container's v6.
+    fn transparent_leg(&self, peer: Option<SocketAddr>) -> Option<(SocketAddr, SocketAddr)> {
+        if !self.preserve_source_ip {
+            return None;
+        }
+        let client = peer?;
+        if !self.gateways_client(client.ip()) {
+            return None;
+        }
+        let target = match client {
+            SocketAddr::V4(_) => matches!(self.addr, SocketAddr::V4(_)).then_some(self.addr)?,
+            SocketAddr::V6(_) => SocketAddr::V6(self.addr_v6?),
+        };
+        Some((client, target))
     }
 }
 
@@ -1040,25 +1092,44 @@ where
         metadata: &'a <A as Accept>::Metadata,
     ) -> Option<(ServerConfig, Self::PreprocessRes)> {
         let peer = extract::<TcpMetadata, _>(metadata).map(|m| m.peer_addr);
-        let tcp_stream = match (self.preserve_source_ip, peer, self.addr) {
-            // Source-preserving passthrough (container): open the internal leg
-            // from the client's own address so the backend sees the real peer
-            // (RFC §4.6). The box gateways the container, so replies transit it
-            // and the divert routes them back. Manual LAN passthroughs and
-            // terminating targets connect plainly — the box isn't their gateway.
-            (true, Some(SocketAddr::V4(client)), SocketAddr::V4(target)) => {
+        let plain_connect = || async {
+            TcpStream::connect(self.addr)
+                .await
+                .with_ctx(|_| (ErrorKind::Network, self.addr))
+                .log_err()
+        };
+        // Source-preserving passthrough (container): open the internal leg from
+        // the client's own address so the backend sees the real peer (RFC §4.6).
+        // The box gateways the container, so replies transit it and the divert
+        // routes them back. Manual LAN passthroughs and terminating targets
+        // connect plainly — the box isn't their gateway.
+        let tcp_stream = match self.transparent_leg(peer) {
+            Some((client, target)) => {
                 crate::net::transparent::ensure_divert_infra_once()
                     .await
                     .log_err();
-                crate::net::transparent::transparent_connect(client, target)
-                    .await
-                    .with_ctx(|_| (ErrorKind::Network, self.addr))
-                    .log_err()?
+                match crate::net::transparent::transparent_connect(client, target).await {
+                    Ok(stream) => stream,
+                    // Degraded, not fatal: the backend sees this host rather than
+                    // the client. Better than dropping a working connection.
+                    Err(e) => {
+                        // A service bound to `0.0.0.0` refuses the v6 leg, which is
+                        // the common case and not worth warning about per
+                        // connection; anything else is a real misconfiguration.
+                        if e.kind() == std::io::ErrorKind::ConnectionRefused {
+                            tracing::debug!(
+                                "{target} has no listener for {client}'s family; connecting plainly"
+                            );
+                        } else {
+                            tracing::warn!(
+                                "transparent egress to {target} for {client} failed ({e}); connecting plainly, so the backend will see this host as the peer"
+                            );
+                        }
+                        plain_connect().await?
+                    }
+                }
             }
-            _ => TcpStream::connect(self.addr)
-                .await
-                .with_ctx(|_| (ErrorKind::Network, self.addr))
-                .log_err()?,
+            None => plain_connect().await?,
         };
         if let Err(e) = socket2::SockRef::from(&tcp_stream)
             .set_tcp_keepalive(&crate::net::utils::default_keepalive())
@@ -1857,6 +1928,7 @@ mod accept_filter_tests {
             private: private.iter().map(|s| s.parse().unwrap()).collect(),
             acme: None,
             addr: "10.0.0.1:443".parse().unwrap(),
+            addr_v6: None,
             add_x_forwarded_headers: false,
             auth: None,
             connect_ssl: Err(AlpnInfo::Reflect),
@@ -1867,6 +1939,27 @@ mod accept_filter_tests {
 
     fn ip(s: &str) -> IpAddr {
         s.parse().unwrap()
+    }
+
+    /// Source preservation needs the backend's reply to transit this host. It
+    /// doesn't for a client that reaches the backend without us.
+    #[test]
+    fn only_a_gatewayed_client_gets_source_preservation() {
+        let t = target(&["enp1s0"], &[], &["192.168.1.5", "fd00:3::1"]);
+
+        // remote, both families: we gateway it
+        assert!(t.gateways_client(ip("192.168.1.99")));
+        assert!(t.gateways_client(ip("2001:db8::99")));
+
+        // this box: its (ip, port) is already bound to its own socket
+        assert!(!t.gateways_client(ip("127.0.0.1")));
+        assert!(!t.gateways_client(ip("::1")));
+        assert!(!t.gateways_client(ip("192.168.1.5")));
+        assert!(!t.gateways_client(ip("fd00:3::1")));
+
+        // on lxcbr0 with the backend, which answers it directly over that link
+        assert!(!t.gateways_client(ip("10.0.3.42")));
+        assert!(!t.gateways_client(ip("fd00:3::c9f:81ff:fe37:c0a9")));
     }
 
     // WAN accept is gated by the family of the address the connection arrived on:

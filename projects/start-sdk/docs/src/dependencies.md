@@ -40,7 +40,7 @@ dependencies: {
 
 ### Naming a Dependency
 
-**If a dependency has multiple flavors, refer to it by a generic term.** The most prominent example today is `bitcoind`: dependents should call it **Bitcoin**, never Bitcoin Core or Bitcoin Knots. Use the `title` you gave it above — that's the name the UI shows.
+**If a dependency has multiple flavors, refer to it by a generic term.** The most prominent example today is `bitcoind`: dependents should call it **Bitcoin**, never Bitcoin Core or Bitcoin Knots. Use the `metadata.title` you declared for it above — that's the name the UI shows.
 
 This covers user-facing text only: release notes, `instructions.md`, action and config-field descriptions, task reasons, i18n dictionaries. Import paths and mount points are code, not messaging.
 

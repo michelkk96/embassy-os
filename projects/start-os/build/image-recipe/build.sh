@@ -256,7 +256,7 @@ if [ "${NVIDIA}" = "1" ]; then
     # install a specific NVIDIA driver version
 
     # ---------------- configuration ----------------
-    NVIDIA_DRIVER_VERSION="\${NVIDIA_DRIVER_VERSION:-580.159.03}"
+    NVIDIA_DRIVER_VERSION="\${NVIDIA_DRIVER_VERSION:-580.173.02}"
 
     BASE_URL="https://download.nvidia.com/XFree86/Linux-${QEMU_ARCH}"
 
@@ -306,8 +306,10 @@ if [ "${NVIDIA}" = "1" ]; then
 
     echo "[nvidia-hook] Running NVIDIA installer for kernel \${KVER}" >&2
 
+    # Otherwise the installer picks the flavour from the build host's own GPUs.
     if ! sh "\${RUN_PATH}" \
         --silent \
+        --kernel-module-type=proprietary \
         --kernel-name="\${KVER}" \
         --no-x-check \
         --no-nouveau-check \

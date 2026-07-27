@@ -177,7 +177,7 @@ The key steps are:
 | `addSsl.addXForwardedHeaders`   | `boolean`                                             | Whether to add `X-Forwarded-*` headers.                                                                                                                                                                                     |
 | `addSsl.auth`                   | `ProxyAuth` \| `null`                                 | Optional auth gate enforced by the OS reverse proxy. See [Authenticating at the Proxy](#authenticating-at-the-proxy).                                                                                                       |
 | `addSsl.upstreamCertValidation` | `'disable'` \| `{ certificate: string }` \| _omitted_ | How the OS validates your container's TLS cert when it [rewraps SSL](#rewrapping-ssl-to-a-tls-container). Omit to validate against the StartOS root CA (default). See [Rewrapping SSL](#rewrapping-ssl-to-a-tls-container). |
-| `secure`                        | `{ ssl: boolean }` \| `null`                          | For non-HTTP protocols, whether the connection is secure.                                                                                                                                                                   |
+| `secure`                        | `{ ssl: boolean }` \| `null`                          | For non-HTTP protocols, whether the connection is secure. `{ ssl: true }` with `addSsl: null` serves your container's own TLS end to end — see [Serving Your Own TLS](#serving-your-own-tls-passthrough).                   |
 
 ## Interface Options
 
@@ -305,6 +305,67 @@ const origin = await multi.bindPort(443, {
 
 > [!NOTE]
 > For `{ certificate }`, StartOS connects to the container by IP, so the pinned certificate must be valid for that internal IP (present in its SANs). If it isn't, use `'disable'` instead.
+
+## Serving Your Own TLS (Passthrough)
+
+There is a third arrangement, distinct from both plain termination and the rewrap: **passthrough**, where your container's certificate reaches the client unmodified. Set `secure: { ssl: true }` with **no** `addSsl`:
+
+```typescript
+const origin = await multi.bindPort(10009, {
+  protocol: null,
+  addSsl: null,
+  preferredExternalPort: 10009,
+  secure: { ssl: true },
+})
+```
+
+StartOS still fronts the port with one of its TLS listeners, but that listener pipes the raw TLS stream through instead of terminating it, so nothing about the handshake is rewritten. The container sees the client's real source address rather than the proxy's — except for a client on the box itself, which appears as the bridge IP.
+
+### When to use it
+
+Reach for passthrough only when the rewrap genuinely cannot serve, which is one of two cases:
+
+1. **The client must verify your container's own certificate.** A wallet that pins a certificate carried in a connection URI can only do so if the certificate it pins is the one actually served.
+2. **The handshake carries something a rewrap does not.** ALPN is the concrete case: StartOS negotiates no ALPN with the client across an `addSsl` rewrap, and gRPC-go rejects a connection with no selected ALPN (`missing selected ALPN property`). LND binds its gRPC interface this way for exactly that reason.
+
+Otherwise prefer `addSsl`. Passthrough gives up everything the proxy does on your behalf:
+
+| Capability                       | `addSsl`                      | Passthrough                                 |
+| -------------------------------- | ----------------------------- | ------------------------------------------- |
+| Certificate the client sees      | The device certificate        | Your container's                            |
+| Proxy auth (`addSsl.auth`)       | Available                     | Not available — `auth` lives under `addSsl` |
+| `X-Forwarded-*` headers          | Available                     | Not applicable                              |
+| ACME on a custom domain          | StartOS obtains and renews it | Skipped — your container is the ACME client |
+| UDP on the same port             | Not applicable                | No; the port accepts TLS only               |
+| Certificate issuance and renewal | Handled by the platform       | Yours to handle                             |
+
+### Minting the certificate
+
+`sdk.getSslCertificate` returns a PEM fullchain — leaf, intermediate, StartOS root CA — for the hostnames you name, and `sdk.getSslKey` returns the matching key. Because the chain terminates at the StartOS root CA, a client that already trusts the box validates your certificate without pinning anything.
+
+**The SANs are the whole contract.** Nothing rewrites the handshake, so the certificate must be valid for every address a client actually dials — there is no proxy to paper over a mismatch:
+
+- `sdk.getOsIp` (`10.0.3.1`) — the bridge, where other services reach you
+- `127.0.0.1` — your own subcontainers, which share the service's network namespace
+- `sdk.getContainerIp` — the container itself
+- any other address you expect a client to use
+
+```typescript
+export const setupCerts = sdk.setupOnInit(async effects => {
+  const hostnames = [await sdk.getContainerIp(effects).const(), '127.0.0.1', await sdk.getOsIp(effects)]
+  const cert = (await sdk.getSslCertificate(effects, hostnames).const()).join('')
+  const key = await sdk.getSslKey(effects, { hostnames })
+  await writeFile('/media/startos/volumes/main/tls.cert', cert)
+  await writeFile('/media/startos/volumes/main/tls.key', key)
+})
+```
+
+Read the container IP with `.const()` rather than `.once()`: a container that comes back on a new IP must reissue the certificate, or every client dialing the old one fails verification.
+
+> [!WARNING]
+> Do **not** add a `<package-id>.startos` DNS name to the SANs. That overlay DNS is deprecated and slated for removal, and it resolves to the container IP rather than the bridge — so it bypasses the platform entirely. Dependents reach you through the bridge; see [Service-to-Service Networking](service-to-service.md).
+
+A passthrough port carries its external port in `net.assignedSslPort`, the same as an `addSsl` port — which of the two fields is populated says whether the port speaks TLS, not who terminates it. Dependents should read neither field directly; `sdk.host.getBridgeAddress` resolves the binding's derived address and is correct under every arrangement on this page.
 
 ## Authenticating at the Proxy
 

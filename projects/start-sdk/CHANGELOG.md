@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- **Package template cleanup.** Dropped the `alerts` manifest block, removed in
+  2.0.0, that the template still scaffolded, and the `hello-world` guard job
+  from `release.yml` / `tagAndRelease.yml`. Its workflows are now identical to
+  a real package's
 - **`make install` no longer announces "Initializing StartOS developer
   environment…" on every run.** `check-init` guarded on
   `~/.startos/developer.key.pem`, which start-cli 1.1.0 renamed to

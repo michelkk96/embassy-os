@@ -98,7 +98,7 @@ jobs:
       DEV_KEY: ${{ secrets.DEV_KEY }}
 ```
 
-**tagAndRelease.yml** -- on merge to master, checks the version against the production registry. If the version already exists, the workflow exits gracefully without building. Otherwise, creates a release tag, then builds and publishes to the test registry. If a new commit arrives while a previous run is still in progress, the old run is cancelled:
+**tagAndRelease.yml** -- on merge to master, checks the version against the registry named by `REFERENCE_REGISTRY`. That is whichever registry the track treats as already-shipped — it is configured per repo/org and is not necessarily production. If that registry already serves the version, the workflow exits gracefully without building. Otherwise it force-moves the release tag onto the new commit, then builds and publishes to the test registry, replacing the release's same-named assets. If a new commit arrives while a previous run is still in progress, the old run is cancelled:
 
 ```yaml
 name: Tag and Release

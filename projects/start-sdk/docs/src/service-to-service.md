@@ -127,7 +127,7 @@ Everything above assumes you know who you are dialing — a dependency you decla
 `sdk.getRootCa` returns that root, PEM encoded:
 
 ```typescript
-const rootCa = await sdk.getRootCa(effects).const()
+const rootCa = await sdk.getRootCa(effects) // a plain Promise, not reactive
 await appSub.writeFile('/app/startos-root-ca.crt', rootCa)
 ```
 

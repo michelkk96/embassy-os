@@ -1,6 +1,6 @@
 # Service-to-Service Networking
 
-[Interfaces](interfaces.md) covers how your service exposes ports **inbound**. This page covers the reverse: how your service reaches **another** service at runtime — a wallet dialing Bitcoin's RPC, an indexer dialing Bitcoin's P2P port, anything dialing Tor's SOCKS proxy.
+[Interfaces](interfaces.md) covers how your service exposes ports **inbound**. This page covers the reverse: how your service reaches **another** service at runtime — a wallet dialing Bitcoin's RPC, an indexer dialing Bitcoin's P2P port, anything dialing Tor's SOCKS proxy. For reaching the internet rather than a sibling package, see [Outbound Network Access](outbound-networking.md).
 
 There is exactly one supported way to do this, and three once-common patterns that are now forbidden.
 

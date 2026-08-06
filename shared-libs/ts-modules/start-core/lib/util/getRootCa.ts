@@ -14,8 +14,7 @@ import { Effects } from '../Effects'
  * years, with no rotation flow.
  */
 export async function getRootCa(effects: Effects): Promise<string> {
-  // The OS exposes the root only as the last link of a fullchain, so obtaining
-  // it means asking for a leaf we discard — here one with no SANs at all.
-  const [, , rootCa] = await effects.getSslCertificate({ hostnames: [] })
-  return rootCa
+  // The root only comes back inside a fullchain, so we mint a leaf we discard.
+  const chain = await effects.getSslCertificate({ hostnames: [] })
+  return chain[chain.length - 1]
 }

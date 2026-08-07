@@ -48,6 +48,49 @@ Each product lives under `projects/` as a thin wrapper; the bulk of the code liv
 - **Release from a merged, up-to-date `master`.** The tag is a claim that a commit on `master` produced the artifact, so cut it where that's true. Nothing enforces this — publishing out of band from an unmerged branch is deliberately still possible, and sometimes the right call — but it is a **debt, not a shortcut**: the commit you published from will be squashed or orphaned when the branch merges, leaving the tag nowhere honest to point. If you take it, you owe the follow-up in the same sitting — merge the branch, then tag and release at the resulting `master` commit, having checked that its shipped subtree still matches the artifact you published. start-sdk 2.0.5 went out this way and had to be reconstructed after the fact.
 - Per-product prerequisites and specifics live in that product's scope — e.g. [`projects/start-sdk/AGENTS.md`](projects/start-sdk/AGENTS.md#cutting-a-release), [`projects/start-wrt/CONTRIBUTING.md`](projects/start-wrt/CONTRIBUTING.md#cutting-a-release).
 
+## Filing issues
+
+- **The issue forms are the human path, and you will never see them.** `.github/ISSUE_TEMPLATE/*.yml` binds the web UI only — `gh issue create` does not consult a template, so nothing sets the type or the label on your behalf. Pass both yourself (`gh issue create --type Bug --label StartOS`) and write the body from the spec below; don't go open a form to find out what it wants. An issue filed without a type and label is untyped and unlabeled, and drops out of every triage view.
+- **Type is a GitHub issue type, not a label.** `Bug`, `Feature`, or `Task`, defined at the org level and passed as `--type`. There is no `bug` or `enhancement` label — don't invent one.
+- **Take the project label from this exact set.** The casing is inconsistent and is matched literally: `StartOS`, `start-cli`, `StartSDK`, `StartWRT`, `StartTunnel`, `start-registry`, `start-docs`, `brochure`, and `repo` (build, CI, and release tooling). One label is the norm — reach for a second only when a defect genuinely spans two products. The shared libraries — `start-core`, `patch-db`, `exver`, `ts-modules` — have none of their own, so label them with the product the defect is most visible in.
+- **The two status labels are the maintainer's, not the filer's.** `Approved` means signed off and ready for a PR; `Known Solution` means the fix is identified but unimplemented. Never apply either when filing.
+- **Don't pass `--assignee`.** [`.github/workflows/issue-triage.yml`](.github/workflows/issue-triage.yml) routes the issue to its owner from the project label you set, and features to the maintainer regardless of project. Getting the label right is therefore what gets the issue in front of the right person — an unlabeled issue is also an unassigned one.
+- **Title the issue as the finding, not the symptom.** Once you have traced the cause, `<what breaks> — <why> (<file:line>)` beats a bare description of what you saw.
+- **A bug in a packaged service is not a bug in this repo.** Defects in Bitcoin Core, LND, Nextcloud and the rest belong in that package's own `*-startos` repo. File here only when the fault is in StartOS, the SDK, or another product in this monorepo.
+
+Write the body with these headings verbatim. Omit a section you have nothing for rather than filling it with "N/A":
+
+```markdown
+### Environment
+
+<the facts listed for this product below>
+
+### What happens
+
+### What should happen instead
+
+### Steps to reproduce
+
+<omit when you found this by reading code — say so under Root cause instead>
+
+### Root cause / code pointers
+
+<`path/to/file:line` and the mechanism, only once you have verified it. Omit rather than guess: a confident wrong cause costs triage more than an empty section. Human filers almost never supply this, so it is where you add the most — and where you do the most damage by bluffing.>
+
+### Logs & evidence
+```
+
+What `### Environment` carries, by project:
+
+- `StartOS` — version and git hash (`start-cli -H <host> git-info`), architecture and image variant, server hardware, and the area (web UI, service runtime, networking, backup/restore, update)
+- `start-cli` — `start-cli --version` and `start-cli git-info`, platform, install method, the exact failing invocation, and the target server's version for a remote call
+- `StartSDK` — the `@start9labs/start-sdk` version, the package being built, Node version, and the StartOS version for a runtime failure
+- `start-registry` — which registry, `registrybox` version if self-hosted, and the client used (marketplace tab, brochure, `start-cli registry`, direct RPC)
+- `StartTunnel` — `start-tunnel --version` and `dpkg -l start-tunnel`, VPS provider and OS, whether the host is behind NAT, and host firewall state
+- `StartWRT` — the image release or git hash, the board, and the relevant `uci show <package>` output
+- `brochure` — page URL, browser and OS, and the registry being browsed
+- `start-docs` — page URL, which book, and the source file under `projects/<product>/docs/`
+
 ## Code style
 
 - **Comment only what the code can't say for itself.** Add a comment for a non-obvious mechanism, a deviation from convention, or a load-bearing subtlety — not to restate what the code plainly does. Keep it terse: say what needs saying and no more, and prefer cutting a comment to padding it.
@@ -67,7 +110,10 @@ Some pairs of files mirror each other by hand — nothing enforces them, so a ch
 - **A product's CI `paths:` filter ↔ its `build.mk` prerequisites.** Each `.github/workflows/<product>.yaml` only triggers on the paths that product's build actually depends on. Those `paths:` allowlists are a hand-maintained mirror of the prerequisites in `projects/<product>/build.mk` (the project dir, `shared-libs/**` or the specific crates it pulls in, `Cargo.*`, `build/**`, `debian/**`, the web config for products with a UI, …). When you add or drop a build input in a `build.mk`, update that product's workflow `paths:` (both the `push:` and `pull_request:` blocks) — otherwise CI will silently stop running on changes that affect the build. Affected pairs: `start-cli`, `start-registry`, `start-tunnel`, `start-wrt`, `startos-iso`. Additionally, `startos-iso.yaml`'s `changes` job carries a finer mirror: on PRs it gates the expensive **image** matrix on a regex of image-_assembly_ paths (packaging, image-recipe, systemd units, `apt/**`, shared `build/**`) — the inputs the image target pulls in _beyond_ the compiled binary. When you change what feeds the image target in `projects/start-os/build.mk` (vs. the binary, which the `compile` job always covers), update that regex too, or image-affecting PRs will skip image validation.
 - **start-wrt's CI publish constants ↔ `scripts/manage-release.sh`'s wrt config.** The `deploy` job in `.github/workflows/start-wrt.yaml` registers builds into the beta registry with values (registry URL, S3 CDN, platform, compat floor) and register/index commands that hand-mirror `manage-release.sh`'s `STARTWRT_*` vars and `cmd_register` (the manual fallback). Change one side, change the other.
 - **The reusable service-package CI ↔ the SDK package-template ↔ the packaging docs.** `.github/workflows/{build,release,tagAndRelease}.yml` (the `workflow_call` CI that external `*-startos` service repos consume) are mirrored by the copies under `projects/start-sdk/docs/package-template/.github/workflows/` and the examples in `projects/start-sdk/docs/src/project-structure.md`. Change the reusable-workflow surface (inputs, action names, file layout) in all three.
-- **Adding a product or crate.** A new crate must be added to the root `Cargo.toml` `members`; a new _product_ also needs its `projects/<product>/build.mk` `include`d in the root `Makefile`, a path-gated `.github/workflows/<product>.yaml`, and — if it ships a UI — an `angular.json` project plus `package.json` scripts.
+- **Adding a product or crate.** A new crate must be added to the root `Cargo.toml` `members`; a new _product_ also needs its `projects/<product>/build.mk` `include`d in the root `Makefile`, a path-gated `.github/workflows/<product>.yaml`, and — if it ships a UI — an `angular.json` project plus `package.json` scripts. It also needs an intake path: a GitHub label, a bug form, and a dropdown option (see the next bullet).
+- **The feature form's project dropdown ↔ `OWNERS` in `issue-triage.yml` ↔ the labels that exist on the repo.** An issue form's `labels:` is a static array, so a dropdown cannot drive it. The eight bug forms sidestep this by being per-product and carrying a static label; [`9-feature-request.yml`](.github/ISSUE_TEMPLATE/9-feature-request.yml) is the one form that can't, so [`.github/workflows/issue-triage.yml`](.github/workflows/issue-triage.yml) reads its **Project** selection and applies the matching label. The dropdown's `options`, the workflow's `OWNERS` keys, and the repo's actual labels must all agree — an option missing from `OWNERS` silently applies nothing and leaves the issue unassigned, and a label renamed on GitHub breaks both. The workflow only ever adds, never removes, so a deliberate second project label survives an edit.
+- **Assignment lives only in that workflow's `OWNERS` map — not on the forms.** A form's `assignees:` fires in the web UI alone, so it would leave every `gh issue create` issue unowned; the forms deliberately carry none. The workflow maps project label → owner, and issue type `Feature` → `FEATURE_OWNER` regardless of project. It assigns only when the issue has no assignee, so a manual reassignment is never overwritten. Adding a product means a new `OWNERS` entry, not an `assignees:` block.
+- **Each bug form's environment fields ↔ its `### Environment` line under [Filing issues](#filing-issues).** Agents never see the forms, so that section restates what each product's form asks for — a hand-maintained mirror, deliberately duplicated because a pointer would not be followed. Add, drop, or rename an environment field on a bug form and you must update its line there in the same change, or agent-filed and human-filed reports of the same bug stop carrying the same facts.
 
 Already enforced or checked elsewhere (listed here for completeness; documented at their own scope):
 

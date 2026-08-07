@@ -19,6 +19,10 @@ file tracks notable changes since the move to the monorepo.
   `WAN: N/A` and `NTP: Unknown`. It now uses a private temporary file and
   removes it on every exit path.
 
+- **Notification selection checkboxes no longer cover text on phones.** When
+  notification selection is active, each checkbox replaces its notification
+  icon while preserving the title's spacing.
+
 - **A service that uses UDP is reachable from the Internet on a public IP
   address.** StartOS already passed UDP through to the service, but the mapping
   it asked your gateway for over PCP, NAT-PMP or UPnP covered TCP only, and a

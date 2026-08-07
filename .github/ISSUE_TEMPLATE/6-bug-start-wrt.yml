@@ -2,8 +2,6 @@ name: 📡 StartWRT — Bug Report
 description: A defect in StartWRT — the OpenWrt-based router OS for the SpaceMiT K1.
 type: Bug
 labels: [StartWRT]
-assignees:
-  - dominion5254
 body:
   - type: checkboxes
     id: prerequisites

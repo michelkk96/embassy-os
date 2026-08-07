@@ -2,8 +2,6 @@ name: 🖥️ StartOS — Bug Report
 description: A defect in StartOS itself — the OS, its web UI, or the service runtime.
 type: Bug
 labels: [StartOS]
-assignees:
-  - dr-bonez
 body:
   - type: checkboxes
     id: prerequisites
@@ -14,7 +12,7 @@ body:
           required: true
 
   - type: input
-    id: os-version
+    id: version
     attributes:
       label: StartOS version
       description: Shown in the UI under **System → About**. From a client, `start-cli -H https://<your-server> git-info` prints the exact build — the version string is stable across builds, so the git hash is what identifies the binary.
@@ -46,10 +44,17 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: browser
+    attributes:
+      label: Browser & OS
+      description: Only needed for web UI bugs.
+      placeholder: Firefox 134.0, macOS 15.3
+
   - type: dropdown
     id: area
     attributes:
-      label: Where does it happen?
+      label: Which surface?
       options:
         - Web UI
         - Setup wizard
@@ -62,13 +67,6 @@ body:
         - Other / unsure
     validations:
       required: true
-
-  - type: input
-    id: client
-    attributes:
-      label: Client OS & browser
-      description: Only needed for web UI bugs.
-      placeholder: macOS 15.3, Firefox 134.0
 
   - type: textarea
     id: current

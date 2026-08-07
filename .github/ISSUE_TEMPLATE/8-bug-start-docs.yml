@@ -2,8 +2,6 @@ name: 📚 Documentation — Bug Report
 description: Something on docs.start9.com is wrong, out of date, or missing.
 type: Bug
 labels: [start-docs]
-assignees:
-  - MattDHill
 body:
   - type: markdown
     attributes:
@@ -27,7 +25,7 @@ body:
       required: true
 
   - type: dropdown
-    id: book
+    id: area
     attributes:
       label: Which book?
       options:
@@ -40,6 +38,13 @@ body:
         - Not sure
     validations:
       required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Source file
+      description: The Markdown source in this repo, if you found it. Each product's book lives in `projects/<product>/docs/`; the site itself is `projects/start-docs/`.
+      placeholder: projects/start-os/docs/src/installing-startos.md
 
   - type: dropdown
     id: kind
@@ -71,13 +76,6 @@ body:
       description: If the docs contradict the software, say which one you believe is correct — a mismatch is a bug in one of them, and which one decides where the fix lands.
     validations:
       required: true
-
-  - type: input
-    id: source
-    attributes:
-      label: Source file
-      description: The Markdown source in this repo, if you found it. Each product's book lives in `projects/<product>/docs/`; the site itself is `projects/start-docs/`.
-      placeholder: projects/start-os/docs/src/installing-startos.md
 
   - type: textarea
     id: context

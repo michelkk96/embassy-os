@@ -1,8 +1,6 @@
 name: 💡 Feature Request
 description: Suggest a change or an addition to any Start9 product.
 type: Feature
-assignees:
-  - MattDHill
 body:
   - type: checkboxes
     id: prerequisites

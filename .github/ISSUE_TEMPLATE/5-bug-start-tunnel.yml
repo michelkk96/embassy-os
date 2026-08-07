@@ -2,8 +2,6 @@ name: 🌐 StartTunnel — Bug Report
 description: A defect in StartTunnel — the VPS-hosted virtual private router.
 type: Bug
 labels: [StartTunnel]
-assignees:
-  - dr-bonez
 body:
   - type: checkboxes
     id: prerequisites
@@ -31,6 +29,13 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: firewall
+    attributes:
+      label: Host firewall
+      description: '`ufw status`, or any nftables/iptables rules you manage yourself. A host firewall in front of StartTunnel has broken connectivity before, so this is worth checking even if it seems unrelated.'
+      placeholder: ufw active — 22/tcp, 443/tcp allowed
+
   - type: dropdown
     id: area
     attributes:
@@ -46,13 +51,6 @@ body:
         - Other / unsure
     validations:
       required: true
-
-  - type: input
-    id: firewall
-    attributes:
-      label: Host firewall
-      description: '`ufw status`, or any nftables/iptables rules you manage yourself. A host firewall in front of StartTunnel has broken connectivity before, so this is worth checking even if it seems unrelated.'
-      placeholder: ufw active — 22/tcp, 443/tcp allowed
 
   - type: textarea
     id: current

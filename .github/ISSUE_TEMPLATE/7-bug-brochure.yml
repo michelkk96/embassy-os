@@ -2,8 +2,6 @@ name: 🛍️ Marketplace Website — Bug Report
 description: A defect in marketplace.start9.com — the public package-browsing site.
 type: Bug
 labels: [brochure]
-assignees:
-  - MattDHill
 body:
   - type: markdown
     attributes:
@@ -27,12 +25,19 @@ body:
       required: true
 
   - type: input
-    id: client
+    id: browser
     attributes:
       label: Browser & OS
       placeholder: Firefox 134.0, macOS 15.3
     validations:
       required: true
+
+  - type: input
+    id: registry
+    attributes:
+      label: Registry being browsed
+      description: Only needed if you had pointed the site at a registry other than the default.
+      placeholder: registry.start9.com
 
   - type: dropdown
     id: area
@@ -48,13 +53,6 @@ body:
         - Other / unsure
     validations:
       required: true
-
-  - type: input
-    id: registry
-    attributes:
-      label: Registry being browsed
-      description: Only needed if you had pointed the site at a registry other than the default.
-      placeholder: registry.start9.com
 
   - type: textarea
     id: current
@@ -79,6 +77,6 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Console output & screenshots
-      description: Browser console errors and failed network requests. You can drag images into this box.
+      label: Logs & evidence
+      description: Browser console errors and failed network requests. You can drag screenshots into this box.
       render: shell

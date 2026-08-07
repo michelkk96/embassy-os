@@ -2,8 +2,6 @@ name: 📦 Start SDK — Bug Report
 description: A defect in `@start9labs/start-sdk` — packaging a service, or the effects API at runtime.
 type: Bug
 labels: [StartSDK]
-assignees:
-  - dr-bonez
 body:
   - type: markdown
     attributes:
@@ -19,31 +17,11 @@ body:
           required: true
 
   - type: input
-    id: sdk-version
+    id: version
     attributes:
       label: SDK version
       description: From your package's `package.json`, or `npm ls @start9labs/start-sdk`.
       placeholder: 2.0.10
-    validations:
-      required: true
-
-  - type: dropdown
-    id: area
-    attributes:
-      label: Where does it fail?
-      options:
-        - s9pk build / pack
-        - Manifest & versioning
-        - Effects API at runtime
-        - Health checks
-        - Actions & inputs
-        - Dependencies
-        - Backups
-        - Interfaces & addresses
-        - Mounts & volumes
-        - TypeScript types / osBindings
-        - Packaging documentation
-        - Other / unsure
     validations:
       required: true
 
@@ -68,6 +46,26 @@ body:
       description: '`node --version`'
       placeholder: v22.11.0
 
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which surface?
+      options:
+        - s9pk build / pack
+        - Manifest & versioning
+        - Effects API at runtime
+        - Health checks
+        - Actions & inputs
+        - Dependencies
+        - Backups
+        - Interfaces & addresses
+        - Mounts & volumes
+        - TypeScript types / osBindings
+        - Packaging documentation
+        - Other / unsure
+    validations:
+      required: true
+
   - type: textarea
     id: current
     attributes:
@@ -85,10 +83,10 @@ body:
       required: true
 
   - type: textarea
-    id: snippet
+    id: repro
     attributes:
-      label: Minimal reproduction
-      description: The smallest snippet from your package that triggers it.
+      label: Steps to reproduce
+      description: The smallest snippet from your package that triggers it, and what you ran to hit it.
       render: typescript
 
   - type: textarea

@@ -2,8 +2,6 @@ name: ⌨️ Start CLI — Bug Report
 description: A defect in `start-cli` — remote RPC calls, or the local packaging and key tooling.
 type: Bug
 labels: [start-cli]
-assignees:
-  - dr-bonez
 body:
   - type: checkboxes
     id: prerequisites
@@ -14,7 +12,7 @@ body:
           required: true
 
   - type: input
-    id: cli-version
+    id: version
     attributes:
       label: start-cli version
       description: Paste both `start-cli --version` and `start-cli git-info`. The version string is stable across builds, so the git hash is what identifies the binary.
@@ -23,7 +21,7 @@ body:
       required: true
 
   - type: dropdown
-    id: client-os
+    id: platform
     attributes:
       label: Where is it running?
       options:
@@ -46,14 +44,12 @@ body:
         - Shipped with StartOS (`startbox`)
         - Other
 
-  - type: textarea
-    id: command
+  - type: input
+    id: os-version
     attributes:
-      label: Exact command
-      description: The full invocation, with secrets redacted. Include `--host`/`-H` if it is a remote call.
-      placeholder: start-cli -H https://server.local package list
-    validations:
-      required: true
+      label: Target StartOS version
+      description: Only needed for remote calls. Client and server are versioned together, so a mismatch is often the cause.
+      placeholder: 0.4.0.2
 
   - type: dropdown
     id: area
@@ -71,13 +67,6 @@ body:
     validations:
       required: true
 
-  - type: input
-    id: server-version
-    attributes:
-      label: Target StartOS version
-      description: Only needed for remote calls. Client and server are versioned together, so a mismatch is often the cause.
-      placeholder: 0.4.0.2
-
   - type: textarea
     id: current
     attributes:
@@ -93,8 +82,17 @@ body:
       required: true
 
   - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The full invocation, with secrets redacted — include `--host`/`-H` if it is a remote call. Add any preceding steps needed to reach the failure.
+      placeholder: start-cli -H https://server.local package list
+    validations:
+      required: true
+
+  - type: textarea
     id: logs
     attributes:
-      label: Output & evidence
+      label: Logs & evidence
       description: Full stderr, ideally with `RUST_LOG=debug` set.
       render: shell

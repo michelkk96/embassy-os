@@ -69,7 +69,7 @@ body:
       label: Affected areas
       description: If you know the code, name the files or subsystems this would touch, and anything it would break or need migrating.
       placeholder: |
-        `shared-libs/crates/start-core/src/net/…` — …
+        `<path/to/file>` — <what would need to change>
 
   - type: textarea
     id: context

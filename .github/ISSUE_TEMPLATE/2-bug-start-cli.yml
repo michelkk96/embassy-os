@@ -18,7 +18,7 @@ body:
     attributes:
       label: start-cli version
       description: Paste both `start-cli --version` and `start-cli git-info`. The version string is stable across builds, so the git hash is what identifies the binary.
-      placeholder: 0.4.0-beta.10 / 282a3a5
+      placeholder: 0.4.0-beta.10 / 1a2b3c4
     validations:
       required: true
 
@@ -96,9 +96,9 @@ body:
     id: root-cause
     attributes:
       label: Root cause / code pointers
-      description: If you traced it, name the file, the line, and the mechanism. Most of `start-cli` is a thin wrapper, so the cause is usually in `shared-libs/crates/start-core/`.
+      description: If you traced it, name the file, the line, and the mechanism. Leave it blank rather than guessing — an unverified cause sends triage down the wrong path. Most of `start-cli` is a thin wrapper, so the cause is usually in `shared-libs/crates/start-core/`.
       placeholder: |
-        `shared-libs/crates/start-core/src/...` — …
+        `<path/to/file>:<line>` — <what the code does today, and why that is wrong>
 
   - type: textarea
     id: logs

@@ -3,7 +3,7 @@ description: A defect in the registry server (`registrybox`) — package/OS inde
 type: Bug
 labels: [start-registry]
 assignees:
-  - MattDHill
+  - dr-bonez
 body:
   - type: markdown
     attributes:

@@ -3,7 +3,7 @@ description: A defect in StartTunnel — the VPS-hosted virtual private router.
 type: Bug
 labels: [StartTunnel]
 assignees:
-  - MattDHill
+  - dr-bonez
 body:
   - type: markdown
     attributes:

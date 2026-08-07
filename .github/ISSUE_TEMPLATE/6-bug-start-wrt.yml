@@ -3,7 +3,7 @@ description: A defect in StartWRT — the OpenWrt-based router OS for the SpaceM
 type: Bug
 labels: [StartWRT]
 assignees:
-  - MattDHill
+  - dominion5254
 body:
   - type: markdown
     attributes:

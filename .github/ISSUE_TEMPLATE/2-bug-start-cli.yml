@@ -3,7 +3,7 @@ description: A defect in `start-cli` — remote RPC calls, or the local packagin
 type: Bug
 labels: [start-cli]
 assignees:
-  - MattDHill
+  - dr-bonez
 body:
   - type: markdown
     attributes:

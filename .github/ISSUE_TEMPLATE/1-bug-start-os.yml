@@ -3,7 +3,7 @@ description: A defect in StartOS itself — the OS, its web UI, or the service r
 type: Bug
 labels: [StartOS]
 assignees:
-  - MattDHill
+  - dr-bonez
 body:
   - type: markdown
     attributes:

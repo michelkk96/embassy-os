@@ -3,7 +3,7 @@ description: A defect in `@start9labs/start-sdk` — packaging a service, or the
 type: Bug
 labels: [StartSDK]
 assignees:
-  - MattDHill
+  - dr-bonez
 body:
   - type: markdown
     attributes:

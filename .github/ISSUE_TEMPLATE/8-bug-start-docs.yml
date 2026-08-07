@@ -3,7 +3,7 @@ description: Something on docs.start9.com is wrong, out of date, or missing.
 type: Bug
 labels: [start-docs]
 assignees:
-  - MattDHill
+  - dr-bonez
 body:
   - type: markdown
     attributes:

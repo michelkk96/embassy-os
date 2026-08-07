@@ -1,0 +1,113 @@
+name: ⌨️ Start CLI — Bug Report
+description: A defect in `start-cli` — remote RPC calls, or the local packaging and key tooling.
+type: Bug
+labels: [start-cli]
+assignees:
+  - MattDHill
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Filing this with an agent?** `gh issue create` bypasses this form entirely — pass the metadata yourself with `--type Bug --label start-cli`, and mirror the `###` headings below as your body's sections. Title the issue as the *finding*, not the symptom alone: `<what breaks> — <why> (<file:line>)`.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I searched [existing issues](https://github.com/Start9Labs/start-technologies/issues?q=is%3Aissue) and this is not already reported.
+          required: true
+
+  - type: input
+    id: cli-version
+    attributes:
+      label: start-cli version
+      description: Paste both `start-cli --version` and `start-cli git-info`. The version string is stable across builds, so the git hash is what identifies the binary.
+      placeholder: 0.4.0-beta.10 / 282a3a5
+    validations:
+      required: true
+
+  - type: dropdown
+    id: client-os
+    attributes:
+      label: Where is it running?
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux (x86_64)
+        - Linux (aarch64)
+        - Windows
+        - On a StartOS server (the `startbox` symlink)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How was it installed?
+      options:
+        - start9.com/start-cli/install.sh
+        - Built from source (`make start-cli` or `cargo build`)
+        - Shipped with StartOS (`startbox`)
+        - Other
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command
+      description: The full invocation, with secrets redacted. Include `--host`/`-H` if it is a remote call.
+      placeholder: start-cli -H https://server.local package list
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which surface?
+      options:
+        - Remote RPC against a server
+        - s9pk build / packaging (`s9pk`)
+        - Keys & signing (`init-key`, `pubkey`)
+        - Auth & login
+        - Registry commands
+        - Utilities (`util`)
+        - Argument parsing / help output
+        - Other / unsure
+    validations:
+      required: true
+
+  - type: input
+    id: server-version
+    attributes:
+      label: Target StartOS version
+      description: Only needed for remote calls. Client and server are versioned together, so a mismatch is often the cause.
+      placeholder: 0.4.0.2
+
+  - type: textarea
+    id: current
+    attributes:
+      label: What happens
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: root-cause
+    attributes:
+      label: Root cause / code pointers
+      description: If you traced it, name the file, the line, and the mechanism. Most of `start-cli` is a thin wrapper, so the cause is usually in `shared-libs/crates/start-core/`.
+      placeholder: |
+        `shared-libs/crates/start-core/src/...` — …
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output & evidence
+      description: Full stderr, ideally with `RUST_LOG=debug` set.
+      render: shell

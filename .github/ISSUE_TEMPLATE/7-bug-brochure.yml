@@ -1,0 +1,94 @@
+name: 🛍️ Marketplace Website — Bug Report
+description: A defect in marketplace.start9.com — the public package-browsing site.
+type: Bug
+labels: [brochure]
+assignees:
+  - MattDHill
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Filing this with an agent?** `gh issue create` bypasses this form entirely — pass the metadata yourself with `--type Bug --label brochure`, and mirror the `###` headings below as your body's sections. Title the issue as the *finding*, not the symptom alone: `<what breaks> — <why> (<file:line>)`.
+
+        This site reuses the same `@start9labs/marketplace` UI that ships inside StartOS. If you see the same defect in your server's marketplace tab, file it as a **StartOS** bug instead — the fix belongs in the shared library.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I searched [existing issues](https://github.com/Start9Labs/start-technologies/issues?q=is%3Aissue) and this is not already reported.
+          required: true
+
+  - type: input
+    id: url
+    attributes:
+      label: Page URL
+      placeholder: https://marketplace.start9.com/…
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: Browser & OS
+      placeholder: Firefox 134.0, macOS 15.3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which surface?
+      options:
+        - Browsing & search
+        - Package detail page
+        - Registry switching
+        - Rendering / layout
+        - Links & navigation
+        - Performance
+        - Other / unsure
+    validations:
+      required: true
+
+  - type: input
+    id: registry
+    attributes:
+      label: Registry being browsed
+      description: Only needed if you had pointed the site at a registry other than the default.
+      placeholder: registry.start9.com
+
+  - type: textarea
+    id: current
+    attributes:
+      label: What happens
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: If you found this by reading the code rather than hitting it, leave this blank and fill in **Root cause** below instead.
+
+  - type: textarea
+    id: root-cause
+    attributes:
+      label: Root cause / code pointers
+      description: If you traced it, name the file, the line, and the mechanism. The app is `projects/brochure-marketplace/src/`; the shared UI it renders is `shared-libs/ts-modules/marketplace/`.
+      placeholder: |
+        `shared-libs/ts-modules/marketplace/...` — …
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output & screenshots
+      description: Browser console errors and failed network requests. You can drag images into this box.
+      render: shell

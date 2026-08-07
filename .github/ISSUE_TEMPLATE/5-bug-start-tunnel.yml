@@ -1,0 +1,95 @@
+name: 🌐 StartTunnel — Bug Report
+description: A defect in StartTunnel — the VPS-hosted virtual private router.
+type: Bug
+labels: [StartTunnel]
+assignees:
+  - MattDHill
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Filing this with an agent?** `gh issue create` bypasses this form entirely — pass the metadata yourself with `--type Bug --label StartTunnel`, and mirror the `###` headings below as your body's sections. Title the issue as the *finding*, not the symptom alone: `<what breaks> — <why> (<file:line>)`.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I searched [existing issues](https://github.com/Start9Labs/start-technologies/issues?q=is%3Aissue) and this is not already reported.
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: StartTunnel version
+      description: Paste `start-tunnel --version`, and `dpkg -l start-tunnel | tail -1` for the package version.
+      placeholder: 1.2.1
+    validations:
+      required: true
+
+  - type: input
+    id: host
+    attributes:
+      label: VPS provider & OS
+      description: Where it runs, and whether the host is behind NAT or has a direct public IP — several bugs here only appear on one or the other.
+      placeholder: Hetzner CX22, Debian 12, direct public IPv4
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which surface?
+      options:
+        - Install / upgrade
+        - Web UI
+        - WireGuard mesh & peers
+        - Port forwarding (DNAT)
+        - Subnet & WAN configuration
+        - DNS
+        - TLS / certificates
+        - Other / unsure
+    validations:
+      required: true
+
+  - type: input
+    id: firewall
+    attributes:
+      label: Host firewall
+      description: '`ufw status`, or any nftables/iptables rules you manage yourself. A host firewall in front of StartTunnel has broken connectivity before, so this is worth checking even if it seems unrelated.'
+      placeholder: ufw active — 22/tcp, 443/tcp allowed
+
+  - type: textarea
+    id: current
+    attributes:
+      label: What happens
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: If you found this by reading the code rather than hitting it, leave this blank and fill in **Root cause** below instead.
+
+  - type: textarea
+    id: root-cause
+    attributes:
+      label: Root cause / code pointers
+      description: If you traced it, name the file, the line, and the mechanism. `tunnelbox` is a thin wrapper — the logic is in `shared-libs/crates/start-core/src/tunnel/`.
+      placeholder: |
+        `shared-libs/crates/start-core/src/tunnel/...` — …
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs & evidence
+      description: '`journalctl -u start-tunnel`, and the relevant `nft list ruleset` or `wg show` output.'
+      render: shell

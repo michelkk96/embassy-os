@@ -4,11 +4,6 @@ type: Feature
 assignees:
   - MattDHill
 body:
-  - type: markdown
-    attributes:
-      value: |
-        **Filing this with an agent?** `gh issue create` bypasses this form entirely — pass the metadata yourself with `--type Feature --label <project>`, using the exact label string from the dropdown below, and mirror the `###` headings as your body's sections.
-
   - type: checkboxes
     id: prerequisites
     attributes:
@@ -22,7 +17,7 @@ body:
     attributes:
       label: Project
       description: |
-        Applied as the label automatically. These are the exact label strings — pass one to `--label` if you are filing from the CLI.
+        Applied as the label automatically.
 
         - `StartOS` — the OS, its web UI, and the service runtime
         - `start-cli` — the command-line client

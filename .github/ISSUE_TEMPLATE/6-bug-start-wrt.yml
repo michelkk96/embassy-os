@@ -5,11 +5,6 @@ labels: [StartWRT]
 assignees:
   - dominion5254
 body:
-  - type: markdown
-    attributes:
-      value: |
-        **Filing this with an agent?** `gh issue create` bypasses this form entirely — pass the metadata yourself with `--type Bug --label StartWRT`, and mirror the `###` headings below as your body's sections. Title the issue as the *finding*, not the symptom alone: `<what breaks> — <why> (<file:line>)`.
-
   - type: checkboxes
     id: prerequisites
     attributes:

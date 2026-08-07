@@ -8,8 +8,6 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Filing this with an agent?** `gh issue create` bypasses this form entirely — pass the metadata yourself with `--type Bug --label start-registry`, and mirror the `###` headings below as your body's sections. Title the issue as the *finding*, not the symptom alone: `<what breaks> — <why> (<file:line>)`.
-
         A package that is *missing or broken in a registry* is an issue for that package's own repo, not here. This form is for the registry server itself.
 
   - type: checkboxes

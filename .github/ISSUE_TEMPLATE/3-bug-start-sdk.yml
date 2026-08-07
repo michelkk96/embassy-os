@@ -8,8 +8,6 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Filing this with an agent?** `gh issue create` bypasses this form entirely — pass the metadata yourself with `--type Bug --label StartSDK`, and mirror the `###` headings below as your body's sections. Title the issue as the *finding*, not the symptom alone: `<what breaks> — <why> (<file:line>)`.
-
         Packaging *questions* belong in the [developer Matrix room](https://matrix.to/#/#developer-space:matrix.start9labs.com); this form is for SDK defects.
 
   - type: checkboxes

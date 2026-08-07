@@ -8,8 +8,6 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Filing this with an agent?** `gh issue create` bypasses this form entirely — pass the metadata yourself with `--type Bug --label brochure`, and mirror the `###` headings below as your body's sections. Title the issue as the *finding*, not the symptom alone: `<what breaks> — <why> (<file:line>)`.
-
         This site reuses the same `@start9labs/marketplace` UI that ships inside StartOS. If you see the same defect in your server's marketplace tab, file it as a **StartOS** bug instead — the fix belongs in the shared library.
 
   - type: checkboxes

@@ -8,8 +8,6 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Filing this with an agent?** `gh issue create` bypasses this form entirely — pass the metadata yourself with `--type Bug --label start-docs`, and mirror the `###` headings below as your body's sections.
-
         Every page on docs.start9.com is authored in this repo, so a documentation fix is a normal pull request — if you can already see what the page should say, send the PR instead of filing this.
 
   - type: checkboxes

@@ -37,6 +37,17 @@ file tracks notable changes since the move to the monorepo.
 - **The copy taken before an update is now made with the service stopped**, so it can
   no longer capture a database mid-write.
 
+- **A service reached over IPv6 through a tunnel now answers.** StartOS sends a
+  reply back out the interface its connection arrived on by restoring a
+  connection mark, but the kernel routes the reply that _opens_ a connection
+  before that mark is restored. On a server whose gateway carries no IPv6 of its
+  own, that reply fell to the gateway's routing table — which drops IPv6 to keep
+  it from leaking out the wrong interface — and was discarded before it was ever
+  sent, so an inbound IPv6 connection to a tunnel-delegated address hung until
+  it timed out. A reply from an interface's own global IPv6 address now leaves
+  by that interface. IPv4, and traffic forwarded to a service container, were
+  unaffected.
+
 - **Notification selection checkboxes no longer cover text on phones.** When
   notification selection is active, each checkbox replaces its notification
   icon while preserving the title's spacing.

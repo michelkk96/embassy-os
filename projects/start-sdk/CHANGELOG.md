@@ -40,6 +40,23 @@
 
 ### Added
 
+- **`addDaemon()` / `addOneshot()` accept a `uses` value that
+  `Daemons.dynamic` folds into the entry's `configHash`.** The reconciler's
+  diff key covers only structural fields; closures (`exec.fn`, `ready.fn`,
+  `ready.trigger`) and pre-built `Daemon` instances are invisible to it, so a
+  value captured by a closure could change without the reconciler restarting
+  the daemon. Declare the value as `uses` and any change restarts the
+  daemon/oneshot on the next reconcile. Only JSON-serializable values are
+  useful, and anything else normalizes rather than failing a reconcile:
+  functions, symbols, cycles and `undefined` hash as distinct
+  `UNSERIALIZABLE:*` sentinels (so a change visible only there triggers no
+  restart), and BigInts hash as their decimal string. The `exec` options
+  object is now canonicalized in full rather than whitelisted, so a
+  fn-form exec's `sigtermTimeout` and a command exec's `onStdout`/`onStderr`
+  callbacks participate in the hash (the callbacks themselves hash as
+  constant sentinels — added or removed restarts, one closure swapped for
+  another does not)
+
 - **`MultiHost.retire()` and `MultiHost.retirePort()` permanently remove a host
   or a binding.** `setupInterfaces` ends each pass by
   _disabling_ whatever it did not declare, which keeps the row, the external

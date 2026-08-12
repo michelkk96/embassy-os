@@ -257,8 +257,6 @@ pub struct VHostController {
     crypto_provider: Arc<CryptoProvider>,
     acme_cache: AcmeTlsAlpnCache,
     branding: CertBranding,
-    /// The box's own `<hostname>.local` — see [`serves_sni`].
-    mdns_hostname: InternedString,
     max_proxy_conns_per_target: usize,
     servers: SyncMutex<BTreeMap<u16, VHostServer<VHostBindListener>>>,
     passthrough_handles: SyncMutex<BTreeMap<(InternedString, u16), PassthroughHandle>>,
@@ -278,7 +276,6 @@ impl VHostController {
         interfaces: Arc<NetworkInterfaceController>,
         crypto_provider: Arc<CryptoProvider>,
         branding: CertBranding,
-        mdns_hostname: InternedString,
         passthroughs: Vec<PassthroughInfo>,
         max_proxy_conns_per_target: usize,
         port_map: PortMapController,
@@ -289,7 +286,6 @@ impl VHostController {
             crypto_provider,
             acme_cache: Arc::new(SyncMutex::new(BTreeMap::new())),
             branding,
-            mdns_hostname,
             max_proxy_conns_per_target,
             servers: SyncMutex::new(BTreeMap::new()),
             passthrough_handles: SyncMutex::new(BTreeMap::new()),
@@ -343,7 +339,6 @@ impl VHostController {
             self.db.clone(),
             self.crypto_provider.clone(),
             self.branding.clone(),
-            self.mdns_hostname.clone(),
             self.acme_cache.clone(),
         )
     }
@@ -1470,20 +1465,17 @@ fn cancel_dead<A: Accept + 'static>(targets: &mut InOMap<DynVHostTarget<A>, Targ
 
 type Mapping<A> = BTreeMap<Option<InternedString>, InOMap<DynVHostTarget<A>, TargetEntry>>;
 
-/// Whether this box answers to the name the client asked for.
+/// The [`Mapping`] key for a connection's SNI.
 ///
-/// The `None` key is the bare-IP catch-all, which `get_config` falls back to
-/// when nothing matches the SNI. Left ungated that fallback serves — and has
-/// the root CA mint a leaf for — any name that happens to resolve here, so an
-/// unrecognized SNI is refused instead. `None` is a dial with no SNI at all
-/// (what browsers send for `https://<ip>`), and the server's own host carries
-/// no domains, so its `<hostname>.local` has to be admitted explicitly.
-fn serves_sni<V>(
-    mapping: &BTreeMap<Option<InternedString>, V>,
-    mdns_hostname: &InternedString,
-    sni: &Option<InternedString>,
-) -> bool {
-    sni.is_none() || sni.as_ref() == Some(mdns_hostname) || mapping.contains_key(sni)
+/// `None` is a connection that named no host — no SNI, or an SNI carrying an IP
+/// literal, which RFC 6066 forbids but clients send anyway — and is served by
+/// the bare-IP entry. A name is served only if it has an entry of its own: the
+/// lookup has no fallback, so a host answers to the names it was given and
+/// nothing else.
+fn host_key(server_name: Option<&str>) -> Option<InternedString> {
+    server_name
+        .filter(|name| name.parse::<IpAddr>().is_err())
+        .map(InternedString::from)
 }
 
 pub struct GetVHostAcmeProvider<A: Accept + 'static>(pub Watch<Mapping<A>>);
@@ -1560,7 +1552,6 @@ pub struct VHostTlsHandler<I, A: Accept + 'static> {
     inner: I,
     crypto_provider: Arc<CryptoProvider>,
     mapping: Watch<Mapping<A>>,
-    mdns_hostname: InternedString,
     preprocessed: Option<Preprocessed<A>>,
 }
 impl<I: Clone, A: Accept + 'static> Clone for VHostTlsHandler<I, A> {
@@ -1569,7 +1560,6 @@ impl<I: Clone, A: Accept + 'static> Clone for VHostTlsHandler<I, A> {
             inner: self.inner.clone(),
             crypto_provider: self.crypto_provider.clone(),
             mapping: self.mapping.clone(),
-            mdns_hostname: self.mdns_hostname.clone(),
             // Per-connection state — never carried across clones; each
             // accepted connection clones the handler before populating it.
             preprocessed: None,
@@ -1589,18 +1579,10 @@ where
         hello: &'a ClientHello<'a>,
         metadata: &'a <A as Accept>::Metadata,
     ) -> Option<TlsHandlerAction> {
-        let sni = hello.server_name().map(InternedString::from);
-
-        if !self
-            .mapping
-            .peek(|m| serves_sni(m, &self.mdns_hostname, &sni))
-        {
-            return None;
-        }
+        let sni = host_key(hello.server_name());
 
         let routed = self.mapping.peek(|m| {
             m.get(&sni)
-                .or_else(|| m.get(&None))
                 .into_iter()
                 .flatten()
                 .filter(|(_, e)| e.alive())
@@ -1608,33 +1590,30 @@ where
                 .map(|(t, e)| (t.clone(), e.ctx.clone()))
         });
 
-        let acme_alpn = hello
-            .alpn()
-            .into_iter()
-            .flatten()
-            .any(|a| a == ACME_TLS_ALPN_NAME);
+        let Some((target, ctx)) = routed else {
+            return None;
+        };
 
         // Passthroughs should not intermediate ACME challenges — the
         // backend is the ACME client and holds the challenge cert.
-        if let Some((target, ctx)) = routed.as_ref().filter(|(t, _)| t.0.is_passthrough()) {
+        if target.0.is_passthrough() {
             let stub = passthrough_stub_config(&self.crypto_provider).log_err()?;
-            let (_, store) = target
-                .clone()
-                .into_preprocessed(ctx.clone(), stub, hello, metadata)
-                .await?;
+            let (_, store) = target.into_preprocessed(ctx, stub, hello, metadata).await?;
             self.preprocessed = Some(store);
             return Some(TlsHandlerAction::Passthrough);
         }
 
-        // ACME challenge for a terminating target (or for one with no
-        // explicit vhost mapping): answer locally from the inner chain.
-        if acme_alpn {
+        // ACME challenge for a terminating target: answer locally from the inner
+        // chain. Reached only for a host we serve, so a challenge for anything
+        // else is refused above rather than answered with a fresh leaf.
+        if hello
+            .alpn()
+            .into_iter()
+            .flatten()
+            .any(|a| a == ACME_TLS_ALPN_NAME)
+        {
             return self.inner.get_config(hello, metadata).await;
         }
-
-        let Some((target, ctx)) = routed else {
-            return None;
-        };
 
         let action = self.inner.get_config(hello, metadata).await?;
         let cfg = match action {
@@ -1761,7 +1740,6 @@ impl<A: Accept> VHostServer<A> {
         db: TypedPatchDb<M>,
         crypto_provider: Arc<CryptoProvider>,
         branding: CertBranding,
-        mdns_hostname: InternedString,
         acme_cache: AcmeTlsAlpnCache,
     ) -> Self
     where
@@ -1804,7 +1782,6 @@ impl<A: Accept> VHostServer<A> {
                         ),
                         crypto_provider,
                         mapping,
-                        mdns_hostname,
                         preprocessed: None,
                     },
                 ));
@@ -1948,48 +1925,34 @@ async fn copy_bidirectional_hangs_without_keepalive_when_peer_idle() {
 }
 
 #[cfg(test)]
-mod sni_tests {
+mod host_key_tests {
     use super::*;
 
-    fn s(name: &str) -> InternedString {
-        InternedString::intern(name)
-    }
-
-    fn mapping(keys: &[Option<&str>]) -> BTreeMap<Option<InternedString>, ()> {
-        keys.iter().map(|k| (k.map(s), ())).collect()
+    /// A dial that names no host is the bare-IP case the `None` entry serves.
+    #[test]
+    fn an_ip_literal_sni_is_the_same_as_no_sni() {
+        assert_eq!(host_key(None), None);
+        assert_eq!(host_key(Some("192.168.1.5")), None);
+        assert_eq!(host_key(Some("::1")), None);
+        assert_eq!(host_key(Some("fd00:3::1")), None);
     }
 
     #[test]
-    fn a_name_the_box_does_not_serve_is_refused() {
-        // The catch-all is present, as it is on any box reachable by bare IP.
-        let m = mapping(&[None]);
-        let mdns = s("server-name.local");
-
-        assert!(!serves_sni(&m, &mdns, &Some(s("server-name"))));
-        assert!(!serves_sni(&m, &mdns, &Some(s("www.google.com"))));
-        // A near-miss in the mDNS namespace is still not ours.
-        assert!(!serves_sni(&m, &mdns, &Some(s("other-box.local"))));
-    }
-
-    #[test]
-    fn bare_ip_and_the_boxs_own_names_are_served() {
-        let m = mapping(&[None, Some("example.com")]);
-        let mdns = s("server-name.local");
-
-        // No SNI: a `https://<ip>` dial, which the catch-all exists for.
-        assert!(serves_sni(&m, &mdns, &None));
-        assert!(serves_sni(&m, &mdns, &Some(s("server-name.local"))));
-        assert!(serves_sni(&m, &mdns, &Some(s("example.com"))));
-    }
-
-    /// A box with no catch-all registered still serves its configured domains.
-    #[test]
-    fn a_mapped_domain_does_not_depend_on_the_catch_all() {
-        let m = mapping(&[Some("example.com")]);
-        let mdns = s("server-name.local");
-
-        assert!(serves_sni(&m, &mdns, &Some(s("example.com"))));
-        assert!(!serves_sni(&m, &mdns, &Some(s("evil.example.com"))));
+    fn a_name_keys_to_itself() {
+        assert_eq!(
+            host_key(Some("server-name.local")),
+            Some(InternedString::intern("server-name.local"))
+        );
+        assert_eq!(
+            host_key(Some("example.com")),
+            Some(InternedString::intern("example.com"))
+        );
+        // Not an IP, so it keys like any other name — and nothing registers it,
+        // so the lookup misses and the connection is refused.
+        assert_eq!(
+            host_key(Some("server-name")),
+            Some(InternedString::intern("server-name"))
+        );
     }
 }
 

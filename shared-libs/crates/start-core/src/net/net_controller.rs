@@ -111,7 +111,6 @@ impl NetController {
         let hostname = peek.as_public().as_server_info().as_hostname().de()?;
         drop(peek);
         let branding = crate::net::ssl::CertBranding::start_os(&hostname);
-        let mdns_hostname = crate::hostname::ServerHostname::new(hostname)?.local_domain_name();
         // One PortMapController shared by the forward and vhost controllers so a
         // single query answers "is this port automatically forwarded?".
         let port_map = PortMapController::new(net_iface.watcher.subscribe());
@@ -141,7 +140,6 @@ impl NetController {
                 net_iface.clone(),
                 crypto_provider.clone(),
                 branding,
-                mdns_hostname,
                 passthroughs,
                 max_proxy_conns_per_target,
                 port_map.clone(),
@@ -485,11 +483,16 @@ impl NetServiceData {
                     );
                 }
 
-                // Domain vhosts: group by (domain, ssl_port), merge public/private
+                // Named vhosts: group by (hostname, ssl_port), merge public/private
                 // sets. Terminating when we hold the TLS (add_ssl); an SNI
                 // passthrough to the container's own TLS otherwise. Either way the
-                // domain entry carries its own gateways, so a public domain accepts
-                // WAN even where the bare IP is disabled.
+                // entry carries its own gateways, so a public domain accepts WAN
+                // even where the bare IP is disabled.
+                //
+                // The mDNS name is registered here like any other: the vhost
+                // controller serves a name only if it has an entry, and this is
+                // where the set of names a host answers to is decided. It is never
+                // public, so it contributes no upstream port map.
                 let passthrough = bind.options.add_ssl.is_none();
                 for addr_info in &enabled_addresses {
                     if !addr_info.ssl {
@@ -497,7 +500,8 @@ impl NetServiceData {
                     }
                     match &addr_info.metadata {
                         HostnameMetadata::PublicDomain { .. }
-                        | HostnameMetadata::PrivateDomain { .. } => {}
+                        | HostnameMetadata::PrivateDomain { .. }
+                        | HostnameMetadata::Mdns { .. } => {}
                         _ => continue,
                     }
                     let domain = &addr_info.hostname;

@@ -10,17 +10,6 @@ file tracks notable changes since the move to the monorepo.
 
 ## [0.4.0.2]
 
-### Security
-
-- **Your server answers only to its own addresses.** Any name that resolved to
-  your server reached your dashboard — a bare hostname, a neighboring machine's
-  name, `www.example.com` — and your server issued that name a certificate
-  signed by its Root CA, which every browser you have set up for it trusts. Each
-  name was also stored permanently, so a stream of requests under new names grew
-  the database until the server ran out of memory. Your server now serves its
-  `.local` address, the domains you have assigned to it, and direct connections
-  to its IP address.
-
 ### Added
 
 - **A service can permanently retire a network host or a port it no longer
@@ -34,6 +23,15 @@ file tracks notable changes since the move to the monorepo.
   assign it to one of the service's current interfaces.
 
 ### Fixed
+
+- **Your server answers to its own addresses and no others.** A name that
+  resolved to your server but was never configured on it — a domain you pointed
+  at its LAN IP, or its `.local` name typed without the `.local` — was served
+  your dashboard, along with a certificate for that name signed by your server's
+  Root CA. Logging in was never possible under those names, so the page could
+  not be used for anything, but it should not have been reachable. Your server
+  now serves its `.local` address, the domains you have assigned to it, and
+  direct connections to its IP address.
 
 - **Image upgrades verify their checksum again.** `upgrade` compared the image's
   blake3 hash only when it was given a second positional argument, which no

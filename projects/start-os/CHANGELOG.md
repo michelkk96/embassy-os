@@ -10,6 +10,17 @@ file tracks notable changes since the move to the monorepo.
 
 ## [0.4.0.2]
 
+### Security
+
+- **Your server answers only to its own addresses.** Any name that resolved to
+  your server reached your dashboard — a bare hostname, a neighboring machine's
+  name, `www.example.com` — and your server issued that name a certificate
+  signed by its Root CA, which every browser you have set up for it trusts. Each
+  name was also stored permanently, so a stream of requests under new names grew
+  the database until the server ran out of memory. Your server now serves its
+  `.local` address, the domains you have assigned to it, and direct connections
+  to its IP address.
+
 ### Added
 
 - **A service can permanently retire a network host or a port it no longer

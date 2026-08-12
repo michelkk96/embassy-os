@@ -111,6 +111,7 @@ impl NetController {
         let hostname = peek.as_public().as_server_info().as_hostname().de()?;
         drop(peek);
         let branding = crate::net::ssl::CertBranding::start_os(&hostname);
+        let mdns_hostname = crate::hostname::ServerHostname::new(hostname)?.local_domain_name();
         // One PortMapController shared by the forward and vhost controllers so a
         // single query answers "is this port automatically forwarded?".
         let port_map = PortMapController::new(net_iface.watcher.subscribe());
@@ -140,6 +141,7 @@ impl NetController {
                 net_iface.clone(),
                 crypto_provider.clone(),
                 branding,
+                mdns_hostname,
                 passthroughs,
                 max_proxy_conns_per_target,
                 port_map.clone(),

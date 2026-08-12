@@ -257,6 +257,8 @@ pub struct VHostController {
     crypto_provider: Arc<CryptoProvider>,
     acme_cache: AcmeTlsAlpnCache,
     branding: CertBranding,
+    /// The box's own `<hostname>.local` — see [`serves_sni`].
+    mdns_hostname: InternedString,
     max_proxy_conns_per_target: usize,
     servers: SyncMutex<BTreeMap<u16, VHostServer<VHostBindListener>>>,
     passthrough_handles: SyncMutex<BTreeMap<(InternedString, u16), PassthroughHandle>>,
@@ -276,6 +278,7 @@ impl VHostController {
         interfaces: Arc<NetworkInterfaceController>,
         crypto_provider: Arc<CryptoProvider>,
         branding: CertBranding,
+        mdns_hostname: InternedString,
         passthroughs: Vec<PassthroughInfo>,
         max_proxy_conns_per_target: usize,
         port_map: PortMapController,
@@ -286,6 +289,7 @@ impl VHostController {
             crypto_provider,
             acme_cache: Arc::new(SyncMutex::new(BTreeMap::new())),
             branding,
+            mdns_hostname,
             max_proxy_conns_per_target,
             servers: SyncMutex::new(BTreeMap::new()),
             passthrough_handles: SyncMutex::new(BTreeMap::new()),
@@ -339,6 +343,7 @@ impl VHostController {
             self.db.clone(),
             self.crypto_provider.clone(),
             self.branding.clone(),
+            self.mdns_hostname.clone(),
             self.acme_cache.clone(),
         )
     }
@@ -1465,6 +1470,22 @@ fn cancel_dead<A: Accept + 'static>(targets: &mut InOMap<DynVHostTarget<A>, Targ
 
 type Mapping<A> = BTreeMap<Option<InternedString>, InOMap<DynVHostTarget<A>, TargetEntry>>;
 
+/// Whether this box answers to the name the client asked for.
+///
+/// The `None` key is the bare-IP catch-all, which `get_config` falls back to
+/// when nothing matches the SNI. Left ungated that fallback serves — and has
+/// the root CA mint a leaf for — any name that happens to resolve here, so an
+/// unrecognized SNI is refused instead. `None` is a dial with no SNI at all
+/// (what browsers send for `https://<ip>`), and the server's own host carries
+/// no domains, so its `<hostname>.local` has to be admitted explicitly.
+fn serves_sni<V>(
+    mapping: &BTreeMap<Option<InternedString>, V>,
+    mdns_hostname: &InternedString,
+    sni: &Option<InternedString>,
+) -> bool {
+    sni.is_none() || sni.as_ref() == Some(mdns_hostname) || mapping.contains_key(sni)
+}
+
 pub struct GetVHostAcmeProvider<A: Accept + 'static>(pub Watch<Mapping<A>>);
 impl<A: Accept + 'static> Clone for GetVHostAcmeProvider<A> {
     fn clone(&self) -> Self {
@@ -1539,6 +1560,7 @@ pub struct VHostTlsHandler<I, A: Accept + 'static> {
     inner: I,
     crypto_provider: Arc<CryptoProvider>,
     mapping: Watch<Mapping<A>>,
+    mdns_hostname: InternedString,
     preprocessed: Option<Preprocessed<A>>,
 }
 impl<I: Clone, A: Accept + 'static> Clone for VHostTlsHandler<I, A> {
@@ -1547,6 +1569,7 @@ impl<I: Clone, A: Accept + 'static> Clone for VHostTlsHandler<I, A> {
             inner: self.inner.clone(),
             crypto_provider: self.crypto_provider.clone(),
             mapping: self.mapping.clone(),
+            mdns_hostname: self.mdns_hostname.clone(),
             // Per-connection state — never carried across clones; each
             // accepted connection clones the handler before populating it.
             preprocessed: None,
@@ -1566,8 +1589,17 @@ where
         hello: &'a ClientHello<'a>,
         metadata: &'a <A as Accept>::Metadata,
     ) -> Option<TlsHandlerAction> {
+        let sni = hello.server_name().map(InternedString::from);
+
+        if !self
+            .mapping
+            .peek(|m| serves_sni(m, &self.mdns_hostname, &sni))
+        {
+            return None;
+        }
+
         let routed = self.mapping.peek(|m| {
-            m.get(&hello.server_name().map(InternedString::from))
+            m.get(&sni)
                 .or_else(|| m.get(&None))
                 .into_iter()
                 .flatten()
@@ -1729,6 +1761,7 @@ impl<A: Accept> VHostServer<A> {
         db: TypedPatchDb<M>,
         crypto_provider: Arc<CryptoProvider>,
         branding: CertBranding,
+        mdns_hostname: InternedString,
         acme_cache: AcmeTlsAlpnCache,
     ) -> Self
     where
@@ -1771,6 +1804,7 @@ impl<A: Accept> VHostServer<A> {
                         ),
                         crypto_provider,
                         mapping,
+                        mdns_hostname,
                         preprocessed: None,
                     },
                 ));
@@ -1911,6 +1945,52 @@ async fn copy_bidirectional_hangs_without_keepalive_when_peer_idle() {
     );
 
     proxy.abort();
+}
+
+#[cfg(test)]
+mod sni_tests {
+    use super::*;
+
+    fn s(name: &str) -> InternedString {
+        InternedString::intern(name)
+    }
+
+    fn mapping(keys: &[Option<&str>]) -> BTreeMap<Option<InternedString>, ()> {
+        keys.iter().map(|k| (k.map(s), ())).collect()
+    }
+
+    #[test]
+    fn a_name_the_box_does_not_serve_is_refused() {
+        // The catch-all is present, as it is on any box reachable by bare IP.
+        let m = mapping(&[None]);
+        let mdns = s("server-name.local");
+
+        assert!(!serves_sni(&m, &mdns, &Some(s("server-name"))));
+        assert!(!serves_sni(&m, &mdns, &Some(s("www.google.com"))));
+        // A near-miss in the mDNS namespace is still not ours.
+        assert!(!serves_sni(&m, &mdns, &Some(s("other-box.local"))));
+    }
+
+    #[test]
+    fn bare_ip_and_the_boxs_own_names_are_served() {
+        let m = mapping(&[None, Some("example.com")]);
+        let mdns = s("server-name.local");
+
+        // No SNI: a `https://<ip>` dial, which the catch-all exists for.
+        assert!(serves_sni(&m, &mdns, &None));
+        assert!(serves_sni(&m, &mdns, &Some(s("server-name.local"))));
+        assert!(serves_sni(&m, &mdns, &Some(s("example.com"))));
+    }
+
+    /// A box with no catch-all registered still serves its configured domains.
+    #[test]
+    fn a_mapped_domain_does_not_depend_on_the_catch_all() {
+        let m = mapping(&[Some("example.com")]);
+        let mdns = s("server-name.local");
+
+        assert!(serves_sni(&m, &mdns, &Some(s("example.com"))));
+        assert!(!serves_sni(&m, &mdns, &Some(s("evil.example.com"))));
+    }
 }
 
 #[cfg(test)]

@@ -39,10 +39,16 @@ file tracks notable changes since the move to the monorepo.
   image would be installed without complaint. It now verifies whenever
   `CHECKSUM` is set.
 
+- **Large QR codes render instead of coming up blank.** The encoder was pinned
+  to correction level `M`, which has no version left past about 2.3 kB — so a
+  longer value threw and the dialog opened empty, with only a console error to
+  say why. Those codes now encode at level `L`, which carries about 2.9 kB.
+
 - **Removing a domain from a service leaves its network settings otherwise
   untouched.** Naming a network host the service does not have — a stale id, or
   a typo — added that host to the service as an empty entry, which then stayed
   in its network settings with nothing to remove it.
+
 - **A service whose startup routine throws now reports the failure in its own
   logs, and StartOS names the failure for what it is.** The container runtime
   handed the exception back to StartOS over its socket without also printing

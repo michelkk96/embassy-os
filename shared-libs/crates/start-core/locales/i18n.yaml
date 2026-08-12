@@ -1888,6 +1888,20 @@ net.gateway.cannot-forget-connected-interface:
   fr_FR: "Impossible d'oublier l'interface actuellement connectée"
   pl_PL: "Nie można zapomnieć aktualnie podłączonego interfejsu"
 
+net.gateway.cannot-mark-disconnected-insecure:
+  en_US: "StartOS cannot tell which network a disconnected gateway reaches; reconnect it first, or use unset-secure"
+  de_DE: "StartOS kann nicht feststellen, welches Netzwerk ein getrenntes Gateway erreicht; verbinde es zuerst erneut oder verwende unset-secure"
+  es_ES: "StartOS no puede determinar a qué red llega una puerta de enlace desconectada; vuelve a conectarla primero o usa unset-secure"
+  fr_FR: "StartOS ne peut pas déterminer quel réseau atteint une passerelle déconnectée ; reconnecte-la d'abord, ou utilise unset-secure"
+  pl_PL: "StartOS nie może ustalić, do jakiej sieci prowadzi odłączona brama; podłącz ją ponownie lub użyj unset-secure"
+
+net.gateway.cannot-mark-internal-insecure:
+  en_US: "The loopback and container-bridge gateways never leave this server, so they are always trusted"
+  de_DE: "Die Loopback- und Container-Bridge-Gateways verlassen diesen Server nie und sind daher immer vertrauenswürdig"
+  es_ES: "Las puertas de enlace de bucle invertido y del puente de contenedores nunca salen de este servidor, por lo que siempre son de confianza"
+  fr_FR: "Les passerelles de bouclage et du pont de conteneurs ne quittent jamais ce serveur, elles sont donc toujours fiables"
+  pl_PL: "Bramy pętli zwrotnej i mostu kontenerów nigdy nie opuszczają tego serwera, więc zawsze są zaufane"
+
 net.gateway.cannot-delete-without-connection:
   en_US: "Cannot delete device without active connection"
   de_DE: "Gerät kann nicht ohne aktive Verbindung gelöscht werden"
@@ -4181,12 +4195,12 @@ help.arg.internal-port:
   pl_PL: "Numer portu wewnętrznego"
 
 
-help.arg.is-public:
-  en_US: "Whether the interface is publicly addressable"
-  de_DE: "Ob die Schnittstelle öffentlich erreichbar ist"
-  es_ES: "Si la interfaz es accesible públicamente"
-  fr_FR: "Si l'interface est accessible publiquement"
-  pl_PL: "Czy interfejs jest publicznie adresowalny"
+help.arg.is-secure:
+  en_US: "Whether the network reached through this gateway is trusted with unencrypted traffic"
+  de_DE: "Ob dem über dieses Gateway erreichten Netzwerk unverschlüsselter Datenverkehr anvertraut wird"
+  es_ES: "Si se confía en la red a la que se llega a través de esta puerta de enlace para tráfico sin cifrar"
+  fr_FR: "Si le réseau atteint via cette passerelle est fiable pour le trafic en clair"
+  pl_PL: "Czy sieć osiągana przez tę bramę jest zaufana dla ruchu nieszyfrowanego"
 
 help.arg.json-value:
   en_US: "JSON value to set"
@@ -4700,12 +4714,13 @@ about.add-wifi-ssid-password:
   fr_FR: "Ajouter un ssid et mot de passe wifi"
   pl_PL: "Dodaj ssid i hasło wifi"
 
-about.allow-gateway-infer-inbound-access-from-wan:
-  en_US: "Allow this gateway to infer whether it has inbound access from the WAN based on its IPv4 address"
-  de_DE: "Diesem Gateway erlauben, anhand seiner IPv4-Adresse zu ermitteln, ob es eingehenden Zugriff vom WAN hat"
-  es_ES: "Permitir que este gateway deduzca si tiene acceso entrante desde WAN basado en su dirección IPv4"
-  fr_FR: "Permettre à cette passerelle de déduire si elle a un accès entrant depuis le WAN en fonction de son adresse IPv4"
-  pl_PL: "Pozwól tej bramce wywnioskować, czy ma dostęp przychodzący z WAN na podstawie adresu IPv4"
+
+about.allow-gateway-infer-network-security:
+  en_US: "Let StartOS decide whether a gateway's network is trusted with unencrypted traffic"
+  de_DE: "StartOS entscheiden lassen, ob dem Netzwerk eines Gateways unverschlüsselter Datenverkehr anvertraut wird"
+  es_ES: "Permitir que StartOS decida si se confía en la red de una puerta de enlace para tráfico sin cifrar"
+  fr_FR: "Laisser StartOS décider si le réseau d'une passerelle est fiable pour le trafic en clair"
+  pl_PL: "Pozwól StartOS zdecydować, czy sieć bramy jest zaufana dla ruchu nieszyfrowanego"
 
 about.apply-available-update:
   en_US: "Apply available update"
@@ -5568,12 +5583,6 @@ about.import-certificate-for-webserver:
   fr_FR: "Importer un certificat pour le serveur web"
   pl_PL: "Importuj certyfikat dla serwera internetowego"
 
-about.indicate-gateway-inbound-access-from-wan:
-  en_US: "Indicate gateway inbound access from WAN"
-  de_DE: "Eingehenden Zugriff vom WAN zum Gateway anzeigen"
-  es_ES: "Indicar acceso entrante del gateway desde WAN"
-  fr_FR: "Indiquer l'accès entrant de la passerelle depuis le WAN"
-  pl_PL: "Wskaż dostęp przychodzący bramy z WAN"
 
 about.initialize-a-packaging-workspace:
   en_US: "Initialize a StartOS packaging workspace"
@@ -5840,6 +5849,13 @@ about.manage-tunnels:
   es_ES: "Gestionar túneles"
   fr_FR: "Gérer les tunnels"
   pl_PL: "Zarządzaj tunelami"
+
+about.mark-gateway-network-secure:
+  en_US: "Mark a gateway's network as trusted, so services' non-SSL addresses are offered on it"
+  de_DE: "Das Netzwerk eines Gateways als vertrauenswürdig markieren, sodass Nicht-SSL-Adressen von Diensten darauf angeboten werden"
+  es_ES: "Marcar como de confianza la red de una puerta de enlace, para ofrecer en ella las direcciones sin SSL de los servicios"
+  fr_FR: "Marquer comme fiable le réseau d'une passerelle, afin d'y proposer les adresses non SSL des services"
+  pl_PL: "Oznacz sieć bramy jako zaufaną, aby udostępniać w niej adresy usług bez SSL"
 
 about.mark-notifications-seen:
   en_US: "Mark notifications as seen"

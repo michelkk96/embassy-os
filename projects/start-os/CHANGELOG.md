@@ -22,6 +22,20 @@ file tracks notable changes since the move to the monorepo.
   a retired host is removed with it, so check the service's release notes and
   assign it to one of the service's current interfaces.
 
+- **A gateway can be marked secure, so services' plaintext addresses are offered
+  over it.** `start-cli net gateway set-secure <GATEWAY>` records that you trust
+  the network on the other side of a gateway; `unset-secure` hands the decision
+  back to StartOS, which trusts only the loopback and container-bridge gateways.
+  `net gateway list` shows the current setting. This is one switch for the whole
+  server: every installed service's non-SSL addresses — the server's LAN IP
+  addresses, its `.local` name and its private domains — are offered on that
+  network at once and enabled immediately. An address unlocked this way reaches
+  only devices on that gateway's own network segment; it is never opened to the
+  public internet. Mark a gateway secure only when you control every device on
+  the network it reaches: anything on it can read and alter traffic to a
+  plaintext address, including the passwords typed into it. See
+  [Gateways](https://docs.start9.com/start-os/gateways.html).
+
 ### Fixed
 
 - **Your server answers to its own addresses and no others.** A name that

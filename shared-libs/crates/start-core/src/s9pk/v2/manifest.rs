@@ -432,7 +432,7 @@ impl Description {
                 crate::ErrorKind::ValidateS9pk,
             ));
         }
-        if match &self.short {
+        if match &self.long {
             LocaleString::Translated(s) => s.len() > 5000,
             LocaleString::LanguageMap(map) => map.values().any(|s| s.len() > 5000),
         } {

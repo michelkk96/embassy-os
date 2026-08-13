@@ -51,7 +51,7 @@ impl Manifest {
         arch: Option<&str>,
         archive: &'a DirectoryContents<T>,
     ) -> Result<Filter, Error> {
-        self.description.validate()?;
+        self.metadata.description.validate()?;
 
         let mut expected = Expected::new(archive);
         expected.check_file("manifest.json")?;

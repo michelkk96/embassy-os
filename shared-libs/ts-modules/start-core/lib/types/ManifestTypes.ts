@@ -39,22 +39,14 @@ export type SDKManifest = {
   readonly donationUrl: string | null
   readonly description: {
     /**
-     * Short description, shown on the marketplace list page.
-     *
-     * The tile clamps this to two lines and hides the rest, and **80
-     * characters** is what fits them — so that is the limit for `en_US`. Other
-     * locales are allowed 110, headroom for the fact that a translation of a
-     * compliant English string cannot always land under the same count. The
-     * clamp is the same two lines in every language, so keep the English well
-     * inside 80 and the translations have somewhere to go.
+     * Short description, shown on the marketplace list page. The tile clamps it
+     * to two lines, which is what 80 buys — keep well inside it so the
+     * translations fit too. Max 80 (`en_US`) / 110 (other locales).
      */
     readonly short: T.LocaleString
     /**
-     * Long description, shown on the marketplace details page for this service.
-     *
-     * Rendered unclamped, so there is no line budget to stay inside; the limit
-     * bounds how much a listing may ask someone to read before installing.
-     * 2000 characters for `en_US`, 2500 for other locales.
+     * Long description, shown on the marketplace details page. Rendered
+     * unclamped. Max 2000 (`en_US`) / 2500 (other locales).
      */
     readonly long: T.LocaleString
   }

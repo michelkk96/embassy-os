@@ -27,6 +27,26 @@ export const long = {
 }
 ```
 
+### How long each one may be
+
+|         | Hard limit      | Aim for                         |
+| ------- | --------------- | ------------------------------- |
+| `short` | 160 characters  | ~80 characters of English       |
+| `long`  | 5000 characters | as long as the service warrants |
+
+Both limits are enforced **per locale** when the package is validated, so a
+translation that overruns fails the build even if the English fits.
+
+The target for `short` is not the same thing as its limit. The marketplace tile
+renders it clamped to two lines and hides the remainder, so a `short` that runs
+past roughly 80 characters of English is silently cut off in the one place users
+browse. Translations make that worse rather than better — German and Polish
+routinely run 20-30% longer than the same sentence in English, and they get the
+same two lines. Write the English to fit with room to spare and the rest follow.
+
+`long` has no such budget: it is rendered unclamped on the service's details
+page, and the limit is only a backstop.
+
 ## manifest/index.ts
 
 ```typescript

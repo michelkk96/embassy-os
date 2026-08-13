@@ -51,6 +51,8 @@ impl Manifest {
         arch: Option<&str>,
         archive: &'a DirectoryContents<T>,
     ) -> Result<Filter, Error> {
+        self.description.validate()?;
+
         let mut expected = Expected::new(archive);
         expected.check_file("manifest.json")?;
         expected.check_stem("icon", |ext| {
@@ -422,6 +424,19 @@ impl Description {
         self.long.localize_for(locale);
     }
 
+    /// The two fields are bounded for different reasons, so the numbers differ
+    /// in kind rather than in degree.
+    ///
+    /// `short` is rendered in the marketplace tile, which clamps it to two
+    /// lines and hides the rest (`-webkit-line-clamp: 2`), so there is a real
+    /// visual budget — roughly 80 characters of English, less once a locale
+    /// that runs longer than English is substituted in. That is an editorial
+    /// target, documented for packagers; 160 is the hard cap enforced here, far
+    /// enough above the target to catch abuse without failing a package whose
+    /// German translation ran long.
+    ///
+    /// `long` is rendered unclamped in the About card, so it has no visual
+    /// budget at all and 5000 is a backstop, not a style rule.
     pub fn validate(&self) -> Result<(), Error> {
         if match &self.short {
             LocaleString::Translated(s) => s.len() > 160,

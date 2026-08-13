@@ -38,9 +38,22 @@ export type SDKManifest = {
    */
   readonly donationUrl: string | null
   readonly description: {
-    /** Short description to display on the marketplace list page. Max length 80 chars. */
+    /**
+     * Short description, shown on the marketplace list page.
+     *
+     * The tile clamps this to two lines and hides the rest, so aim for about
+     * **80 characters of English** — a locale that runs longer than English
+     * still has to fit the same two lines. Hard limit 160 characters, enforced
+     * per locale when the package is validated.
+     */
     readonly short: T.LocaleString
-    /** Long description to display on the marketplace details page for this service. Max length 500 chars. */
+    /**
+     * Long description, shown on the marketplace details page for this service.
+     *
+     * Rendered unclamped, so there is no visual budget to stay inside — write
+     * what the service warrants. Hard limit 5000 characters, enforced per
+     * locale when the package is validated.
+     */
     readonly long: T.LocaleString
   }
   /**

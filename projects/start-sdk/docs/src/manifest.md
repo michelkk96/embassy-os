@@ -29,23 +29,24 @@ export const long = {
 
 ### How long each one may be
 
-|         | Hard limit      | Aim for                         |
-| ------- | --------------- | ------------------------------- |
-| `short` | 160 characters  | ~80 characters of English       |
-| `long`  | 5000 characters | as long as the service warrants |
+|         | Limit           | Why                                                          |
+| ------- | --------------- | ------------------------------------------------------------ |
+| `short` | 80 characters   | what fits the two lines the marketplace tile gives it        |
+| `long`  | 2000 characters | how much a listing may ask someone to read before installing |
 
-Both limits are enforced **per locale** when the package is validated, so a
-translation that overruns fails the build even if the English fits.
+Both are enforced **per locale** when the package is validated, so a translation
+that overruns fails the build even where the English fits.
 
-The target for `short` is not the same thing as its limit. The marketplace tile
-renders it clamped to two lines and hides the remainder, so a `short` that runs
-past roughly 80 characters of English is silently cut off in the one place users
-browse. Translations make that worse rather than better — German and Polish
-routinely run 20-30% longer than the same sentence in English, and they get the
-same two lines. Write the English to fit with room to spare and the rest follow.
+`short` is not truncated when it overruns — the tile clamps it to two lines with
+`overflow: hidden`, so the remainder is silently cut off in the one place users
+browse. The clamp is the same two lines whatever language the tile renders in,
+which is why the limit applies to every locale and not just `en_US`. German and
+Polish routinely run 20-30% longer than the same sentence in English, so leave
+the English comfortably short and the translations have somewhere to go: an
+`en_US` string already at 80 has nowhere to put that growth.
 
-`long` has no such budget: it is rendered unclamped on the service's details
-page, and the limit is only a backstop.
+`long` has no such budget — it is rendered unclamped on the service's details
+page — so its limit is about the reader's patience rather than the layout.
 
 ## manifest/index.ts
 

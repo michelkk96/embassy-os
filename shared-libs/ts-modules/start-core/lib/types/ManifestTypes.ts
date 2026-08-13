@@ -41,18 +41,20 @@ export type SDKManifest = {
     /**
      * Short description, shown on the marketplace list page.
      *
-     * The tile clamps this to two lines and hides the rest, so aim for about
-     * **80 characters of English** — a locale that runs longer than English
-     * still has to fit the same two lines. Hard limit 160 characters, enforced
-     * per locale when the package is validated.
+     * The tile clamps this to two lines and hides the rest, and **80
+     * characters** is what fits them — so that is the limit, enforced per
+     * locale when the package is validated. The clamp is the same two lines
+     * whatever language the tile renders in, so a translation that overruns is
+     * cut off for its readers exactly as English would be; keep the English
+     * comfortably short so the translations have somewhere to go.
      */
     readonly short: T.LocaleString
     /**
      * Long description, shown on the marketplace details page for this service.
      *
-     * Rendered unclamped, so there is no visual budget to stay inside — write
-     * what the service warrants. Hard limit 5000 characters, enforced per
-     * locale when the package is validated.
+     * Rendered unclamped, so there is no line budget to stay inside. Limit
+     * 2000 characters, enforced per locale when the package is validated —
+     * a bound on how much a listing may ask someone to read before installing.
      */
     readonly long: T.LocaleString
   }

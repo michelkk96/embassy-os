@@ -424,35 +424,33 @@ impl Description {
         self.long.localize_for(locale);
     }
 
-    /// The two fields are bounded for different reasons, so the numbers differ
-    /// in kind rather than in degree.
-    ///
     /// `short` is rendered in the marketplace tile, which clamps it to two
-    /// lines and hides the rest (`-webkit-line-clamp: 2`), so there is a real
-    /// visual budget — roughly 80 characters of English, less once a locale
-    /// that runs longer than English is substituted in. That is an editorial
-    /// target, documented for packagers; 160 is the hard cap enforced here, far
-    /// enough above the target to catch abuse without failing a package whose
-    /// German translation ran long.
+    /// lines and hides the rest (`-webkit-line-clamp: 2`). 80 characters is
+    /// what fits those two lines, so that is the limit: past it the text is
+    /// not shortened, it is silently cut off in the one place users browse.
+    /// It applies per locale, because the clamp is the same two lines whatever
+    /// language the tile is rendered in — a translation that overruns is cut
+    /// off for the readers of that language exactly as English would be.
     ///
-    /// `long` is rendered unclamped in the About card, so it has no visual
-    /// budget at all and 5000 is a backstop, not a style rule.
+    /// `long` is rendered unclamped in the About card, so it has no line
+    /// budget; 2000 is a cap on how much a marketplace listing may ask
+    /// someone to read before installing.
     pub fn validate(&self) -> Result<(), Error> {
         if match &self.short {
-            LocaleString::Translated(s) => s.len() > 160,
-            LocaleString::LanguageMap(map) => map.values().any(|s| s.len() > 160),
+            LocaleString::Translated(s) => s.len() > 80,
+            LocaleString::LanguageMap(map) => map.values().any(|s| s.len() > 80),
         } {
             return Err(Error::new(
-                eyre!("Short description must be 160 characters or less."),
+                eyre!("Short description must be 80 characters or less."),
                 crate::ErrorKind::ValidateS9pk,
             ));
         }
         if match &self.long {
-            LocaleString::Translated(s) => s.len() > 5000,
-            LocaleString::LanguageMap(map) => map.values().any(|s| s.len() > 5000),
+            LocaleString::Translated(s) => s.len() > 2000,
+            LocaleString::LanguageMap(map) => map.values().any(|s| s.len() > 2000),
         } {
             return Err(Error::new(
-                eyre!("Long description must be 5000 characters or less."),
+                eyre!("Long description must be 2000 characters or less."),
                 crate::ErrorKind::ValidateS9pk,
             ));
         }

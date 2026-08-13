@@ -29,21 +29,35 @@ export const long = {
 
 ### How long each one may be
 
-|         | Limit           | Why                                                          |
-| ------- | --------------- | ------------------------------------------------------------ |
-| `short` | 80 characters   | what fits the two lines the marketplace tile gives it        |
-| `long`  | 2000 characters | how much a listing may ask someone to read before installing |
+|         | `en_US`         | other locales |
+| ------- | --------------- | ------------- |
+| `short` | 80 characters   | 110           |
+| `long`  | 2000 characters | 2500          |
 
-Both are enforced **per locale** when the package is validated, so a translation
-that overruns fails the build even where the English fits.
+Enforced when the package is validated, so a description that overruns fails the
+build.
 
-`short` is not truncated when it overruns — the tile clamps it to two lines with
-`overflow: hidden`, so the remainder is silently cut off in the one place users
-browse. The clamp is the same two lines whatever language the tile renders in,
-which is why the limit applies to every locale and not just `en_US`. German and
-Polish routinely run 20-30% longer than the same sentence in English, so leave
-the English comfortably short and the translations have somewhere to go: an
-`en_US` string already at 80 has nowhere to put that growth.
+`short` is not truncated when it overruns — the marketplace tile clamps it to
+two lines with `overflow: hidden`, so the remainder is silently cut off in the
+one place users browse. 80 characters is what fits those two lines.
+
+The clamp is the same two lines whatever language the tile renders in, so the
+extra 30 characters for translations are not permission to run long — they exist
+because a translator working from a compliant English string cannot always land
+under the same count, and failing their package for it would push them toward a
+worse translation rather than a shorter one. German and Polish routinely run
+20-30% longer than the same sentence in English. Write the English well inside
+80 and the translations have somewhere to go; an `en_US` string sitting exactly
+at 80 leaves them none.
+
+Two more characters' worth of advice, both from descriptions already in the
+registries:
+
+- **Don't open with the service's name.** The tile renders the title in bold on
+  the line directly above, so "Foo is a self-hosted bar" spends its first words
+  on something the reader can already see.
+- **Say what it is, not what it is like.** Comparisons and superlatives cost
+  more characters than they earn at this size.
 
 `long` has no such budget — it is rendered unclamped on the service's details
 page — so its limit is about the reader's patience rather than the layout.

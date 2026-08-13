@@ -426,31 +426,57 @@ impl Description {
 
     /// `short` is rendered in the marketplace tile, which clamps it to two
     /// lines and hides the rest (`-webkit-line-clamp: 2`). 80 characters is
-    /// what fits those two lines, so that is the limit: past it the text is
-    /// not shortened, it is silently cut off in the one place users browse.
-    /// It applies per locale, because the clamp is the same two lines whatever
-    /// language the tile is rendered in — a translation that overruns is cut
-    /// off for the readers of that language exactly as English would be.
+    /// what fits those two lines, so that is the limit for `en_US`: past it the
+    /// text is not shortened, it is silently cut off in the one place users
+    /// browse. `long` is rendered unclamped in the About card and so has no
+    /// line budget; its limit bounds how much a listing may ask someone to read
+    /// before installing.
     ///
-    /// `long` is rendered unclamped in the About card, so it has no line
-    /// budget; 2000 is a cap on how much a marketplace listing may ask
-    /// someone to read before installing.
+    /// Other locales are held to the same limits with headroom, rather than to
+    /// the same number or to nothing at all. The clamp is the same two lines
+    /// whatever language the tile renders in, so an unbounded translation would
+    /// be cut off for its readers just as English would — but a translator
+    /// working from a compliant English string cannot always land under the
+    /// same count, and failing the package for it pushes them toward a worse
+    /// translation rather than a shorter one. The headroom is taken from what
+    /// translations in the registries actually do: the worst expansion of a
+    /// full-length English short is x1.33, and of a long, x1.16.
+    const SHORT_LIMIT: usize = 80;
+    const LONG_LIMIT: usize = 2000;
+    const TRANSLATED_SHORT_LIMIT: usize = 110;
+    const TRANSLATED_LONG_LIMIT: usize = 2500;
+
     pub fn validate(&self) -> Result<(), Error> {
-        if match &self.short {
-            LocaleString::Translated(s) => s.len() > 80,
-            LocaleString::LanguageMap(map) => map.values().any(|s| s.len() > 80),
-        } {
+        // `en_US` is held to `english`, every other locale to `translated`.
+        // Expressed as two lookups rather than a per-entry comparison because
+        // `translated` is always the looser of the two: anything over it fails
+        // whatever locale it is in, and `en_US` is caught by the first clause
+        // before the second can matter.
+        let too_long = |value: &LocaleString, english: usize, translated: usize| match value {
+            LocaleString::Translated(s) => s.len() > english,
+            LocaleString::LanguageMap(map) => {
+                map.get("en_US").is_some_and(|s| s.len() > english)
+                    || map.values().any(|s| s.len() > translated)
+            }
+        };
+
+        if too_long(&self.short, Self::SHORT_LIMIT, Self::TRANSLATED_SHORT_LIMIT) {
             return Err(Error::new(
-                eyre!("Short description must be 80 characters or less."),
+                eyre!(
+                    "Short description must be {} characters or less ({} for a translation).",
+                    Self::SHORT_LIMIT,
+                    Self::TRANSLATED_SHORT_LIMIT,
+                ),
                 crate::ErrorKind::ValidateS9pk,
             ));
         }
-        if match &self.long {
-            LocaleString::Translated(s) => s.len() > 2000,
-            LocaleString::LanguageMap(map) => map.values().any(|s| s.len() > 2000),
-        } {
+        if too_long(&self.long, Self::LONG_LIMIT, Self::TRANSLATED_LONG_LIMIT) {
             return Err(Error::new(
-                eyre!("Long description must be 2000 characters or less."),
+                eyre!(
+                    "Long description must be {} characters or less ({} for a translation).",
+                    Self::LONG_LIMIT,
+                    Self::TRANSLATED_LONG_LIMIT,
+                ),
                 crate::ErrorKind::ValidateS9pk,
             ));
         }

@@ -207,6 +207,8 @@ If you are pulling a pre-built Docker image (no submodule), copy the license tex
 
 Service documentation following the structure described in [Writing READMEs](./writing-readmes.md). Every README should document how the StartOS package differs from the upstream service.
 
+It is **packed into the `.s9pk`** alongside `instructions.md`, so an AI assistant administering the server reads the README for the version actually installed, offline, rather than fetching whatever a repository's default branch has since moved to. Unlike `instructions.md` it is optional — a package without one still builds — but nothing on the server can fall back to a copy that isn't there, so ship one.
+
 ### TODO.md
 
 A running list of pending work on this package. Add items when you defer work; remove them when complete. An empty `TODO.md` (just the `# TODO` heading) is fine — keep the file present so contributors know where to record items.

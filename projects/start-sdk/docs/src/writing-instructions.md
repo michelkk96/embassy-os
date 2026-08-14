@@ -15,7 +15,7 @@ It is tempting to treat `instructions.md` as a copy of the README. Resist this. 
 | **Tone**                  | Technical, structured, scannable for parsing                                                     | Practical, instructional, written in second person              |
 | **Versions / image tags** | Avoided (manifest is source of truth)                                                            | Avoided for the same reason                                     |
 | **Upstream behavior**     | "Anything not listed here behaves as upstream documents"                                         | Linked from the Documentation section; never duplicated         |
-| **Surfaced where**        | The package repository on GitHub                                                                 | Inside the StartOS UI, post-install                             |
+| **Surfaced where**        | The package repository, and packed into the `.s9pk`                                              | Inside the StartOS UI, post-install                             |
 
 If your README is a reference manual, your instructions are a quick-start guide for a non-developer who just clicked Install.
 

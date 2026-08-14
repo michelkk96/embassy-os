@@ -38,6 +38,8 @@ file tracks notable changes since the move to the monorepo.
 
 ### Fixed
 
+- Trim whitespace on form inputs.
+
 - **Your server answers to its own addresses and no others.** A name that
   resolved to your server but was never configured on it — a domain you pointed
   at its LAN IP, or its `.local` name typed without the `.local` — was served

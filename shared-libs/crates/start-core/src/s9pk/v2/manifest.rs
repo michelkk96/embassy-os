@@ -424,41 +424,32 @@ impl Description {
         self.long.localize_for(locale);
     }
 
-    /// 80 is what fits the two lines the marketplace tile clamps `short` to;
-    /// `long` is unclamped, so its limit is only a bound. Translations get
-    /// headroom: they cannot always land under the English count.
-    const SHORT_LIMIT: usize = 80;
+    /// The marketplace tile clamps `short` to two lines and hides the rest —
+    /// about 80 characters; the headroom is for locales that need more words
+    /// to say the same thing. `long` is rendered unclamped.
+    const SHORT_LIMIT: usize = 120;
     const LONG_LIMIT: usize = 2000;
-    const TRANSLATED_SHORT_LIMIT: usize = 110;
-    const TRANSLATED_LONG_LIMIT: usize = 2500;
 
     pub fn validate(&self) -> Result<(), Error> {
-        // Two lookups rather than a per-entry match: `translated` is the looser
-        // limit, so anything over it fails whatever locale it is in.
-        let too_long = |value: &LocaleString, english: usize, translated: usize| match value {
-            LocaleString::Translated(s) => s.len() > english,
-            LocaleString::LanguageMap(map) => {
-                map.get("en_US").is_some_and(|s| s.len() > english)
-                    || map.values().any(|s| s.len() > translated)
-            }
+        let too_long = |value: &LocaleString, limit: usize| match value {
+            LocaleString::Translated(s) => s.len() > limit,
+            LocaleString::LanguageMap(map) => map.values().any(|s| s.len() > limit),
         };
 
-        if too_long(&self.short, Self::SHORT_LIMIT, Self::TRANSLATED_SHORT_LIMIT) {
+        if too_long(&self.short, Self::SHORT_LIMIT) {
             return Err(Error::new(
                 eyre!(
-                    "Short description must be {} characters or less ({} for a translation).",
+                    "Short description must be {} characters or less.",
                     Self::SHORT_LIMIT,
-                    Self::TRANSLATED_SHORT_LIMIT,
                 ),
                 crate::ErrorKind::ValidateS9pk,
             ));
         }
-        if too_long(&self.long, Self::LONG_LIMIT, Self::TRANSLATED_LONG_LIMIT) {
+        if too_long(&self.long, Self::LONG_LIMIT) {
             return Err(Error::new(
                 eyre!(
-                    "Long description must be {} characters or less ({} for a translation).",
+                    "Long description must be {} characters or less.",
                     Self::LONG_LIMIT,
-                    Self::TRANSLATED_LONG_LIMIT,
                 ),
                 crate::ErrorKind::ValidateS9pk,
             ));

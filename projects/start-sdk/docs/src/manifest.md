@@ -29,26 +29,22 @@ export const long = {
 
 ### How long each one may be
 
-|         | `en_US`         | other locales |
-| ------- | --------------- | ------------- |
-| `short` | 80 characters   | 110           |
-| `long`  | 2000 characters | 2500          |
+|         | limit           |
+| ------- | --------------- |
+| `short` | 120 characters  |
+| `long`  | 2000 characters |
 
-Enforced when the package is validated, so a description that overruns fails the
-build.
+Every locale gets the same limit, and it is enforced when the package is
+validated, so a description that overruns fails the build.
 
 `short` is not truncated when it overruns — the marketplace tile clamps it to
 two lines with `overflow: hidden`, so the remainder is silently cut off in the
-one place users browse. 80 characters is what fits those two lines.
-
-The clamp is the same two lines whatever language the tile renders in, so the
-extra 30 characters for translations are not permission to run long — they exist
-because a translator working from a compliant English string cannot always land
-under the same count, and failing their package for it would push them toward a
-worse translation rather than a shorter one. German and Polish routinely run
-20-30% longer than the same sentence in English. Write the English well inside
-80 and the translations have somewhere to go; an `en_US` string sitting exactly
-at 80 leaves them none.
+one place users browse. **Two lines is about 80 characters**, and it is the same
+two lines whatever language the tile renders in. The limit sits above that so a
+translation isn't failed over a few characters' growth — German and Polish
+routinely run 20-30% longer than the same English sentence — not as permission
+to run long. Write the English well inside 80 and every locale still fits the
+tile.
 
 Two more characters' worth of advice, both from descriptions already in the
 registries:

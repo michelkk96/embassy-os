@@ -40,13 +40,12 @@ export type SDKManifest = {
   readonly description: {
     /**
      * Short description, shown on the marketplace list page. The tile clamps it
-     * to two lines, which is what 80 buys — keep well inside it so the
-     * translations fit too. Max 80 (`en_US`) / 110 (other locales).
+     * to two lines — about 80 characters — and hides the rest. Max 120.
      */
     readonly short: T.LocaleString
     /**
      * Long description, shown on the marketplace details page. Rendered
-     * unclamped. Max 2000 (`en_US`) / 2500 (other locales).
+     * unclamped. Max 2000.
      */
     readonly long: T.LocaleString
   }

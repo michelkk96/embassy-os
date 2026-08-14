@@ -66,6 +66,12 @@ impl Manifest {
             tracing::warn!("{e}");
             tracing::debug!("{e:?}");
         }
+        // README.md is optional, but it has to be checked to be kept: this filter drops
+        // every entry no check claims, so an unchecked README would be packed and then
+        // immediately stripped.
+        if let Err(e) = expected.check_file("README.md") {
+            tracing::debug!("{e:?}");
+        }
         expected.check_file("javascript.squashfs")?;
         for (dependency, _) in &self.dependencies.0 {
             let dep_path = Path::new("dependencies").join(dependency);

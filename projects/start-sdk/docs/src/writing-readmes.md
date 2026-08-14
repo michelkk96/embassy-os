@@ -30,7 +30,9 @@ Two consequences:
 
 **Do not re-encode what StartOS can introspect.** An agent administering your service already has every action's id, name, description, warning, visibility, `allowedStatuses` and input schema from the OS, along with health-check ids and live status. Restating those here adds a second copy that goes stale and costs the agent context to read. Document instead what the ABI cannot express: **when** to run a thing, what it **costs**, whether it is **safe to repeat**, what **state** it changes, and which **symptom** it resolves.
 
-**The heading set is fixed, not suggested.** Section headings are how an agent retrieves part of a README without loading all of it, so they are an addressing scheme. A package that renames `## Actions` to `## Available Actions` does not fail loudly — it silently degrades retrieval to "load the whole file". Use the headings below verbatim, in this order, and omit a section only where the guidance below says you may.
+**The heading set is fixed, not suggested.** Section headings are how an agent retrieves part of a README without loading all of it, so they are an addressing scheme. A package that renames `## Actions` to `## Available Actions` does not fail loudly — it silently degrades retrieval to "load the whole file". Use the headings below verbatim, in this order.
+
+**A section with nothing to say still says "None."** Only **Tasks** and **Troubleshooting** may be left out, and only when the package genuinely has neither. Everywhere else an empty section is a fact worth stating: "no config file on disk", "no dependencies", "no actions" each answer a question outright, where a missing heading is ambiguous — the reader cannot tell an absent section from an unwritten one, and an agent addressing that heading gets nothing back either way.
 
 The order runs in four groups: **what the package is made of** (runtime, volumes, file models, dependencies, interfaces), **how it behaves** (install, actions, tasks, health, backups), **what to expect when it doesn't** (limitations, troubleshooting), then the machine-readable summary. Keep a new section inside the group it belongs to.
 
@@ -164,6 +166,8 @@ Note `store.json` if the package keeps one — it holds StartOS-side state rathe
 
 Where a setting is delivered by environment variable instead of a file, say so and say why: a variable the application re-reads on every launch behaves nothing like one it consumes only on the launch that finds its value unset, and treating the second kind as authoritative is a common packaging bug. A configuration file the package writes without a model belongs in this section too.
 
+If the package writes no configuration at all, state "None" and say so plainly — that there is nothing on disk to inspect or correct is an answer, and a useful one.
+
 ### Dependencies
 
 What this service needs from other services.
@@ -195,7 +199,7 @@ The OS supplies each action's id, name, description, warning, visibility, `allow
 - **What happens next** — restarts, where to watch progress.
 - **Outputs** — credentials or values the caller receives.
 
-Flag actions with `visibility: 'hidden'` as not user-facing, so a support agent never tells a user to run one. Where an action exists to satisfy a task, leave the trigger and clearing rules to [Tasks](#tasks) rather than describing them twice.
+Flag actions with `visibility: 'hidden'` as not user-facing, so a support agent never tells a user to run one. Where an action exists to satisfy a task, leave the trigger and clearing rules to [Tasks](#tasks) rather than describing them twice. If the package declares no actions, state "None".
 
 ### Tasks
 

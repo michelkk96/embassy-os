@@ -40,6 +40,17 @@
 
 ### Added
 
+- **Scaffolded packages get a fourth workflow, `syncNext.yml`, which keeps the
+  `next` iteration branch in step with the base branch it stacks on.** Nothing
+  else moves `next`, so a base branch advancing leaves it behind indefinitely
+  and work resumed there starts from a stale tree. The paired
+  branch is derived rather than configured (an explicit `next/<base>` where one
+  exists, otherwise the default branch pairs with a plain `next`), and a repo
+  with no `next` gets one created at the base tip on the first run. Nothing is
+  force-pushed: `next` is fast-forwarded when merely behind, merged when it
+  carries unmerged work, and left alone with a PR opened for a human only when
+  that merge conflicts
+
 - **`addDaemon()` / `addOneshot()` accept a `uses` value that
   `Daemons.dynamic` folds into the entry's `configHash`.** The reconciler's
   diff key covers only structural fields; closures (`exec.fn`, `ready.fn`,

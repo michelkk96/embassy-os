@@ -36,6 +36,17 @@ file tracks notable changes since the move to the monorepo.
   plaintext address, including the passwords typed into it. See
   [Gateways](https://docs.start9.com/start-os/gateways.html).
 
+### Changed
+
+- **The NVIDIA images now use NVIDIA's open kernel modules, which support GeForce
+  RTX 20-series, Quadro RTX and newer.** This is what makes current cards work at
+  all — an RTX 50-series, an RTX PRO 6000 or an NVIDIA GB10 can only be driven by
+  these modules. The trade is at the other end of the range: **a GeForce GTX
+  900-series or 10-series card, a Titan X or Xp, or a Tesla M40, P40, P100 or
+  V100 will no longer be driven by the NVIDIA images.** If you rely on one of
+  those, stay on 0.4.0.1 or use the Standard image, whose open-source `nouveau`
+  driver still provides display output without GPU compute.
+
 ### Fixed
 
 - Trim whitespace on form inputs.
@@ -49,6 +60,47 @@ file tracks notable changes since the move to the monorepo.
   produced, and only the container's boot-time device pass — which races with
   the grant — widened them; on the losing side of that race a CI runner's jobs
   failed to start with `Failed to open() /dev/net/tun: Permission denied`.
+- **Reinstalling with "Preserve" copies your server's configuration before it
+  rewrites the drive, so the configuration survives.** The copy used to be taken
+  afterwards, by which point there was nothing left to read — so the server came
+  back with its configuration reset, and said nothing about it. Among the things
+  lost was the key your server uses to sign its add-on drivers, which on a
+  machine with Secure Boot left hardware such as an NVIDIA GPU unavailable
+  afterwards. A reinstall that cannot read the configuration it was asked to keep
+  now stops and says so, rather than continuing and discarding it.
+
+- **On a server with Secure Boot enabled, hardware that needs an add-on driver —
+  an NVIDIA GPU, most commonly — works after setup.** Secure Boot only loads such
+  a driver once you approve the key your server signs it with, and approving that
+  key is protected by your master password. Your server only ever asked the
+  firmware to trust the key while starting up, which on a new server happens
+  before you have set a password, so the request was never made and you were
+  never shown the prompt — leaving the driver unable to load, with nothing to say
+  why. Your server now asks as soon as you set your password, so the prompt
+  appears on the next restart. See
+  [Initial Setup](https://docs.start9.com/start-os/initial-setup.html).
+
+- **The 64-bit ARM NVIDIA image boots on NVIDIA GB10 hardware again, such as the
+  DGX Spark, GPU workloads like Ollama and vLLM run on it, and the image is
+  considerably smaller.** Four separate faults were involved, two of which each
+  stopped the machine on the last line the bootloader printed — so fixing either
+  one alone changed nothing. These images drive the GPU with NVIDIA's own driver
+  and turn nouveau off, yet were still built with graphics firmware they cannot
+  use — nouveau's, for every chip it supports, along with an older driver
+  series' — and 152 MB of it sat inside the initramfs that the bootloader must
+  read in full before the kernel starts. Separately, a Tegra fabric driver that
+  recent kernels build in claims one of the GB10's internal buses and reads a
+  protected register on it, stopping the machine during hardware detection before
+  it can display anything. Third, the image built NVIDIA's driver in the flavour
+  that does not support this generation of GPU, so the driver found the card but
+  could never bring it up. Last, the GPU came up and reported itself correctly
+  while every CUDA program still failed at startup, because NVIDIA's driver
+  declines a GPU whose address-translation support does not match what the kernel
+  offers, and this kernel is built without the support that an integrated GPU
+  like the GB10 advertises. The images now carry only the graphics firmware they
+  can use, switch that driver off, build the kernel modules NVIDIA supports here
+  — which is what NVIDIA's own operating system does on the same hardware — and
+  accept the GPU rather than turning it away.
 
 - **Your server answers to its own addresses and no others.** A name that
   resolved to your server but was never configured on it — a domain you pointed

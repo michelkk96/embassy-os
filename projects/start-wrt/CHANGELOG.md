@@ -130,6 +130,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (e.g. after a modem reboot or PPPoE reconnect) instead of waiting for the
   next scheduled check.
 
+- **Published Ports endpoints no longer disappear when a WAN setting can't be
+  read.** A network interface hand-configured with a protocol StartWRT doesn't
+  manage (e.g. a `6in4` tunnel on `wan6`) made the WAN/LAN IPv6 settings
+  endpoints error, and the Published Ports page treated that one failure as
+  fatal — every port's IPv4 endpoint showed `—` even though the forwards were
+  active. Unmanaged protocols now read back gracefully (reported as IPv6
+  disabled) and are preserved untouched on disk, and the page now loads each
+  WAN setting independently, so one failure can no longer blank out the
+  endpoint list.
+
 ## [1.0.1]
 
 ### Added

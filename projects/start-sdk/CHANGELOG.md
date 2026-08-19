@@ -38,6 +38,15 @@
   into a position whose type it does not match. Passing either positionally is
   now a compile error, so anything that needs updating says so at build time
 
+### Changed
+
+- **`assets/` and `startos/fileModels/` are scaffolded with a `.gitkeep` and no
+  `README.md`.** Both directories have to exist for a package to build, and both
+  are commonly empty, so the placeholder is what keeps them in git. The template
+  previously shipped a `README.md` in each explaining what the directory was
+  for — content the packaging guide already carries, so the scaffolded copies
+  only ever drifted from it
+
 ### Added
 
 - **Scaffolded packages get a fourth workflow, `syncNext.yml`, which keeps the

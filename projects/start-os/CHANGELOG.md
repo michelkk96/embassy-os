@@ -62,6 +62,24 @@ file tracks notable changes since the move to the monorepo.
 
 - Trim whitespace on form inputs.
 
+- **A Let's Encrypt domain works on an interface served on a port other than
+  `443`** — an Electrum server on `50002`, a TURN server on `5349`. Let's
+  Encrypt proves you control a name by connecting to it on port `443` whatever
+  port the service behind it uses, and nothing on your server answered there for
+  that name: the certificate was never issued, so the address served your
+  server's Root CA instead and clients that validate against public authorities
+  could not connect at all. StartOS now answers the challenge on whichever port
+  it arrives at, and over StartTunnel claims port `443` for that domain
+  automatically, routing it to the port the interface uses. On a router, forward
+  `443` to your server as you would for a standard domain — the domain's own
+  port is not enough on its own.
+
+- **A service that presents its own TLS certificate is shown as presenting
+  it.** StartOS does not terminate such a connection, so the certificate the
+  client checks is the service's — but a domain on that interface reported
+  whichever certificate authority had been chosen for it. Those addresses now
+  report `Self signed`.
+
 - **Services that run their own containers or a VPN can reach the devices they
   were granted.** A service opting into `userspaceFilesystems` or
   `virtualNetworking` is handed `/dev/fuse` and `/dev/net/tun` inside its
@@ -224,6 +242,21 @@ file tracks notable changes since the move to the monorepo.
 
 - **Service mount paths are validated and confined to their intended
   directories.**
+
+- **An address you assigned to a public certificate authority serves that
+  authority's certificate and nothing else.** When StartOS could not obtain the
+  certificate, the address fell back to one signed by your server's Root CA
+  while still listing Let's Encrypt as its authority — so the fallback was
+  invisible from the server itself, whose own trust store contains that Root CA.
+  Your Root CA chain is the same on every address your server exposes, which
+  makes it a value that links them all to one server, handed to anyone who
+  connects. Such an address now refuses the connection until its certificate is
+  available, and tells you so: a notification names the domain and why issuance
+  failed, once per domain until a certificate lands. A certificate already
+  issued keeps being served through its last 30 days while renewal is retried,
+  so a renewal that begins failing does not take the address down, and a domain
+  you also reach on your local network keeps answering there with your server's
+  own certificate.
 
 ## [0.4.0.1]
 

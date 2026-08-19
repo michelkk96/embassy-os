@@ -62,6 +62,15 @@ file tracks notable changes since the move to the monorepo.
 
 - Trim whitespace on form inputs.
 
+- **Helper processes a service starts are cleared away once they finish.** A
+  service that shells out to other programs — a media downloader calling
+  `yt-dlp` and `ffmpeg`, an agent running tool subprocesses — orphans a helper
+  whenever the program that started it exits first. Those finished helpers
+  stayed listed inside the service's container as `<defunct>`, each still
+  holding a process slot, for as long as the service ran — so a service that
+  starts many of them built them up without limit, and only a restart cleared
+  them. The container's first process now collects them as they finish.
+
 - **A Let's Encrypt domain works on an interface served on a port other than
   `443`** — an Electrum server on `50002`, a TURN server on `5349`. Let's
   Encrypt proves you control a name by connecting to it on port `443` whatever
@@ -89,6 +98,7 @@ file tracks notable changes since the move to the monorepo.
   produced, and only the container's boot-time device pass — which races with
   the grant — widened them; on the losing side of that race a CI runner's jobs
   failed to start with `Failed to open() /dev/net/tun: Permission denied`.
+
 - **Reinstalling with "Preserve" copies your server's configuration before it
   rewrites the drive, so the configuration survives.** The copy used to be taken
   afterwards, by which point there was nothing left to read — so the server came

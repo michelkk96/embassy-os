@@ -524,4 +524,8 @@ export default {
   531: 'IPv6 nie może zostać zarezerwowane — reguła podąża za bieżącym adresem IPv6 urządzenia',
   532: 'Wybierany przez urządzenie — adresów IPv6 nie można rezerwować',
   533: 'Nie można wyłączyć: reguły opublikowanych portów używają adresów IPv6 urządzeń',
+  545: 'Wymagane odświeżenie',
+  546: 'Oprogramowanie routera zostało zaktualizowane, ale ta strona nadal używa poprzedniego interfejsu. Załaduj stronę ponownie, aby uzyskać najnowszą wersję.',
+  547: 'Załaduj ponownie',
+  548: 'Zaktualizowano do v{version}',
 } satisfies i18n

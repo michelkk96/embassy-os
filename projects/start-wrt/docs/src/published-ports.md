@@ -29,6 +29,9 @@ Published ports (port forwarding) allow devices on the Internet to reach specifi
 > [!NOTE]
 > If the device's [Security Profile](security-profiles.md) routes its traffic through an [Outbound VPN](outbound-vpn.md), creating or re-enabling a rule prompts for confirmation: published ports are reached over your public WAN address, not through the VPN, so the port is exposed on your real public IP.
 
+> [!WARNING]
+> Some ports the router answers on itself. If [Remote Access](settings.md#remote-access) is on — including the default "When behind NAT" mode while the router sits behind another router — the router serves its own web interface, and optionally SSH, on WAN ports 80, 443, and 22; an [Inbound VPN](inbound-vpn.md) listens on its configured port. Publishing one of these ports sends that traffic to your device instead, cutting the router's own service off from outside your network (access from your LAN is unaffected). Saving such a rule therefore prompts for confirmation first — you can override it deliberately, e.g. to run your own web server on 443 when you don't use remote access to the router. You are asked once per rule; editing the rule asks again.
+
 ## Editing a Rule
 
 1. Navigate to `Internet > Published Ports` and select "Edit" from the rule's actions menu.
@@ -54,6 +57,25 @@ Each published port rule shows a status indicator in the table:
 - **Disabled** (grey) — The rule has been toggled off.
 
 The status reflects the rule and the device's addresses on your LAN — it does not test whether traffic actually arrives from the Internet.
+
+## Automatic Port Forwarding
+
+Some devices can configure port forwarding for themselves using the standard UPnP and PCP protocols instead of you creating rules by hand — StartOS servers do this automatically, and game consoles and torrent clients commonly support it too.
+
+This is **off by default** for every device. To allow it, open the device's [detail page](devices.md#device-detail-page) and turn on **Allow automatic port forwarding**. From then on, that device — and only that device — can ask the router to forward ports, and only to itself: a device can never open a port that routes traffic to another device.
+
+Forwards created this way appear in the **Automatic** section of the Published Ports page, showing which device opened them, which protocol was used (PCP or UPnP), and when they expire. They are read-only:
+
+- The device itself creates, renews, and removes its forwards.
+- A forward the device stops renewing expires and is removed automatically once the lifetime the device asked for runs out — about an hour for typical clients, and never longer than a week even for a device that asks to keep the port indefinitely.
+- A forward is also removed once the device no longer holds the address it points at — if the device leaves the network long enough for its DHCP lease to lapse, or comes back on a different address. This keeps a forward from quietly delivering Internet traffic to whichever device is given that address next. Devices with a reserved address are unaffected.
+- To stop a device from creating forwards, turn its toggle back off on the device page — or forget the device entirely. Either way its existing forwards are closed immediately, and it can no longer open new ones.
+
+Automatic forwards survive router reboots, so a self-configured device stays reachable while the router restarts. They can never take over a port that one of your manual rules already uses — the device's request is refused instead. The reverse also holds: if you publish a port manually that an automatic forward is currently using, your manual rule wins and the automatic forward is removed.
+
+Ports the router answers on itself are protected the same way. If you have [Remote Access](settings.md#remote-access) turned on, or an [inbound VPN](inbound-vpn.md) reachable from the Internet, a device cannot take those ports over — requests for them are refused, so automatic forwarding can never cost you access to your own router. (Publishing such a port manually asks you to confirm instead — a device can't be asked, but you can.)
+
+> **A note on trust.** The PCP protocol runs over plain UDP, which carries no proof of who sent a request. The router verifies that each request actually arrives from the network the requesting device is on, so a device on one network can never open forwards on behalf of a device on another. Within a single network, though, automatic forwarding trusts the devices sharing it — exactly as UPnP and PCP do on every router, which is why it is off by default. If you run devices you don't fully trust, keep them on their own [Security Profile](security-profiles.md) so they cannot act for the devices you do.
 
 ## Endpoints
 

@@ -53,6 +53,10 @@ export abstract class ApiService {
   abstract systemLogs(): Promise<LogsResponse>
   abstract devicesList(): Promise<DeviceFromApi[]>
   abstract devicesUpdate(params: DeviceUpdateReq): Promise<null>
+  abstract devicesSetAutoForward(params: {
+    mac: string
+    allow: boolean
+  }): Promise<null>
   abstract devicesForget(params: { mac: string }): Promise<null>
   abstract devicesDataUsage(
     params: DeviceDataUsageReq,
@@ -72,7 +76,10 @@ export abstract class ApiService {
   abstract wanDdnsGet(): Promise<WanDdnsResponse>
   abstract wanDdnsSet(params: WanDdnsSetRequest): Promise<null>
   abstract publishedPortsList(): Promise<PublishedPortFromApi[]>
-  abstract publishedPortsSet(params: PublishedPortsSetRequest): Promise<null>
+  abstract publishedPortsSet(
+    params: PublishedPortsSetRequest,
+  ): Promise<PublishedPortsSetResult>
+  abstract publishedPortsAutoList(): Promise<AutoForwardFromApi[]>
   abstract vpnClientList(): Promise<OutboundVpn[]>
   abstract vpnClientCreate(
     params: OutboundVpnCreateRequest,
@@ -473,6 +480,8 @@ export interface DeviceFromApi {
   ipv4: string | null
   ipv6: string | null
   ipv4_static: boolean
+  /** May auto-create port forwards via PCP/UPnP (default off). */
+  allow_auto_port_forward: boolean
   security_profile: string | null
   speed: { up: number; down: number } | null
   data_usage: number | null
@@ -627,6 +636,8 @@ export interface PublishedPortFromApi {
   ipv6: boolean
   ipv4_public_port: string | null
   source: string
+  /** The user confirmed capturing a port the router answers on itself. */
+  override_router_ports: boolean
   status: PublishedPortStatusValue
   status_reason: string | null
   device_name: string | null
@@ -645,10 +656,51 @@ export interface PublishedPortInputForApi {
   ipv6: boolean
   ipv4_public_port?: string | null
   source: string
+  /**
+   * Confirms forwarding a port the router itself answers on from the WAN.
+   * Without it, a colliding port makes `set` report the collision and apply
+   * nothing (see PublishedPortsSetResult).
+   */
+  override_router_ports: boolean
 }
 
 export type PublishedPortsSetRequest = {
   ports: PublishedPortInputForApi[]
+}
+
+/**
+ * An enabled IPv4 forward whose external range captures a port the router
+ * itself answers on from the WAN (remote access 80/443/22, the VPN server's
+ * listen port). DNAT precedes the routing decision, so saving it would divert
+ * those router services to the device — the user must confirm by re-saving
+ * with `override_router_ports` on the named port.
+ */
+export interface RouterPortCollision {
+  id: string
+  label: string
+  /** The colliding router-service port spec(s), e.g. ["443", "22"]. */
+  router_ports: string[]
+}
+
+// A non-empty collision list means nothing was applied — confirm and re-save.
+export type PublishedPortsSetResult = {
+  pending_router_port_collisions: RouterPortCollision[]
+}
+
+/**
+ * A forward created automatically by an authorized LAN device via PCP or UPnP.
+ * Read-only: the device renews or withdraws it; unrenewed forwards expire.
+ */
+export interface AutoForwardFromApi {
+  id: string
+  /** Which protocol created it: "PCP" or "UPnP". */
+  label: string
+  device_mac: string
+  device_name: string | null
+  internal_ip: string | null
+  ports: string
+  public_ports: string
+  expires_secs: number | null
 }
 
 // Outbound VPN (WireGuard Client) types

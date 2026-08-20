@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Automatic port forwarding (PCP + UPnP IGD). A LAN device can now open and
+  renew its own port forwards using the standard PCP and UPnP protocols —
+  StartOS servers use this to configure themselves automatically behind a
+  StartWRT router, and game consoles/torrent clients are covered too.
+  Authorization is per-device and **off by default**: enable it with the new
+  "Allow automatic port forwarding" toggle on the device's detail page. A
+  device can only ever forward ports to itself — and because PCP runs over UDP,
+  a request is honored only when it actually arrives from the network the
+  device lives on, so a device on one network can't open forwards on behalf of
+  a device on another. Requests that would take
+  over a manually published port are refused (conversely, publishing a port an
+  automatic forward holds removes the automatic forward — manual rules win).
+  Ports the router itself answers on from the internet are refused too, so an
+  automatic forward can never take over your remote access to the router, its
+  SSH, or a VPN server you've exposed.
+  Forwards are stored as tagged UCI firewall redirects (so they survive
+  reboots and never collide with manual published-port rules), renew on an
+  in-memory lease (no flash writes on renewal), and expire on the lifetime the
+  device requested when it stops renewing them — at most a week, even for a
+  device that asks to hold the port indefinitely. A forward is also removed
+  once the device no longer holds the address it points at — its DHCP lease
+  lapsed, or it returned on a different address — so a forward can never
+  quietly deliver Internet traffic to whichever device is given that address
+  next (devices with a reserved address are unaffected). Turning the toggle
+  back off — or forgetting the device — closes that device's forwards
+  immediately.
+  The Published Ports page gains a read-only "Automatic" section showing each
+  forward's device, protocol, and expiry. UPnP clients see a complete gateway:
+  the router advertises the `WANCommonInterfaceConfig` service clients use to
+  recognize an Internet Gateway Device, answers the status actions they check
+  before mapping anything, and supports reading mappings back
+  (`GetSpecificPortMappingEntry`/`GetGenericPortMappingEntry`) — a device sees
+  only its own. The router identifies itself as "StartWRT" to those clients. The
+  UPnP endpoints refuse browser-shaped requests — DNS-rebinding requests and
+  blind cross-origin writes alike — so a malicious web page cannot use a LAN
+  device's browser to read the network's public IP, fingerprint the router, or
+  open that device's ports. Uses the shared `start-core` PCP/IGD
+  server cores; since StartWRT has no SNI demux, the shared PCP server now
+  advertises the Start9 HOSTNAME capability only on gateways that really
+  implement it (StartTunnel), so StartOS clients fall back to plain forwards
+  here instead of recording hostname mappings that would route nothing.
 - The UI now detects when the running firmware ships a newer interface than
   the page is displaying (every RPC response and `system.info` report the
   firmware's build stamp and the UI compares it to its own). An update
@@ -23,6 +64,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Publishing a port the router itself answers on now asks for confirmation.**
+  Ports the router serves from the internet — remote access to its web
+  interface and SSH (80/443/22, including "When behind NAT" mode while the
+  router sits behind another router) and an inbound VPN's listen port —
+  previously could be published to a device without warning, silently cutting
+  that router service off from outside your network. Saving such a rule now
+  surfaces the conflict in a confirmation dialog; you can still publish the
+  port deliberately, and you're asked once per rule. Detection follows the
+  live configuration (nothing is asked for ports no router service uses) and
+  matches transports, so e.g. a UDP-only forward on 443 doesn't warn.
 - The firmware build stamp is now identical everywhere it appears: the
   `startwrt` binary (UI `ETag`, `system.info`, `startwrt verify`) now carries
   the same full-hash `-modified`-suffixed stamp the Settings → General
@@ -65,6 +116,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   normally — straight out your Internet connection instead of through the VPN
   you chained it to — and every screen reported success. Disabled VPNs are no
   longer offered as chain targets, and the router rejects one outright.
+
+- **The bottom of the screen is no longer cut off on shorter displays.** On
+  screens shorter than a page's contextual help content, the sidebar's
+  Collapse button and the bottom of the page — including a form's Cancel/Save
+  buttons, even when scrolled all the way down — were clipped, whether or not
+  the help panel was open. The layout now always fits the screen exactly, and
+  long help content scrolls within its panel.
+
+- **A narrow window no longer cuts off the right side of the page.** Below
+  the mobile-layout width, page content is laid out at the width the collapsed
+  sidebar leaves free; with the sidebar still expanded, that layout ran under
+  the window's right edge — hiding a form's Cancel/Save buttons and other
+  right-edge content — with no way to scroll to it. The sidebar now collapses
+  automatically when the window becomes that narrow (and re-collapses after
+  navigating on a phone), and expanding it by hand at that width now shows a
+  horizontal scrollbar, so everything stays reachable either way.
+
+- **Changing a published port no longer briefly drops the firewall.** Applying
+  a port-forward change restarted the firewall, which tears the whole ruleset
+  down and rebuilds it as two separate steps — for a moment in between, the
+  router had no firewall and no NAT, and connections started in that window
+  were unfiltered. It now reloads instead, applying the new ruleset in a single
+  atomic step with no gap, and a ruleset that failed to build leaves the
+  running one untouched rather than leaving nothing in place.
 
 - **Enabling LAN IPv6 no longer silently fails when the Admin profile routes
   through an IPv4-only VPN.** Saving the LAN IPv6 settings reported success
@@ -164,6 +239,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   permissions. Proxied (orange-cloud) records are supported: the client
   reads the registered IP through the Cloudflare API rather than DNS, which
   would only ever see the proxy's address.
+
 - **Dynamic DNS now actually updates your provider.** The image was missing
   the `ddns-scripts` update client (and its Cloudflare and No-IP extensions),
   so DDNS settings were saved but no DNS record was ever updated. The FreeDNS

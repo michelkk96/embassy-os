@@ -4854,6 +4854,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases 0.2.1",
  "libc",
+ "memoffset 0.9.1",
 ]
 
 [[package]]
@@ -7939,6 +7940,7 @@ dependencies = [
  "imbl-value",
  "include_dir",
  "itertools 0.14.0",
+ "libc",
  "macaddr",
  "mime_guess",
  "nix 0.29.0",
@@ -7962,6 +7964,7 @@ dependencies = [
  "serde_yaml",
  "sha-crypt",
  "sha2 0.10.9",
+ "socket2 0.6.3",
  "start-core",
  "syslog-tracing",
  "tempfile",

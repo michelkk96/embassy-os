@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.0]
 
+### Added
+
+- **Devices that never share a hostname are now identified by operating
+  system or hardware vendor instead of a meaningless placeholder.** Some
+  devices deliberately withhold their name from the router — Chromebooks
+  never send one, and many IoT gadgets can't — and previously showed up as an
+  opaque `device-3af2b1`. The device list now recognizes the operating system
+  from how the device requests a network address (its DHCP fingerprint), e.g.
+  `Windows device (3af2b1)`, or failing that the vendor behind its MAC
+  address, e.g. `Apple device (3af2b1)` — keeping the short suffix so
+  identical unnamed devices stay distinguishable. OS recognition works even
+  for devices using randomized Wi-Fi addresses, survives reboots, and a real
+  hostname, when one ever appears, still takes over automatically; names you
+  assign always win.
+
 ### Removed
 
 - **The IPv6 "Reserve" option has been removed — it never worked and never
@@ -85,6 +100,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   list is auto-refreshed every few seconds, and each refresh returned the
   rows in an arbitrary order, so the table visibly jumped around. Published
   ports now appear in a stable order, sorted by label.
+
+- **A device that missed its one chance to share its name over mDNS/Bonjour is
+  no longer stuck with a generic label until the router reboots.** The name
+  lookup was attempted exactly once per device, and it usually fired at the
+  worst moment — the instant the device first appeared (before its Bonjour
+  service finished starting), or during the reconnection rush right after a
+  router reboot — and sleeping phones and laptops don't answer at all. The
+  router now retries silent devices on a backoff schedule (about a minute
+  after the first miss, stretching to a day) before concluding the device has
+  no name to share; a device that answers is remembered permanently.
 
 - **IPv6 published-port rules now follow the target device when it changes
   its address.** Devices assign their own IPv6 addresses and change them

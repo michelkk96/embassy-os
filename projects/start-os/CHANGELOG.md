@@ -49,6 +49,11 @@ file tracks notable changes since the move to the monorepo.
 
 ### Fixed
 
+- **A service that fails to install, update, restore or uninstall says so right
+  away.** The notification naming what went wrong was held back until StartOS had
+  finished cleaning up after the attempt, which can take several minutes. It now
+  arrives as soon as the operation fails, while that cleanup is still running.
+
 - **Apps that hold a connection open — desktop sync clients, API pollers — stop
   dropping in and out.** Nextcloud Desktop and clients like it showed a
   recurring "Network error" that cleared itself a few seconds later. A service

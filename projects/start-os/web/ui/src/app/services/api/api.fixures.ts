@@ -1502,7 +1502,7 @@ Full changelog: https://github.com/Kixunil/btc-rpc-proxy/blob/master/CHANGELOG.m
     version: '1',
     title: 'New Password',
     message:
-      'Action was run successfully and smoothly and fully and all is good on the western front.',
+      '### Rotated\n\n- node-1\n- node-2\n- node-3\n\n**Restart the service** for the new password to take effect.\nThe old password stops working immediately.',
     result: null,
   }
 
@@ -1626,6 +1626,25 @@ Full changelog: https://github.com/Kixunil/btc-rpc-proxy/blob/master/CHANGELOG.m
           hostId: string
           internalPort: number
         }>(),
+      }),
+    )
+
+  export const getRpcSpec = async (): Promise<IST.InputSpec> =>
+    configBuilderToSpec(
+      ISB.InputSpec.of({
+        rpcuser: ISB.Value.text({
+          name: 'RPC Username',
+          description: 'rpc username',
+          required: true,
+          default: 'defaultrpcusername',
+        }),
+        rpcpass: ISB.Value.text({
+          name: 'RPC User Password',
+          description: 'rpc password',
+          required: true,
+          default: { charset: 'a-z,A-Z,2-9', len: 20 },
+          masked: true,
+        }),
       }),
     )
 

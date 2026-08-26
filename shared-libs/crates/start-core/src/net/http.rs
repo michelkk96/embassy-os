@@ -518,9 +518,50 @@ mod tests {
         String::from_utf8_lossy(&head).to_lowercase()
     }
 
+    /// The bytes this proxy writes upstream for one connection whose
+    /// client-facing handshake negotiated `alpn`.
+    async fn upstream_framing(alpn: Option<&str>) -> String {
+        let (mut client, client_facing) = tokio::io::duplex(4096);
+        let (backend_facing, mut backend) = tokio::io::duplex(4096);
+
+        // A target reaches `run_http_proxy` only when it adds forwarded headers
+        // or gates auth.
+        tokio::spawn(run_http_proxy(
+            client_facing,
+            backend_facing,
+            alpn.map(|a| MaybeUtf8String(a.as_bytes().to_vec())),
+            None,
+            true,
+            None,
+        ));
+        if alpn != Some("h2") {
+            // Only h2 opens with a preface.
+            client
+                .write_all(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+                .await
+                .unwrap();
+        }
+
+        let mut head = [0u8; 14];
+        tokio::time::timeout(Duration::from_secs(5), backend.read_exact(&mut head))
+            .await
+            .expect("the proxy opens the upstream leg")
+            .unwrap();
+        String::from_utf8_lossy(&head).into_owned()
+    }
+
+    /// The proxy writes h2 framing upstream only when the client-facing
+    /// handshake selected h2.
+    #[tokio::test]
+    async fn the_negotiated_alpn_frames_the_upstream_leg() {
+        assert_eq!(upstream_framing(Some("h2")).await, "PRI * HTTP/2.0");
+        assert_eq!(upstream_framing(Some("http/1.1")).await, "GET / HTTP/1.1");
+        assert_eq!(upstream_framing(None).await, "GET / HTTP/1.1");
+    }
+
     /// A backend closing its idle keep-alive leg (Apache's `KeepAliveTimeout`
     /// is 5s) must reach the client as an EOF, not as an abort on its next
-    /// request. See #3731.
+    /// request.
     #[tokio::test]
     async fn upstream_close_is_relayed_to_the_client() {
         let (mut client, client_facing) = tokio::io::duplex(4096);

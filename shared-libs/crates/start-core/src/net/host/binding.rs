@@ -453,6 +453,14 @@ impl BindOptions {
         self.secure.map_or(false, |s| s.ssl) && self.add_ssl.is_none()
     }
 
+    /// The `add_ssl` options for a binding StartOS rewraps: one whose container
+    /// serves its own TLS behind a listener of ours that terminates the client's.
+    pub fn rewrap(&self) -> Option<&AddSslOptions> {
+        self.add_ssl
+            .as_ref()
+            .filter(|_| self.secure.map_or(false, |s| s.ssl))
+    }
+
     /// Preferred external port for the TLS-carrying listener: the OS's own when
     /// it terminates (`add_ssl`), otherwise the binding's, since a self-TLS
     /// binding has no second port to take one from.
@@ -499,6 +507,8 @@ pub struct AddSslOptions {
     /// forwarding them upstream. Setting this implies HTTP-aware proxying.
     #[serde(default)]
     pub add_x_forwarded_headers: bool,
+    /// The application protocols StartOS answers a client with, from those it
+    /// asked for. Unset answers with whatever it asked for.
     pub alpn: Option<AlpnInfo>,
     /// Certificate validation for the OS→container TLS leg when rewrapping.
     /// `None` (the default) validates against the StartOS root CA.

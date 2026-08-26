@@ -22,7 +22,9 @@ use crate::net::host::binding::{
     overlap_error,
 };
 use crate::net::service_interface::{HostnameInfo, HostnameMetadata};
+use crate::net::vhost::ACME_CHALLENGE_PORT;
 use crate::prelude::*;
+use crate::util::serde::const_true;
 use crate::{GatewayId, HostId, PackageId};
 
 pub mod address;
@@ -63,6 +65,9 @@ pub struct PortForward {
     /// existing single-port `PortForward`s.
     #[serde(default = "default_port_forward_count")]
     pub count: u16,
+    /// Whether this forward receives local traffic. Used to gate hairpinning check.
+    #[serde(default = "const_true")]
+    pub local: bool,
 }
 
 impl AsRef<Host> for Host {
@@ -441,6 +446,7 @@ impl Model<Host> {
         // binding/range serves internally only (`enabled_addresses`), and no
         // internal address is public, so it contributes nothing here.
         let bindings: Bindings = this.bindings.de()?;
+        let public_domains = this.public_domains.de()?;
         let mut port_forwards = BTreeSet::new();
         for bind in bindings.values() {
             for addr in bind.enabled_addresses() {
@@ -464,6 +470,16 @@ impl Model<Host> {
                 let Some(wan_ip) = ip_info.wan_ip else {
                     continue;
                 };
+                // A certificate authority validates at `ACME_CHALLENGE_PORT`,
+                // regardless of which port the address serves. `add_ssl` excludes a
+                // service that is its own ACME client.
+                let challenge = addr.ssl
+                    && bind.options.add_ssl.is_some()
+                    && port != ACME_CHALLENGE_PORT
+                    && matches!(addr.metadata, HostnameMetadata::PublicDomain { .. })
+                    && public_domains
+                        .get(&addr.hostname)
+                        .map_or(false, |domain| domain.acme.is_some());
                 for subnet in &ip_info.subnets {
                     let IpAddr::V4(addr) = subnet.addr() else {
                         continue;
@@ -473,7 +489,17 @@ impl Model<Host> {
                         dst: SocketAddrV4::new(addr, port),
                         gateway: gw_id.clone(),
                         count: 1,
+                        local: true,
                     });
+                    if challenge {
+                        port_forwards.insert(PortForward {
+                            src: SocketAddrV4::new(wan_ip, ACME_CHALLENGE_PORT),
+                            dst: SocketAddrV4::new(addr, ACME_CHALLENGE_PORT),
+                            gateway: gw_id.clone(),
+                            count: 1,
+                            local: false,
+                        });
+                    }
                 }
             }
         }
@@ -515,6 +541,7 @@ impl Model<Host> {
                         dst: SocketAddrV4::new(lan_ip, internal_start),
                         gateway: gw_id.clone(),
                         count: range.number_of_ports,
+                        local: true,
                     });
                 }
             }

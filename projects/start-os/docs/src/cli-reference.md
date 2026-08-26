@@ -475,6 +475,18 @@ Remove ACME certificate configuration.
 
 - `--provider <PROVIDER>` — ACME provider to remove (required)
 
+### `start-cli net acme check-challenge <FQDN> <GATEWAY>`
+
+Test whether a certificate authority can reach the domain to validate it. An
+ACME authority connects on port `443` regardless of which port the address
+itself is served on, so this tests `443` — over IPv4, and over IPv6 where the
+gateway has a global address. Reports nothing when the domain needs no such
+test: it holds a certificate with life left in it. A domain with no ACME
+authority, or one already served on `443`, has no question to ask here.
+
+- `--acme <PROVIDER>` — ACME provider identifier or URL (required)
+- `--format` — Output format
+
 ### `start-cli net tunnel add <NAME> <CONFIG> [GATEWAY_TYPE]`
 
 Add a WireGuard tunnel gateway.

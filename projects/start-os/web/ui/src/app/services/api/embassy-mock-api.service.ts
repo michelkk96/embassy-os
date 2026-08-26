@@ -573,6 +573,23 @@ export class MockApiService extends ApiService {
     }
   }
 
+  async checkChallenge(
+    params: T.CheckChallengeParams,
+  ): Promise<T.CheckChallengeRes | null> {
+    await pauseFor(2000)
+
+    return {
+      port: {
+        ip: '0.0.0.0',
+        port: 443,
+        openExternally: false,
+        openInternally: false,
+        hairpinning: false,
+      },
+      portV6: null,
+    }
+  }
+
   async checkDns(params: T.CheckDnsParams): Promise<CheckDnsRes> {
     await pauseFor(2000)
 
@@ -1637,6 +1654,7 @@ export class MockApiService extends ApiService {
         hairpinning: false,
       },
       portV6: null,
+      challenge: null,
     }
   }
 
@@ -1782,6 +1800,7 @@ export class MockApiService extends ApiService {
         hairpinning: false,
       },
       portV6: null,
+      challenge: null,
     }
   }
 

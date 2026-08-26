@@ -3185,6 +3185,7 @@ help.arg.address:
   fr_FR: "Adresse réseau"
   pl_PL: "Adres sieciowy"
 
+
 help.arg.gua-wan:
   en_US: "Expose the IPv6 GUA to the WAN (false = LAN-only)"
   de_DE: "IPv6-GUA zum WAN freigeben (false = nur LAN)"
@@ -4791,6 +4792,13 @@ about.cancel-install-package:
   es_ES: "Cancelar la instalación de un paquete"
   fr_FR: "Annuler l'installation d'un paquet"
   pl_PL: "Anuluj instalację pakietu"
+
+about.check-acme-challenge-reachability:
+  en_US: "Check if the port a certificate authority validates on is reachable"
+  de_DE: "Prüfen, ob der Port erreichbar ist, über den eine Zertifizierungsstelle validiert"
+  es_ES: "Comprobar si el puerto en el que valida una autoridad de certificación es accesible"
+  fr_FR: "Vérifier si le port sur lequel une autorité de certification valide est accessible"
+  pl_PL: "Sprawdź, czy port, na którym weryfikuje urząd certyfikacji, jest osiągalny"
 
 about.check-dns-configuration:
   en_US: "Check DNS configuration for a gateway"

@@ -72,12 +72,17 @@ function getCertificate(
   // terminate, whatever authority a domain on this host names.
   if (!addSsl) return secure?.ssl ? 'Self signed' : '-'
 
-  if (h.metadata.kind === 'public-domain') {
-    const config = host.publicDomains[h.hostname]
-    return config ? toAuthorityName(config.acme) : toAuthorityName(null)
-  }
+  return toAuthorityName(getAcmeProvider(h, host, addSsl))
+}
 
-  return toAuthorityName(null)
+// Null unless StartOS terminates this address's TLS and issues its certificate.
+function getAcmeProvider(
+  h: T.HostnameInfo,
+  host: T.Host,
+  addSsl: T.AddSslOptions | null,
+): T.AcmeProvider | null {
+  if (!h.ssl || !addSsl || h.metadata.kind !== 'public-domain') return null
+  return host.publicDomains[h.hostname]?.acme ?? null
 }
 
 function sortDomainsFirst(a: GatewayAddress, b: GatewayAddress): number {
@@ -300,6 +305,7 @@ export class InterfaceService {
             h.metadata.kind === 'private-domain' ||
             h.metadata.kind === 'public-domain',
           certificate: getCertificate(h, host, addSsl, secure),
+          acme: getAcmeProvider(h, host, addSsl),
           count,
         })
       }
@@ -494,6 +500,8 @@ export type GatewayAddress = {
   ui: boolean
   deletable: boolean
   certificate: string
+  // The address's ACME authority. Such an address also needs 443 reachable.
+  acme: T.AcmeProvider | null
   // Number of forwarded ports: 1 for a single-port binding, the range span for
   // a port range. Drives the port-span shown in forwarding rules.
   count: number

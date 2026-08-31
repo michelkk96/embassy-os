@@ -9,7 +9,7 @@ Because `start-cli` is a thin client over `start-core`, most user-visible CLI ch
 in `start-core`; record here anything that changes this crate's entrypoint, features, packaging,
 or the CLI's externally observable behavior.
 
-## [1.1.1]
+## [2.0.0]
 
 ### Added
 
@@ -21,6 +21,17 @@ or the CLI's externally observable behavior.
   it is **optional**, so a package without one still builds; it is simply absent from the
   archive and the accessor returns `None`. Nothing is packed for an s9pk built before this,
   and v1 packages migrated forward carry no README either.
+
+### Changed
+
+- **`server set-hostname` takes one required hostname, and `setup execute` no
+  longer takes `--name`.** A StartOS server carries a single name — its `.local`
+  hostname — where it used to carry a separate display label as well. Setting it
+  moves the address the server answers to. A provisioning script that passes
+  `--name` to `setup execute`, or a name and a hostname to `server set-hostname`,
+  needs updating. `server set-hostname` and `setup execute --hostname` also
+  reject a name longer than 32 characters, or one starting or ending with a
+  hyphen, which 1.1.0 accepted.
 
 ### Fixed
 

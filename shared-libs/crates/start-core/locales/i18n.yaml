@@ -1253,6 +1253,13 @@ hostname.empty:
   fr_FR: "Le nom d'hôte ne peut pas être vide"
   pl_PL: "Nazwa hosta nie może być pusta"
 
+hostname.hyphen-edge:
+  en_US: "Hostname cannot start or end with a hyphen"
+  de_DE: "Der Hostname darf nicht mit einem Bindestrich beginnen oder enden"
+  es_ES: "El nombre de host no puede empezar ni terminar con un guion"
+  fr_FR: "Le nom d'hôte ne peut pas commencer ni finir par un trait d'union"
+  pl_PL: "Nazwa hosta nie może zaczynać się ani kończyć myślnikiem"
+
 hostname.invalid-character:
   en_US: "Invalid character in hostname: %{char}"
   de_DE: "Ungültiges Zeichen im Hostnamen: %{char}"
@@ -1260,12 +1267,12 @@ hostname.invalid-character:
   fr_FR: "Caractère invalide dans le nom d'hôte : %{char}"
   pl_PL: "Nieprawidłowy znak w nazwie hosta: %{char}"
 
-hostname.must-provide-name-or-hostname:
-  en_US: "Must provide at least one of: name, hostname"
-  de_DE: "Es muss mindestens eines angegeben werden: name, hostname"
-  es_ES: "Se debe proporcionar al menos uno de: name, hostname"
-  fr_FR: "Vous devez fournir au moins l'un des éléments suivants : name, hostname"
-  pl_PL: "Należy podać co najmniej jedno z: name, hostname"
+hostname.too-long:
+  en_US: "Hostname must be %{max} characters or fewer"
+  de_DE: "Der Hostname darf höchstens %{max} Zeichen lang sein"
+  es_ES: "El nombre de host debe tener %{max} caracteres o menos"
+  fr_FR: "Le nom d'hôte doit comporter au maximum %{max} caractères"
+  pl_PL: "Nazwa hosta może mieć maksymalnie %{max} znaków"
 
 # init.rs
 init.running-preinit:
@@ -3451,6 +3458,13 @@ help.arg.host-url:
   es_ES: "URL del servidor StartOS"
   fr_FR: "URL du serveur StartOS"
   pl_PL: "URL serwera StartOS"
+
+help.arg.hostname:
+  en_US: "The server's .local hostname: up to 32 lowercase letters, numbers, and hyphens, not starting or ending with a hyphen"
+  de_DE: "Der .local-Hostname des Servers: bis zu 32 Kleinbuchstaben, Ziffern und Bindestriche, nicht mit einem Bindestrich beginnend oder endend"
+  es_ES: "El nombre de host .local del servidor: hasta 32 letras minúsculas, números y guiones, sin empezar ni terminar con un guion"
+  fr_FR: "Le nom d'hôte .local du serveur : jusqu'à 32 lettres minuscules, chiffres et traits d'union, ne commençant ni ne finissant par un trait d'union"
+  pl_PL: "Nazwa hosta .local serwera: do 32 małych liter, cyfr i myślników, nierozpoczynająca się ani niekończąca myślnikiem"
 
 help.arg.hostnames:
   en_US: "Hostnames to include in the certificate"

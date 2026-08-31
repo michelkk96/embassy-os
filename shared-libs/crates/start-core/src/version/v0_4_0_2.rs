@@ -2,6 +2,7 @@ use exver::VersionRange;
 
 use super::v0_3_5::V0_3_0_COMPAT;
 use super::{VersionT, v0_4_0_1};
+use crate::hostname::repair_hostname;
 use crate::prelude::*;
 
 lazy_static::lazy_static! {
@@ -29,6 +30,7 @@ impl VersionT for Version {
     #[instrument(skip_all)]
     fn up(self, db: &mut Value, _: Self::PreUpRes) -> Result<Value, Error> {
         rehome_admin_ui_port(db);
+        drop_server_name(db);
         for_each_alpn(db, |alpn| {
             if alpn.as_array().is_some() {
                 return;
@@ -40,9 +42,11 @@ impl VersionT for Version {
                 // `reflect` said what an absent list says.
                 .unwrap_or(Value::Null);
         });
+        repair_unusable_hostname(db);
         Ok(Value::Null)
     }
     fn down(self, db: &mut Value) -> Result<(), Error> {
+        restore_server_name(db);
         // Every earlier version wants 80 here and keeps the port it finds.
         for_each_alpn(db, |alpn| {
             if let Some(list) = alpn.as_array() {
@@ -55,8 +59,6 @@ impl VersionT for Version {
     }
 }
 
-/// Every `addSsl.alpn` a host holds, on the server's own bindings and on every
-/// package's.
 fn for_each_alpn(db: &mut Value, mut f: impl FnMut(&mut Value)) {
     let mut visit = |host: &mut Value| {
         let Some(bindings) = host.get_mut("bindings").and_then(|b| b.as_object_mut()) else {
@@ -97,16 +99,65 @@ fn for_each_alpn(db: &mut Value, mut f: impl FnMut(&mut Value)) {
     }
 }
 
-/// Give the StartOS UI back its well-known plaintext port.
-///
-/// `Public::init` plants the admin binding already holding `assignedSslPort`
-/// but not `assignedPort`, so `os_bindings` reaches it through `BindInfo::update`,
-/// which before #3558 could only fall through to a port at or above 49152 —
-/// and then kept it, since `update` prefers the port it already holds.
-///
-/// Nothing else can hold 80: it was unclaimable for everyone until #3558 and is
-/// privileged-only after it. Writing it also clears the unheld 80 that installs
-/// before #3558 were seeded with.
+fn server_info_mut(db: &mut Value) -> Option<&mut imbl_value::InOMap<InternedString, Value>> {
+    db.get_mut("public")
+        .and_then(|p| p.get_mut("serverInfo"))
+        .and_then(|s| s.as_object_mut())
+}
+
+fn repair_unusable_hostname(db: &mut Value) {
+    let Some(server_info) = server_info_mut(db) else {
+        return;
+    };
+    let Some(stored) = server_info.get("hostname").and_then(|h| h.as_str()) else {
+        return;
+    };
+    let repaired = repair_hostname(stored);
+    if repaired.as_ref() == stored {
+        return;
+    }
+    let repaired = repaired.to_string();
+    server_info.insert(InternedString::intern("hostname"), Value::from(repaired));
+}
+
+fn drop_server_name(db: &mut Value) {
+    if let Some(server_info) = server_info_mut(db) {
+        server_info.remove(&InternedString::intern("name"));
+    }
+}
+
+fn restore_server_name(db: &mut Value) {
+    let Some(server_info) = server_info_mut(db) else {
+        return;
+    };
+    if server_info.contains_key(&InternedString::intern("name")) {
+        return;
+    }
+    let name = server_info
+        .get("hostname")
+        .and_then(Value::as_str)
+        .map_or_else(|| "StartOS".to_owned(), title_case);
+    server_info.insert(InternedString::intern("name"), Value::from(name));
+}
+
+fn title_case(hostname: &str) -> String {
+    let mut capitalize = true;
+    hostname
+        .chars()
+        .map(|c| {
+            if c == '-' {
+                capitalize = true;
+                ' '
+            } else if capitalize {
+                capitalize = false;
+                c.to_ascii_uppercase()
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 fn rehome_admin_ui_port(db: &mut Value) {
     let Some(net) = db
         .get_mut("public")
@@ -145,7 +196,6 @@ mod test {
 
     use super::*;
 
-    /// A server binding and a package binding, each carrying `alpn` as given.
     fn db_with_alpn(server: Value, package: Value) -> Value {
         json!({
             "public": {
@@ -172,7 +222,6 @@ mod test {
             .clone()
     }
 
-    /// A stored list is carried as the list itself.
     #[test]
     fn a_stored_alpn_becomes_the_list_it_named() {
         let mut d = db_with_alpn(
@@ -192,7 +241,6 @@ mod test {
         assert_eq!(package_alpn(&d), json!({ "specified": [] }));
     }
 
-    /// `reflect` named the client's own list, which is what no list names now.
     #[test]
     fn a_stored_reflect_becomes_no_list() {
         let mut d = db_with_alpn(json!("reflect"), Value::Null);
@@ -214,9 +262,6 @@ mod test {
         &db["public"]["serverInfo"]["network"]["host"]["bindings"]["80"]["net"]
     }
 
-    // The shape a box installed before #3558 upgrades from: the plaintext leg
-    // drifted to an ephemeral port, and `availablePorts` still carries the 80
-    // that `Database::init` seeded but no binding ever held.
     #[test]
     fn rehomes_a_drifted_port_and_frees_it() {
         let mut db = db(
@@ -232,8 +277,6 @@ mod test {
         );
     }
 
-    // A box that came up through v0_4_0_alpha_20 had `availablePorts` rebuilt
-    // from its bindings, so it has no unheld 80 to clear.
     #[test]
     fn claims_80_when_no_seed_is_present() {
         let mut db = db(
@@ -277,5 +320,99 @@ mod test {
         let before = db.clone();
         rehome_admin_ui_port(&mut db);
         assert_eq!(db, before);
+    }
+    #[test]
+    fn migrates_port_alpn_and_hostname_together() {
+        let mut db = db_with_alpn(json!({ "specified": ["h2"] }), json!("reflect"));
+        db["public"]["serverInfo"]["name"] = json!("Old Name");
+        db["public"]["serverInfo"]["hostname"] = json!("a".repeat(70));
+        db["public"]["serverInfo"]["network"]["host"]["bindings"]["80"] =
+            json!({ "net": { "assignedPort": 55543, "assignedSslPort": 443 } });
+        db["private"]["availablePorts"] = json!({ "80": false, "443": true, "55543": false });
+
+        Version.up(&mut db, ()).unwrap();
+
+        assert_eq!(db["public"]["serverInfo"].get("name"), None);
+        assert_eq!(
+            db["public"]["serverInfo"]["hostname"],
+            json!("a".repeat(32))
+        );
+        assert_eq!(net_of(&db)["assignedPort"], json!(80));
+        assert_eq!(server_alpn(&db), json!(["h2"]));
+        assert_eq!(package_alpn(&db), Value::Null);
+
+        Version.down(&mut db).unwrap();
+
+        assert_eq!(
+            db["public"]["serverInfo"]["name"],
+            json!(format!("A{}", "a".repeat(31)))
+        );
+        assert_eq!(server_alpn(&db), json!({ "specified": ["h2"] }));
+        assert_eq!(package_alpn(&db), Value::Null);
+        assert_eq!(net_of(&db)["assignedPort"], json!(80));
+    }
+
+    #[test]
+    fn drops_and_restores_the_display_name() {
+        let mut db = json!({ "public": { "serverInfo": {
+            "name": "My Cool Server", "hostname": "my-cool-server"
+        } } });
+        drop_server_name(&mut db);
+        assert_eq!(db["public"]["serverInfo"].get("name"), None);
+        restore_server_name(&mut db);
+        assert_eq!(db["public"]["serverInfo"]["name"], json!("My Cool Server"));
+    }
+
+    #[test]
+    fn restore_preserves_an_existing_display_name() {
+        let mut db = json!({ "public": { "serverInfo": {
+            "name": "Chosen Name", "hostname": "different-hostname"
+        } } });
+        let before = db.clone();
+        restore_server_name(&mut db);
+        assert_eq!(db, before);
+    }
+
+    #[test]
+    fn leaves_a_usable_hostname_alone() {
+        let mut db = json!({ "public": { "serverInfo": { "hostname": "my-cool-server" } } });
+        let before = db.clone();
+        repair_unusable_hostname(&mut db);
+        assert_eq!(db, before);
+    }
+
+    #[test]
+    fn brings_a_hostname_the_kernel_refuses_back_into_range() {
+        let mut db = json!({ "public": { "serverInfo": { "hostname": "a".repeat(70) } } });
+        repair_unusable_hostname(&mut db);
+        assert_eq!(
+            db["public"]["serverInfo"]["hostname"],
+            json!("a".repeat(32))
+        );
+    }
+
+    #[test]
+    fn trims_a_hostname_over_the_limit() {
+        let mut db = json!({ "public": { "serverInfo": { "hostname": "a".repeat(55) } } });
+        repair_unusable_hostname(&mut db);
+        assert_eq!(
+            db["public"]["serverInfo"]["hostname"],
+            json!("a".repeat(32))
+        );
+    }
+
+    #[test]
+    fn repairing_a_db_without_a_hostname_is_harmless() {
+        let mut db = json!({ "public": { "serverInfo": {} } });
+        let before = db.clone();
+        repair_unusable_hostname(&mut db);
+        assert_eq!(db, before);
+    }
+
+    #[test]
+    fn rollback_names_a_server_whose_hostname_is_missing() {
+        let mut db = json!({ "public": { "serverInfo": {} } });
+        restore_server_name(&mut db);
+        assert_eq!(db["public"]["serverInfo"]["name"], json!("StartOS"));
     }
 }

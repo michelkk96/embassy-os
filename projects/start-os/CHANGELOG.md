@@ -12,6 +12,12 @@ file tracks notable changes since the move to the monorepo.
 
 ### Added
 
+- **Typing a service's domain without `https://` opens its web interface over
+  HTTPS.** This works on each network where the domain is assigned. Server IP
+  addresses and domains assigned to the StartOS UI retain their existing
+  behavior. The server's own `.local` name remains reserved for StartOS. See
+  [Private Domains](https://docs.start9.com/start-os/private-domains.html).
+
 - **A service can permanently retire a network host or a port it no longer
   uses, and the port numbers it held become available again.** A service that
   reorganizes its interfaces across an update — renaming a host, dropping a

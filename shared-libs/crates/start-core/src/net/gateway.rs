@@ -3224,10 +3224,12 @@ pub fn lookup_info_by_addr(
     ip_info: &OrdMap<GatewayId, NetworkInterfaceInfo>,
     addr: SocketAddr,
 ) -> Option<(&GatewayId, &NetworkInterfaceInfo)> {
+    // IPv4 clients arrive mapped through the dual-stack listener.
+    let ip = addr.ip().to_canonical();
     ip_info.iter().find(|(_, i)| {
         i.ip_info
             .as_ref()
-            .map_or(false, |i| i.subnets.iter().any(|i| i.addr() == addr.ip()))
+            .map_or(false, |i| i.subnets.iter().any(|i| i.addr() == ip))
     })
 }
 
@@ -3254,8 +3256,7 @@ impl<V: MetadataVisitor> Visit<V> for NetworkInterfaceListenerAcceptMetadata {
     }
 }
 
-/// A simple TCP listener on 0.0.0.0:port that looks up GatewayInfo from the
-/// connection's local address on each accepted connection.
+/// Accepts wildcard TCP connections with their matching `GatewayInfo`.
 pub struct WildcardListener {
     listener: TcpListener,
     ip_info: Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
@@ -3326,6 +3327,59 @@ impl Accept for WildcardListener {
             )));
         }
         Poll::Pending
+    }
+}
+
+#[cfg(test)]
+mod lookup_tests {
+    use super::*;
+
+    fn gateway_holding(addr: &str) -> OrdMap<GatewayId, NetworkInterfaceInfo> {
+        let mut ip_info = crate::db::model::public::IpInfo::default();
+        ip_info.subnets.insert(addr.parse().unwrap());
+        [(
+            GatewayId::from(InternedString::from_static("eth0")),
+            NetworkInterfaceInfo {
+                ip_info: Some(std::sync::Arc::new(ip_info)),
+                ..Default::default()
+            },
+        )]
+        .into_iter()
+        .collect()
+    }
+
+    #[test]
+    fn an_ipv4_mapped_local_address_finds_its_gateway() {
+        let ip_info = gateway_holding("192.168.1.5/24");
+        let mapped: SocketAddr = "[::ffff:192.168.1.5]:80".parse().unwrap();
+        assert_eq!(
+            lookup_info_by_addr(&ip_info, mapped).map(|(id, _)| id.as_str()),
+            Some("eth0")
+        );
+    }
+
+    #[test]
+    fn another_address_in_the_same_subnet_finds_nothing() {
+        let ip_info = gateway_holding("192.168.1.5/24");
+        let neighbour: SocketAddr = "192.168.1.99:80".parse().unwrap();
+        assert!(lookup_info_by_addr(&ip_info, neighbour).is_none());
+    }
+
+    #[test]
+    fn a_native_ipv6_address_finds_its_gateway() {
+        let ip_info = gateway_holding("fd00::1/64");
+        let native: SocketAddr = "[fd00::1]:80".parse().unwrap();
+        assert_eq!(
+            lookup_info_by_addr(&ip_info, native).map(|(id, _)| id.as_str()),
+            Some("eth0")
+        );
+    }
+
+    #[test]
+    fn an_ipv4_compatible_address_is_left_alone() {
+        let ip_info = gateway_holding("192.168.1.5/24");
+        let compatible: SocketAddr = "[::192.168.1.5]:80".parse().unwrap();
+        assert!(lookup_info_by_addr(&ip_info, compatible).is_none());
     }
 }
 

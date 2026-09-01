@@ -347,9 +347,9 @@ file tracks notable changes since the move to the monorepo.
   settled on HTTP/1.1, so StartOS wrote HTTP/1 requests onto a connection the
   service was reading as HTTP/2. StartOS now offers the client exactly the
   protocol the service chose, so both halves of the connection carry the same
-  one. A service whose HTTP/2 listener does not answer extended CONNECT
-  (RFC 8441) should advertise only `http/1.1`, which keeps WebSocket clients on
-  HTTP/1.1 where a WebSocket is an ordinary upgrade.
+  one. For HTTP/2, StartOS advertises WebSocket extended CONNECT when the
+  service includes support in its opening settings. If the service connection
+  ends, StartOS sends GOAWAY so the browser follows HTTP/2's orderly shutdown.
 
 ### Security
 

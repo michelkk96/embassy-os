@@ -45,6 +45,14 @@ pub fn published_ports<C: CtrlContext>() -> ParentHandler<C> {
                 .with_display_serializable()
                 .with_call_remote::<CliContext>(),
         )
+        .subcommand(
+            "wan-changed",
+            // Live SNI routes exist only in daemon memory.
+            from_fn_async_local(crate::port_control::wan_changed)
+                .with_metadata("no_auth", Value::Bool(true))
+                .no_display()
+                .with_call_remote::<CliContext>(),
+        )
 }
 
 /// Uppercase MACs referenced by `pp_*_v6` rules, kept current by [`set`] and
@@ -102,10 +110,8 @@ pub struct PublishedPort {
     pub ipv6: bool,
     pub ipv4_public_port: Option<String>,
     pub source: String,
-    /// The user confirmed forwarding a port the router itself answers on from
-    /// the WAN (see [`RouterPortCollision`]); round-tripped so later saves of
-    /// the full list don't re-prompt for the same collision.
-    pub override_router_ports: bool,
+    /// Whether WAN collision confirmation remains active.
+    pub override_wan_ports: bool,
     pub status: PublishedPortStatus,
     pub status_reason: Option<String>,
     pub device_name: Option<String>,
@@ -125,11 +131,9 @@ pub struct PublishedPortInput {
     pub ipv6: bool,
     pub ipv4_public_port: Option<String>,
     pub source: String,
-    /// Confirms forwarding a port the router itself answers on from the WAN
-    /// (persisted as `_pp_router_override` on the redirect). Without it, a
-    /// colliding port makes [`set`] report the collision and apply nothing.
+    /// Confirms an enabled IPv4 WAN collision.
     #[serde(default)]
-    pub override_router_ports: bool,
+    pub override_wan_ports: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -137,25 +141,27 @@ pub struct PublishedPortsSetRequest {
     pub ports: Vec<PublishedPortInput>,
 }
 
-/// An enabled IPv4 forward in a [`set`] request whose external range captures
-/// a port the router itself answers on from the WAN (Remote Access 80/443/22,
-/// the VPN server's listen port). nftables applies prerouting DNAT before the
-/// routing decision, so the forward would silently divert those services to
-/// the device (issue #3451). Surfaced to the UI for a confirmation dialog; the
-/// user overrides by re-saving with `override_router_ports` on the named port.
+/// An enabled IPv4 forward overlapping a router- or SNI-owned WAN port.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RouterPortCollision {
+pub struct WanPortCollision {
     pub id: String,
     pub label: String,
-    /// The colliding router-service port spec(s), e.g. ["443", "22"].
-    pub router_ports: Vec<String>,
+    pub router_service_ports: Vec<String>,
+    pub hostname_route_ports: Vec<SniPortUse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SniPortUse {
+    pub ports: String,
+    pub hostnames: Vec<String>,
+    pub devices: Vec<String>,
 }
 
 /// [`set`] response. A non-empty collision list means nothing was applied —
 /// the caller confirms and re-saves; empty means the request was applied.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PublishedPortsSetResult {
-    pub pending_router_port_collisions: Vec<RouterPortCollision>,
+    pub pending_wan_port_collisions: Vec<WanPortCollision>,
 }
 
 /// A published port that will be removed because the device it forwards to can
@@ -530,8 +536,8 @@ struct RawPort {
     ipv6: bool,
     ipv4_public_port: Option<String>,
     source: String,
-    /// Confirmed router-port collision (`_pp_router_override` on the redirect).
-    override_router_ports: bool,
+    /// Confirmed WAN-port collision (`_pp_wan_override` on the redirect).
+    override_wan_ports: bool,
     /// The IPv6 rule's stored `dest_ip` (the full GUA it forwards to), if any.
     /// Used by `compute_status` to detect a rule stranded on an old prefix.
     dest_ipv6: Option<String>,
@@ -664,8 +670,8 @@ fn sections_to_raw_port(
         ipv6: rule.is_some(),
         ipv4_public_port,
         source,
-        override_router_ports: redirect
-            .is_some_and(|r| r._pp_router_override.as_deref() == Some("1")),
+        override_wan_ports: enabled
+            && redirect.is_some_and(|redirect| redirect._pp_wan_override.as_deref() == Some("1")),
         dest_ipv6: rule.and_then(|r| r.dest_ip.clone()),
     }
 }
@@ -839,7 +845,7 @@ pub async fn list(_ctx: ServerContext) -> Result<Vec<PublishedPort>, Error> {
                 ipv6: raw.ipv6,
                 ipv4_public_port: raw.ipv4_public_port.clone(),
                 source: raw.source.clone(),
-                override_router_ports: raw.override_router_ports,
+                override_wan_ports: raw.override_wan_ports,
                 status,
                 status_reason,
                 device_name: device.map(|d| d.name.clone()),
@@ -881,6 +887,14 @@ pub async fn set<C: CtrlContext>(
         && crate::system::has_global_ipv6(
             &crate::system::get_wan_ipv6s().await.unwrap_or_default(),
         );
+    let port_control = ctx
+        .effectful()
+        .then(|| crate::port_control::PORT_CONTROL.get())
+        .flatten();
+    let port_control_serial = match port_control {
+        Some(port_control) => Some(port_control.lock_writes().await),
+        None => None,
+    };
 
     let mut retries = 4;
     loop {
@@ -955,18 +969,20 @@ pub async fn set<C: CtrlContext>(
         let arena = Arena::new();
         let mut cfgs = parse_all(ctx.uci_root(), &arena, &["firewall", "dhcp"]).await?;
 
-        // A forward capturing a port the router itself answers on from the
-        // WAN needs the user's explicit say-so (issue #3451): report the
-        // collisions and apply nothing until each named port is re-saved with
-        // `override_router_ports`. The auto (PCP/UPnP) path refuses the same
-        // collision outright — a protocol client can't be asked. Configs-only
-        // mode has no dialog: the CLI editor confirms implicitly, matching
-        // `ethernet::set` / `wifi::set`.
+        // Effectful saves require explicit confirmation for occupied WAN ports.
         if ctx.effectful() {
-            let pending = router_port_collisions(&cfgs["firewall"], &req.ports);
+            let mut pending = wan_port_collisions(&cfgs["firewall"], &req.ports);
             if !pending.is_empty() {
+                for collision in &mut pending {
+                    for sni in &mut collision.hostname_route_ports {
+                        if let Some(want) = crate::port_control::parse_port_range(&sni.ports) {
+                            (sni.hostnames, sni.devices) =
+                                crate::port_control::sni_route_holders(&cfgs["dhcp"], want).await;
+                        }
+                    }
+                }
                 return Ok(PublishedPortsSetResult {
-                    pending_router_port_collisions: pending,
+                    pending_wan_port_collisions: pending,
                 });
             }
         }
@@ -1059,16 +1075,8 @@ pub async fn set<C: CtrlContext>(
         // two DNAT redirects never coexist (fw4 first-match would silently
         // keep routing to the auto target). The device is refused on its next
         // renewal by the auto path's own conflict check.
-        let manual_ranges: Vec<(u16, u16)> = req
-            .ports
-            .iter()
-            .filter(|p| p.enabled && p.ipv4)
-            .filter_map(|p| {
-                crate::port_control::parse_port_range(
-                    p.ipv4_public_port.as_deref().unwrap_or(&p.ports),
-                )
-            })
-            .collect();
+        let manual_ranges = active_ipv4_ranges(&req.ports);
+        let sni_displacement_ranges = active_sni_conflicting_ranges(&req.ports);
         let mut displaced_auto: Vec<String> = Vec::new();
         cfgs["firewall"].sections.retain(|section| {
             let Ok(r) = section.get::<FirewallRedirect>() else {
@@ -1136,7 +1144,7 @@ pub async fn set<C: CtrlContext>(
                     _pp_mac: Some(port.device_mac.clone()),
                     _apf_label: None,
                     _apf_mac: None,
-                    _pp_router_override: port.override_router_ports.then(|| "1".into()),
+                    _pp_wan_override: (port.enabled && port.override_wan_ports).then(|| "1".into()),
                 };
                 let section_name = format!("pp_{}", safe_id);
                 cfgs["firewall"].append(&redirect, Some(&section_name))?;
@@ -1201,6 +1209,12 @@ pub async fn set<C: CtrlContext>(
                 return Err(err.into());
             }
             Ok(()) => {
+                drop(port_control_serial);
+                if let Some(port_control) = port_control {
+                    port_control
+                        .displace_sni_routes(&sni_displacement_ranges)
+                        .await;
+                }
                 if !displaced_auto.is_empty() {
                     tracing::info!(
                         "published-ports: manual rule(s) displaced auto forward(s): {displaced_auto:?}"
@@ -1233,25 +1247,45 @@ pub async fn set<C: CtrlContext>(
                     None,
                 );
                 return Ok(PublishedPortsSetResult {
-                    pending_router_port_collisions: Vec::new(),
+                    pending_wan_port_collisions: Vec::new(),
                 });
             }
         }
     }
 }
 
-/// The unconfirmed router-port collisions in a `set` request: enabled IPv4
-/// forwards without `override_router_ports` whose external range captures a
-/// port the router answers on itself over a shared transport (see
-/// [`RouterPortCollision`]). An unparseable port spec is skipped here —
-/// `validate_inputs` already rejects malformed requests.
-fn router_port_collisions(
-    firewall: &uciedit::Config<'_>,
-    ports: &[PublishedPortInput],
-) -> Vec<RouterPortCollision> {
+fn active_ipv4_ranges(ports: &[PublishedPortInput]) -> Vec<(u16, u16)> {
     ports
         .iter()
-        .filter(|p| p.enabled && p.ipv4 && !p.override_router_ports)
+        .filter(|port| port.enabled && port.ipv4)
+        .filter_map(|port| {
+            crate::port_control::parse_port_range(
+                port.ipv4_public_port.as_deref().unwrap_or(&port.ports),
+            )
+        })
+        .collect()
+}
+
+fn active_sni_conflicting_ranges(ports: &[PublishedPortInput]) -> Vec<(u16, u16)> {
+    ports
+        .iter()
+        .filter(|port| port.enabled && port.ipv4 && !matches!(port.protocol, Protocol::Udp))
+        .filter_map(|port| {
+            crate::port_control::parse_port_range(
+                port.ipv4_public_port.as_deref().unwrap_or(&port.ports),
+            )
+        })
+        .collect()
+}
+
+/// Unconfirmed IPv4 forwards overlapping occupied WAN ports.
+fn wan_port_collisions(
+    firewall: &uciedit::Config<'_>,
+    ports: &[PublishedPortInput],
+) -> Vec<WanPortCollision> {
+    ports
+        .iter()
+        .filter(|p| p.enabled && p.ipv4 && !p.override_wan_ports)
         .filter_map(|p| {
             let range = crate::port_control::parse_port_range(
                 p.ipv4_public_port.as_deref().unwrap_or(&p.ports),
@@ -1261,12 +1295,27 @@ fn router_port_collisions(
                 Protocol::Udp => (false, true),
                 Protocol::TcpUdp => (true, true),
             };
-            let router_ports =
-                crate::port_control::router_reserved_overlaps(firewall, range, tcp, udp);
-            (!router_ports.is_empty()).then(|| RouterPortCollision {
-                id: p.id.clone(),
-                label: p.label.clone(),
-                router_ports,
+            let overlaps = crate::port_control::wan_reserved_overlaps(firewall, range, tcp, udp);
+            (!overlaps.is_empty()).then(|| {
+                let (hostname_routes, router_services): (Vec<_>, Vec<_>) = overlaps
+                    .into_iter()
+                    .partition(|overlap| overlap.held_by_sni);
+                WanPortCollision {
+                    id: p.id.clone(),
+                    label: p.label.clone(),
+                    router_service_ports: router_services
+                        .into_iter()
+                        .map(|overlap| overlap.ports)
+                        .collect(),
+                    hostname_route_ports: hostname_routes
+                        .into_iter()
+                        .map(|overlap| SniPortUse {
+                            ports: overlap.ports,
+                            hostnames: Vec::new(),
+                            devices: Vec::new(),
+                        })
+                        .collect(),
+                }
             })
         })
         .collect()
@@ -1703,32 +1752,33 @@ async fn resolve_device_zones(
 /// so fall back to it there, and only there.
 pub(crate) fn reload_firewall() {
     tokio::spawn(async {
-        // `run_quiet_async` reports the exit status rather than failing on it,
-        // so a non-zero reload has to be checked explicitly — otherwise the
-        // fallback below would never run.
-        match crate::run_quiet_async(
-            tokio::process::Command::new("/etc/init.d/firewall").arg("reload"),
-        )
-        .await
-        {
-            Ok(status) if status.success() => return,
-            Ok(status) => tracing::warn!(
-                "firewall reload exited {status} (not loaded?); falling back to restart"
-            ),
-            Err(e) => {
-                tracing::warn!("could not run firewall reload ({e}); falling back to restart")
-            }
-        }
-        match crate::run_quiet_async(
-            tokio::process::Command::new("/etc/init.d/firewall").arg("restart"),
-        )
-        .await
-        {
-            Ok(status) if status.success() => {}
-            Ok(status) => tracing::error!("firewall restart exited {status}"),
-            Err(e) => tracing::error!("failed to restart firewall: {e}"),
+        if let Err(e) = reload_firewall_wait().await {
+            tracing::error!("failed to activate firewall changes: {e}");
         }
     });
+}
+
+pub(crate) async fn reload_firewall_wait() -> Result<(), Error> {
+    match crate::run_quiet_async(tokio::process::Command::new("/etc/init.d/firewall").arg("reload"))
+        .await
+    {
+        Ok(status) if status.success() => return Ok(()),
+        Ok(status) => {
+            tracing::warn!("firewall reload exited {status}; falling back to restart")
+        }
+        Err(e) => tracing::warn!("could not reload firewall ({e}); falling back to restart"),
+    }
+    let status =
+        crate::run_quiet_async(tokio::process::Command::new("/etc/init.d/firewall").arg("restart"))
+            .await?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(Error::new(
+            eyre!("firewall restart exited {status}"),
+            ErrorKind::Network,
+        ))
+    }
 }
 
 pub(crate) fn reload_dnsmasq() {
@@ -2018,7 +2068,7 @@ config rule 'pp_a_v6'
             ipv6: true,
             ipv4_public_port: None,
             source: "any".into(),
-            override_router_ports: false,
+            override_wan_ports: false,
             dest_ipv6: dest_ipv6.map(str::to_string),
         }
     }
@@ -2402,7 +2452,7 @@ config redirect 'pp_pub2'
             ipv6,
             ipv4_public_port: None,
             source: "any".to_string(),
-            override_router_ports: false,
+            override_wan_ports: false,
         }
     }
 
@@ -2676,8 +2726,6 @@ config redirect 'pp_del1'
         );
     }
 
-    // ── router_port_collisions tests ──
-
     /// The WAN-input ACCEPT rules the router writes for its own services:
     /// Remote Access in `default` (behind-NAT) mode — src_ip-scoped, one
     /// family per rule — plus an unscoped SSH rule (`always` shape), a
@@ -2720,14 +2768,43 @@ config rule 'disabled_rule'
 \tlist proto 'tcp'
 \toption target 'ACCEPT'
 \toption enabled '0'
+
+config rule 'apf_sni_443'
+\toption name 'SNI demux (hostname routes)'
+\toption src 'wan'
+\toption dest_port '443'
+\tlist proto 'tcp'
+\toption target 'ACCEPT'
+\toption _apf_label 'SNI'
+
+config rule 'apf_sni_8444'
+\toption name 'SNI demux (hostname routes)'
+\toption src 'wan'
+\toption dest_port '8444'
+\tlist proto 'tcp'
+\toption target 'ACCEPT'
+\toption _apf_label 'SNI'
 ";
 
-    async fn collisions_for(ports: Vec<PublishedPortInput>) -> Vec<RouterPortCollision> {
+    async fn collisions_for(ports: Vec<PublishedPortInput>) -> Vec<WanPortCollision> {
         let dir = tempfile::tempdir().unwrap();
         setup_firewall(dir.path(), ROUTER_SERVICE_RULES);
         let arena = Arena::new();
         let cfgs = parse_all(dir.path(), &arena, &["firewall"]).await.unwrap();
-        router_port_collisions(&cfgs["firewall"], &ports)
+        wan_port_collisions(&cfgs["firewall"], &ports)
+    }
+
+    #[test]
+    fn sni_displacement_requires_tcp() {
+        let tcp = make_input(|port| {
+            port.ports = "443".into();
+            port.protocol = Protocol::Tcp;
+        });
+        let udp = make_input(|port| {
+            port.ports = "8443".into();
+            port.protocol = Protocol::Udp;
+        });
+        assert_eq!(active_sni_conflicting_ranges(&[tcp, udp]), vec![(443, 443)]);
     }
 
     #[tokio::test]
@@ -2737,7 +2814,7 @@ config rule 'disabled_rule'
         let hits = collisions_for(vec![make_input(|p| p.ports = "443".into())]).await;
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "valid-id");
-        assert_eq!(hits[0].router_ports, vec!["443"]);
+        assert_eq!(hits[0].router_service_ports, vec!["443"]);
 
         // A range sweeping several router ports reports each of them; the
         // external range is what counts when it differs from the device port.
@@ -2747,7 +2824,23 @@ config rule 'disabled_rule'
             p.protocol = Protocol::TcpUdp;
         })])
         .await;
-        assert_eq!(hits[0].router_ports, vec!["443", "22", "51820"]);
+        assert_eq!(hits[0].router_service_ports, vec!["443", "22", "51820"]);
+    }
+
+    #[tokio::test]
+    async fn sni_admit_rules_are_reported_as_hostname_holders() {
+        let hits = collisions_for(vec![make_input(|p| p.ports = "8444".into())]).await;
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].router_service_ports.is_empty());
+        assert_eq!(hits[0].hostname_route_ports.len(), 1);
+        assert_eq!(hits[0].hostname_route_ports[0].ports, "8444");
+        assert!(hits[0].hostname_route_ports[0].hostnames.is_empty());
+        assert!(hits[0].hostname_route_ports[0].devices.is_empty());
+
+        let hits = collisions_for(vec![make_input(|p| p.ports = "443".into())]).await;
+        assert_eq!(hits[0].router_service_ports, vec!["443"]);
+        assert_eq!(hits[0].hostname_route_ports.len(), 1);
+        assert_eq!(hits[0].hostname_route_ports[0].ports, "443");
     }
 
     #[tokio::test]
@@ -2773,7 +2866,7 @@ config rule 'disabled_rule'
                 p.protocol = Protocol::Udp;
             })])
             .await[0]
-                .router_ports,
+                .router_service_ports,
             vec!["51820"]
         );
 
@@ -2804,14 +2897,14 @@ config rule 'disabled_rule'
         .is_empty());
         assert!(collisions_for(vec![make_input(|p| {
             p.ports = "443".into();
-            p.override_router_ports = true;
+            p.override_wan_ports = true;
         })])
         .await
         .is_empty());
     }
 
     #[tokio::test]
-    async fn set_persists_router_override_flag() {
+    async fn set_persists_wan_override_only_while_enabled() {
         let dir = tempfile::tempdir().unwrap();
         setup_firewall(dir.path(), "");
         let ctx = TestContext(dir.path().to_path_buf());
@@ -2821,7 +2914,7 @@ config rule 'disabled_rule'
             DeserializeStdin(PublishedPortsSetRequest {
                 ports: vec![make_input(|p| {
                     p.ports = "443".into();
-                    p.override_router_ports = true;
+                    p.override_wan_ports = true;
                 })],
             }),
         )
@@ -2830,13 +2923,31 @@ config rule 'disabled_rule'
 
         let content = std::fs::read_to_string(dir.path().join("firewall")).unwrap();
         assert!(
-            content.contains("option _pp_router_override '1'"),
+            content.contains("option _pp_wan_override '1'"),
             "override not persisted: {content}"
         );
-        // And it round-trips through extraction for the next save.
         let arena = Arena::new();
         let ports = extract_ports(&arena, dir.path()).await.unwrap();
-        assert!(ports[0].override_router_ports);
+        assert!(ports[0].override_wan_ports);
+
+        set(
+            TestContext(dir.path().to_path_buf()),
+            DeserializeStdin(PublishedPortsSetRequest {
+                ports: vec![make_input(|p| {
+                    p.enabled = false;
+                    p.ports = "443".into();
+                    p.override_wan_ports = true;
+                })],
+            }),
+        )
+        .await
+        .unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join("firewall")).unwrap();
+        assert!(!content.contains("_pp_wan_override"));
+        let arena = Arena::new();
+        let ports = extract_ports(&arena, dir.path()).await.unwrap();
+        assert!(!ports[0].override_wan_ports);
     }
 
     // ── Validation tests ──

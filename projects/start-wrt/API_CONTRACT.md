@@ -943,9 +943,9 @@ struct PublishedPort {
     ipv4_public_port: Option<String>,
     /// "any" or CIDR like "203.0.113.0/24"
     source: String,
-    /// The user confirmed capturing a port the router answers on itself (see
+    /// The user confirmed capturing a WAN port already in use (see
     /// `published-ports.set`); round-tripped so later saves don't re-prompt.
-    override_router_ports: bool,
+    override_wan_ports: bool,
     // --- Enriched by backend ---
     status: PublishedPortStatus,
     status_reason: Option<String>,
@@ -974,11 +974,11 @@ struct PublishedPortInput {
     ipv6: bool,
     ipv4_public_port: Option<String>,
     source: String,
-    /// Confirms forwarding a port the router itself answers on from the WAN
-    /// (persisted as `_pp_router_override` on the redirect and round-tripped
-    /// through `list`, so the confirmation is asked once per port).
+    /// Confirms forwarding a WAN port already used by a router service or
+    /// hostname route. Round-tripped through `list` so confirmation is asked
+    /// once per port.
     #[serde(default)]
-    override_router_ports: bool,
+    override_wan_ports: bool,
 }
 
 #[derive(Deserialize)]
@@ -987,30 +987,46 @@ struct PublishedPortsSetRequest {
 }
 
 #[derive(Serialize)]
-struct RouterPortCollision {
+struct WanPortCollision {
     id: String,
     label: String,
     /// The colliding router-service port spec(s), e.g. ["443", "22"].
-    router_ports: Vec<String>,
+    router_service_ports: Vec<String>,
+    /// Colliding ports held by hostname routes.
+    hostname_route_ports: Vec<SniPortUse>,
+}
+
+#[derive(Serialize)]
+struct SniPortUse {
+    ports: String,
+    /// The routed hostnames on the port, deduped and sorted.
+    hostnames: Vec<String>,
+    /// Display names (or MACs) of the devices the routes deliver to.
+    devices: Vec<String>,
 }
 
 #[derive(Serialize)]
 struct PublishedPortsSetResult {
-    pending_router_port_collisions: Vec<RouterPortCollision>,
+    pending_wan_port_collisions: Vec<WanPortCollision>,
 }
 // Backend: rebuilds firewall redirect+rule sections, resolves device IPs, restarts firewall
 ```
 
 The request is applied **unless** an enabled IPv4 forward without
-`override_router_ports` would capture a port the router itself answers on from
-the WAN — a live input-chain ACCEPT rule: Remote Access (80/443/22, including
+`override_wan_ports` would capture a port already in use on the WAN — a live input-chain ACCEPT rule: Remote Access (80/443/22, including
 "When behind NAT" mode whenever the WAN address is private) or the VPN
 server's listen port. nftables applies prerouting DNAT before the routing
 decision, so such a forward silently diverts those router services to the
 device (issue #3451). In that case nothing is applied and
-`pending_router_port_collisions` names the offending ports; the UI shows a
-confirmation dialog and re-saves with `override_router_ports: true` on the
-named ports. An empty list in the response means the request was applied.
+`pending_wan_port_collisions` names the offending ports; the UI shows a
+confirmation dialog and re-saves with `override_wan_ports: true` on the named
+ports. An empty list in the response means the request was applied.
+A colliding port whose WAN-input rule is an SNI-demux admit rule is reported
+under `hostname_route_ports` instead of `router_service_ports`, with the routed
+hostnames and owning devices filled in from the live demux — the real holder is a device's
+hostname routes, and the dialog names them rather than blaming the router.
+The split is informational only: the override works identically and removes
+the displaced hostname routes when the manual rule is saved.
 Detection is transport-aware (Remote Access is TCP, WireGuard is UDP — a
 UDP-only forward on 443 collides with nothing) and skipped in configs-only
 mode (the CLI editor confirms implicitly, like `ethernet.set` / `wifi.set`).
@@ -1040,8 +1056,8 @@ serve as a last-resort reconcile fallback.
 
 ### `published-ports.auto-list`
 
-Automatic forwards created by authorized LAN devices themselves via PCP or UPnP
-IGD (the server half of StartOS's gateway autoconfiguration). Read-only from
+Automatic port uses created by authorized LAN devices themselves via PCP or
+UPnP IGD (the server half of StartOS's gateway autoconfiguration). Read-only from
 the UI: the requesting device creates, renews, and withdraws them; unrenewed
 forwards expire on the lifetime the protocol granted the client (the daemon
 sweeps leases every minute). Distinct from manual published ports — they never
@@ -1049,17 +1065,31 @@ appear in `published-ports.list`, and `published-ports.set` leaves them alone
 _except_ that a manual rule claiming an auto-held external port wins: `set`
 removes the overlapping auto forward.
 
+Besides plain forwards, the list includes **SNI hostname routes** (label
+`"SNI"`, `hostname` set): TLS routes on a shared external port, demultiplexed
+by ClientHello SNI so several devices/hostnames share one port. These live in
+daemon memory (not UCI), always carry a lease (≤1h, device-renewed), and do
+not survive a daemon restart — the device re-asserts them. A demuxed port
+reads as router-reserved to manual and plain-auto forwards. Ports the router
+answers on itself refuse hostname routes — except 443, where Remote Access
+coexists with the demux: while routes share the port, connections naming no
+routed hostname (e.g. browsing the router by IP, which sends no SNI) are piped
+to the router's own UI, admitted from exactly the sources the Remote Access
+mode allows (any in "always"; RFC1918 in "default" behind NAT; none in
+"never"). A route is granted only once its listener is actually bound
+(`NO_RESOURCES` / UPnP fault 501 otherwise), so a granted route can never
+leave the port open with nothing serving it.
+
 ```rust
 // Request: {}
 
 #[derive(Serialize)]
-struct AutoForward {
-    /// UCI section name (`apf_<mac>_<extport>`), stable per (device, external
-    /// port) — UPnP's mapping identity, so one device may hold several
-    /// external ports to the same internal port.
+struct AutomaticPortUse {
+    /// Stable per automatic port use.
     id: String,
-    /// Which protocol created it: "PCP" or "UPnP".
-    label: String,
+    /// "PCP", "UPnP", or "SNI" for a hostname route.
+    kind: String,
+    /// May be empty on an SNI row whose target address matches no known device.
     device_mac: String,
     device_name: Option<String>,
     /// Forward target address on the LAN.
@@ -1071,11 +1101,28 @@ struct AutoForward {
     /// Seconds until the lease expires if the device stops renewing it. None
     /// right after a daemon restart, before the first grace lease is granted.
     expires_secs: Option<u64>,
+    /// TLS-SNI hostname for an SNI route; None for plain forwards.
+    hostname: Option<String>,
 }
-// Response: Vec<AutoForward>
-// Backend: reads `_apf_*`-tagged firewall redirects; names enriched from DHCP
-// host entries and the persistent device-name cache.
+// Response: Vec<AutomaticPortUse>
+// Backend: reads automatic firewall redirects plus the SNI demux's live
+// routes; names enriched from DHCP host entries and the persistent
+// device-name cache.
 ```
+
+### `published-ports.wan-changed`
+
+```rust
+// Request: {}
+// Response: null
+```
+
+Internal endpoint (`no_auth`), **not called from the frontend**. Fired by the
+`/etc/hotplug.d/iface/99-startwrt-port-control` hook on `wan` `ifup`/
+`ifupdate`: forwards to the daemon, which re-keys live SNI hostname routes
+onto the (possibly changed) WAN IPv4 — their listeners bind the WAN address
+itself. The daemon's sweep re-checks once a minute as a backstop. No-op in
+configs-only mode or when no routes exist.
 
 ### `published-ports.reconcile`
 
@@ -1814,86 +1861,87 @@ The daemon (`backend/ctrl/src/bins/daemon.rs`) also serves:
 
 ## Endpoint Summary
 
-| RPC Method                   | Category        | Notes                       |
-| ---------------------------- | --------------- | --------------------------- |
-| `auth.login`                 | Auth            | Rate-limited                |
-| `auth.logout`                | Auth            |                             |
-| `auth.verify-password`       | Auth            |                             |
-| `auth.set-password`          | Auth            |                             |
-| `auth.check-initialized`     | Auth            | No auth                     |
-| `auth.set-initial-password`  | Auth            | No session; rate-limited    |
-| `system.info`                | System          | No auth                     |
-| `system.newer-versions`      | System          | No auth                     |
-| `system.update`              | System          |                             |
-| `system.restart`             | System          |                             |
-| `system.factory-reset`       | System          |                             |
-| `system.set-preferences`     | System          |                             |
-| `system.apply-remote-access` | System          | No auth; internal, hotplug  |
-| `system.set-timezone`        | System          | No auth                     |
-| `system.get-timezones`       | System          | No auth                     |
-| `system.logs`                | System          |                             |
-| `setup.status`               | Setup           | No auth                     |
-| `wan.ipv4-get`               | WAN             |                             |
-| `wan.ipv4-set`               | WAN             |                             |
-| `wan.ipv6-get`               | WAN             |                             |
-| `wan.ipv6-set`               | WAN             |                             |
-| `wan.mac-get`                | WAN             |                             |
-| `wan.mac-set`                | WAN             |                             |
-| `wan.dns-get`                | WAN             |                             |
-| `wan.dns-set`                | WAN             |                             |
-| `wan.ddns-get`               | WAN             |                             |
-| `wan.ddns-set`               | WAN             |                             |
-| `lan.ipv4-get`               | LAN             |                             |
-| `lan.ipv4-set`               | LAN             |                             |
-| `lan.ipv6-get`               | LAN             |                             |
-| `lan.ipv6-set`               | LAN             |                             |
-| `ethernet.get`               | Ethernet        |                             |
-| `ethernet.set`               | Ethernet        |                             |
-| `ethernet.edit`              | Ethernet        | CLI editor                  |
-| `devices.list`               | Devices         |                             |
-| `devices.update`             | Devices         |                             |
-| `devices.set-auto-forward`   | Devices         |                             |
-| `devices.forget`             | Devices         |                             |
-| `devices.data-usage`         | Devices         |                             |
-| `published-ports.list`       | Published Ports |                             |
-| `published-ports.set`        | Published Ports |                             |
-| `published-ports.auto-list`  | Published Ports | Automatic PCP/UPnP forwards |
-| `published-ports.reconcile`  | Published Ports | No auth; internal, hotplug  |
-| `vpn-client.list`            | Outbound VPN    |                             |
-| `vpn-client.create`          | Outbound VPN    |                             |
-| `vpn-client.update`          | Outbound VPN    |                             |
-| `vpn-client.delete`          | Outbound VPN    |                             |
-| `vpn-client.set-enabled`     | Outbound VPN    |                             |
-| `vpn-server.list`            | Inbound VPN     |                             |
-| `vpn-server.set`             | Inbound VPN     |                             |
-| `vpn-server.delete`          | Inbound VPN     |                             |
-| `vpn-server.peer-add`        | Inbound VPN     |                             |
-| `vpn-server.peer-delete`     | Inbound VPN     |                             |
-| `wifi.get`                   | WiFi            |                             |
-| `wifi.set`                   | WiFi            |                             |
-| `wifi.edit`                  | WiFi            | CLI editor                  |
-| `wifi.blackout-get`          | WiFi            |                             |
-| `wifi.blackout-set`          | WiFi            |                             |
-| `wifi.generate-password`     | WiFi            |                             |
-| `profiles.list`              | Profiles        |                             |
-| `profiles.get`               | Profiles        |                             |
-| `profiles.create`            | Profiles        |                             |
-| `profiles.set`               | Profiles        |                             |
-| `profiles.delete`            | Profiles        |                             |
-| `profiles.edit`              | Profiles        | CLI editor                  |
-| `profiles.schedule-get`      | Profiles        |                             |
-| `profiles.schedule-set`      | Profiles        |                             |
-| `ssh-keys.list`              | SSH Keys        |                             |
-| `ssh-keys.add`               | SSH Keys        |                             |
-| `ssh-keys.delete`            | SSH Keys        |                             |
-| `activity.list`              | Activity        |                             |
-| `activity.delete`            | Activity        |                             |
-| `activity.clear`             | Activity        |                             |
-| `backup.create`              | Backup          |                             |
-| `backup.restore`             | Backup          |                             |
-| `diagnostics.create`         | Diagnostics     |                             |
+| RPC Method                    | Category        | Notes                       |
+| ----------------------------- | --------------- | --------------------------- |
+| `auth.login`                  | Auth            | Rate-limited                |
+| `auth.logout`                 | Auth            |                             |
+| `auth.verify-password`        | Auth            |                             |
+| `auth.set-password`           | Auth            |                             |
+| `auth.check-initialized`      | Auth            | No auth                     |
+| `auth.set-initial-password`   | Auth            | No session; rate-limited    |
+| `system.info`                 | System          | No auth                     |
+| `system.newer-versions`       | System          | No auth                     |
+| `system.update`               | System          |                             |
+| `system.restart`              | System          |                             |
+| `system.factory-reset`        | System          |                             |
+| `system.set-preferences`      | System          |                             |
+| `system.apply-remote-access`  | System          | No auth; internal, hotplug  |
+| `system.set-timezone`         | System          | No auth                     |
+| `system.get-timezones`        | System          | No auth                     |
+| `system.logs`                 | System          |                             |
+| `setup.status`                | Setup           | No auth                     |
+| `wan.ipv4-get`                | WAN             |                             |
+| `wan.ipv4-set`                | WAN             |                             |
+| `wan.ipv6-get`                | WAN             |                             |
+| `wan.ipv6-set`                | WAN             |                             |
+| `wan.mac-get`                 | WAN             |                             |
+| `wan.mac-set`                 | WAN             |                             |
+| `wan.dns-get`                 | WAN             |                             |
+| `wan.dns-set`                 | WAN             |                             |
+| `wan.ddns-get`                | WAN             |                             |
+| `wan.ddns-set`                | WAN             |                             |
+| `lan.ipv4-get`                | LAN             |                             |
+| `lan.ipv4-set`                | LAN             |                             |
+| `lan.ipv6-get`                | LAN             |                             |
+| `lan.ipv6-set`                | LAN             |                             |
+| `ethernet.get`                | Ethernet        |                             |
+| `ethernet.set`                | Ethernet        |                             |
+| `ethernet.edit`               | Ethernet        | CLI editor                  |
+| `devices.list`                | Devices         |                             |
+| `devices.update`              | Devices         |                             |
+| `devices.set-auto-forward`    | Devices         |                             |
+| `devices.forget`              | Devices         |                             |
+| `devices.data-usage`          | Devices         |                             |
+| `published-ports.list`        | Published Ports |                             |
+| `published-ports.set`         | Published Ports |                             |
+| `published-ports.auto-list`   | Published Ports | Automatic PCP/UPnP forwards |
+| `published-ports.reconcile`   | Published Ports | No auth; internal, hotplug  |
+| `published-ports.wan-changed` | Published Ports | No auth; internal, hotplug  |
+| `vpn-client.list`             | Outbound VPN    |                             |
+| `vpn-client.create`           | Outbound VPN    |                             |
+| `vpn-client.update`           | Outbound VPN    |                             |
+| `vpn-client.delete`           | Outbound VPN    |                             |
+| `vpn-client.set-enabled`      | Outbound VPN    |                             |
+| `vpn-server.list`             | Inbound VPN     |                             |
+| `vpn-server.set`              | Inbound VPN     |                             |
+| `vpn-server.delete`           | Inbound VPN     |                             |
+| `vpn-server.peer-add`         | Inbound VPN     |                             |
+| `vpn-server.peer-delete`      | Inbound VPN     |                             |
+| `wifi.get`                    | WiFi            |                             |
+| `wifi.set`                    | WiFi            |                             |
+| `wifi.edit`                   | WiFi            | CLI editor                  |
+| `wifi.blackout-get`           | WiFi            |                             |
+| `wifi.blackout-set`           | WiFi            |                             |
+| `wifi.generate-password`      | WiFi            |                             |
+| `profiles.list`               | Profiles        |                             |
+| `profiles.get`                | Profiles        |                             |
+| `profiles.create`             | Profiles        |                             |
+| `profiles.set`                | Profiles        |                             |
+| `profiles.delete`             | Profiles        |                             |
+| `profiles.edit`               | Profiles        | CLI editor                  |
+| `profiles.schedule-get`       | Profiles        |                             |
+| `profiles.schedule-set`       | Profiles        |                             |
+| `ssh-keys.list`               | SSH Keys        |                             |
+| `ssh-keys.add`                | SSH Keys        |                             |
+| `ssh-keys.delete`             | SSH Keys        |                             |
+| `activity.list`               | Activity        |                             |
+| `activity.delete`             | Activity        |                             |
+| `activity.clear`              | Activity        |                             |
+| `backup.create`               | Backup          |                             |
+| `backup.restore`              | Backup          |                             |
+| `diagnostics.create`          | Diagnostics     |                             |
 
-**Totals:** 76 RPC methods across 16 categories, plus the HTTP/WebSocket routes
+**Totals:** 77 RPC methods across 16 categories, plus the HTTP/WebSocket routes
 table above and the deprecated generic endpoints below.
 
 ---

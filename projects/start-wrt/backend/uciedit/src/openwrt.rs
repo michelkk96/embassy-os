@@ -80,6 +80,9 @@ pub struct FirewallRule {
     /// Published-port metadata: device MAC
     #[uci(default)]
     pub _pp_mac: Option<String>,
+    /// Port-control rule owner.
+    #[uci(default)]
+    pub _apf_label: Option<String>,
 }
 
 #[derive(Debug, TypedSection, Default)]
@@ -119,7 +122,7 @@ pub struct FirewallRedirect {
     /// port the router itself answers on from the WAN (remote access, SSH,
     /// VPN), so later saves don't re-prompt for the same collision.
     #[uci(default)]
-    pub _pp_router_override: Option<String>,
+    pub _pp_wan_override: Option<String>,
 }
 
 #[derive(Debug, TypedSection)]

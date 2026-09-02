@@ -15,7 +15,6 @@ use rpc_toolkit::Server;
 use serde::Deserialize;
 use startos::net::tls::TlsListener;
 use startos::net::web_server::{Accept, Acceptor, DynAccept, MetadataVisitor, WebServer};
-use tokio::net::TcpListener;
 use tokio::signal::unix::SignalKind;
 use tokio::sync::mpsc;
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
@@ -347,9 +346,20 @@ async fn inner_main() -> Result<(), Error> {
     let tls_ready = init_ssl().await;
 
     if !setup_mode {
-        // Port-control servers (PCP + UPnP IGD): automatic port forwarding for
-        // per-device-authorized LAN clients. After init_ssl so the IGD device
-        // UUID (derived from the root CA) is stable.
+        // The IGD UUID derives from the initialized root CA.
+        // Configure reply diversion before constructing the SNI demux.
+        startos::net::transparent::set_divert_config(startos::net::transparent::DivertConfig {
+            route_table: 5344,
+            rule_priority: 49,
+            masked_fwmark: true,
+            manage_nft: false,
+        })
+        .map_err(|config| {
+            Error::new(
+                eyre!("SNI divert config rejected: {config:?}"),
+                ErrorKind::Network,
+            )
+        })?;
         let pc = crate::port_control::PortControl::new("/etc/config".into());
         if crate::port_control::PORT_CONTROL.set(pc.clone()).is_ok() {
             tokio::spawn(crate::port_control::run(pc));
@@ -434,17 +444,9 @@ async fn inner_main() -> Result<(), Error> {
         .layer(Extension(proxy_client))
         .layer(Extension(app_state));
 
-    // Build the listener map. start-os's `WebServer` provides the connection-
-    // lifecycle defenses we used to need to hand-roll: TCP keepalive on each
-    // accepted socket, HTTP/2 PING keepalives (25s/300s), accept retry with
-    // backoff on transient errors (EMFILE/ENFILE), GracefulShutdown tracking
-    // of in-flight connections, and RFC 8441 extended CONNECT for h2
-    // WebSocket upgrades. `TlsListener` adds slow-loris-resistant handshake
-    // timeouts (5s ClientHello, 15s full handshake) and runs each handshake
-    // in a per-connection task so a stalled client cannot block accept.
+    // WAN-specific demux listeners require every wildcard listener to use SO_REUSEPORT.
     let http_addr = SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 0], 80));
-    let http_listener = TcpListener::bind(http_addr)
-        .await
+    let http_listener = startos::net::utils::bind_tokio_listener_reuse_port(http_addr)
         .with_kind(ErrorKind::Network)?;
     tracing::info!("HTTP listening on {}", http_addr);
 
@@ -454,8 +456,7 @@ async fn inner_main() -> Result<(), Error> {
     if tls_ready {
         let materials = ssl::init_tls_materials()?;
         let https_addr = SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 0], 443));
-        let https_listener = TcpListener::bind(https_addr)
-            .await
+        let https_listener = startos::net::utils::bind_tokio_listener_reuse_port(https_addr)
             .with_kind(ErrorKind::Network)?;
         tracing::info!("HTTPS listening on {}", https_addr);
         let tls = TlsListener::new(https_listener, ssl::StaticTlsHandler::new(materials));

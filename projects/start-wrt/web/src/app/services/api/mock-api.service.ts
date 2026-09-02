@@ -58,7 +58,7 @@ import {
   PublishedPortFromApi,
   PublishedPortsSetRequest,
   PublishedPortsSetResult,
-  AutoForwardFromApi,
+  AutomaticPortUseFromApi,
   OutboundVpn,
   OutboundVpnCreateRequest,
   OutboundVpnCreateResponse,
@@ -1016,6 +1016,7 @@ export class MockApiService extends ApiService {
     this.mockDeviceDefs = this.mockDeviceDefs.filter(
       d => d.mac.toUpperCase() !== macUpper,
     )
+    this.autoForwardAllowed.delete(macUpper)
     this.logActivity(
       'device',
       'deleted',
@@ -1274,7 +1275,7 @@ export class MockApiService extends ApiService {
       ipv6: true,
       ipv4_public_port: null,
       source: 'any',
-      override_router_ports: false,
+      override_wan_ports: false,
       status: 'active',
       status_reason: null,
       device_name: 'Home Server',
@@ -1292,7 +1293,7 @@ export class MockApiService extends ApiService {
       ipv6: false,
       ipv4_public_port: null,
       source: 'any',
-      override_router_ports: false,
+      override_wan_ports: false,
       status: 'active',
       status_reason: null,
       device_name: 'Gaming PC',
@@ -1310,7 +1311,7 @@ export class MockApiService extends ApiService {
       ipv6: true,
       ipv4_public_port: '2222',
       source: '203.0.113.0/24',
-      override_router_ports: false,
+      override_wan_ports: false,
       status: 'disabled',
       status_reason: null,
       device_name: null,
@@ -1372,31 +1373,43 @@ export class MockApiService extends ApiService {
   ): Promise<PublishedPortsSetResult> {
     await pauseFor(250)
 
-    // Router-port collision handshake (matches the real backend): an enabled,
-    // unconfirmed IPv4 forward capturing a port the router answers on itself
-    // (Remote Access 80/443/22, TCP — active unless remote access is off)
-    // reports the collision and applies nothing.
-    if (this.mockSystemInfo.remoteAccess !== 'never') {
-      const pending = params.ports
-        .filter(
-          p =>
-            p.enabled &&
-            p.ipv4 &&
-            !p.override_router_ports &&
-            p.protocol !== 'udp',
-        )
-        .map(p => {
-          const spec = p.ipv4_public_port || p.ports
-          const [lo, hi = lo] = spec.split('-').map(Number)
-          const routerPorts = ['80', '443', '22'].filter(
-            rp => Number(rp) >= lo && Number(rp) <= hi,
-          )
-          return { id: p.id, label: p.label, router_ports: routerPorts }
-        })
-        .filter(c => c.router_ports.length)
-      if (pending.length) {
-        return { pending_router_port_collisions: pending }
-      }
+    const sniMac = '00:1A:2B:3C:4D:5E'
+    const pending = params.ports
+      .filter(
+        p =>
+          p.enabled && p.ipv4 && !p.override_wan_ports && p.protocol !== 'udp',
+      )
+      .map(p => {
+        const spec = p.ipv4_public_port || p.ports
+        const [lo, hi = lo] = spec.split('-').map(Number)
+        const router_service_ports =
+          this.mockSystemInfo.remoteAccess !== 'never'
+            ? ['80', '443', '22'].filter(
+                rp => Number(rp) >= lo && Number(rp) <= hi,
+              )
+            : []
+        const hostname_route_ports =
+          this.autoForwardAllowed.has(sniMac) && lo <= 443 && 443 <= hi
+            ? [
+                {
+                  ports: '443',
+                  hostnames: ['nextcloud.example.com'],
+                  devices: [this.lookupDeviceByMac(sniMac).name || sniMac],
+                },
+              ]
+            : []
+        return {
+          id: p.id,
+          label: p.label,
+          router_service_ports,
+          hostname_route_ports,
+        }
+      })
+      .filter(
+        c => c.router_service_ports.length || c.hostname_route_ports.length,
+      )
+    if (pending.length) {
+      return { pending_wan_port_collisions: pending }
     }
 
     // Auto-reserve static IPv4 for enabled ports (matches real backend
@@ -1436,10 +1449,10 @@ export class MockApiService extends ApiService {
       'updated',
       `Updated published ports (${params.ports.length} rule${params.ports.length !== 1 ? 's' : ''})`,
     )
-    return { pending_router_port_collisions: [] }
+    return { pending_wan_port_collisions: [] }
   }
 
-  async publishedPortsAutoList(): Promise<AutoForwardFromApi[]> {
+  async publishedPortsAutoList(): Promise<AutomaticPortUseFromApi[]> {
     await pauseFor(250)
     const mac = '00:1A:2B:3C:4D:5E'
     if (!this.autoForwardAllowed.has(mac)) return []
@@ -1447,23 +1460,36 @@ export class MockApiService extends ApiService {
     return [
       {
         id: 'apf_001a2b3c4d5e_5443',
-        label: 'PCP',
+        kind: 'PCP',
         device_mac: mac,
         device_name: device.name,
         internal_ip: device.ipv4,
         ports: '5443',
         public_ports: '5443',
         expires_secs: 3542,
+        hostname: null,
       },
       {
         id: 'apf_001a2b3c4d5e_80',
-        label: 'UPnP',
+        kind: 'UPnP',
         device_mac: mac,
         device_name: device.name,
         internal_ip: device.ipv4,
         ports: '5080',
         public_ports: '80',
         expires_secs: 3211,
+        hostname: null,
+      },
+      {
+        id: 'sni_443_nextcloud.example.com',
+        kind: 'SNI',
+        device_mac: '',
+        device_name: null,
+        internal_ip: device.ipv4,
+        ports: '443',
+        public_ports: '443',
+        expires_secs: 2954,
+        hostname: 'nextcloud.example.com',
       },
     ]
   }

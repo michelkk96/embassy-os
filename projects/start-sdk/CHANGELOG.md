@@ -38,10 +38,6 @@
   difference. Prefer `sdk.host.getBridgeAddress` to reach a dependency; this is
   raw allocator metadata
 
-- `effects.getServicePortForward` resolves `null` instead of throwing when the
-  binding does not exist. Prefer `sdk.host.getBridgeAddress` to reach a
-  dependency; this is raw allocator metadata
-
 - **The scaffolded `build.yml` no longer passes `DEV_KEY`** — a PR build only
   compiles and packs, so it never needed the signing key. Existing packages
   should drop the `secrets:` block from their own `build.yml`
@@ -137,6 +133,36 @@
 - **A command killed by `SubContainer.exec`'s own timeout now says it timed
   out**, where the bare signal had read like an OOM kill. `exec`'s result
   carries `timedOutAfter` alongside `exitCode` and `exitSignal`
+
+- **`checkDependencies(...)`'s boolean version check honours the dependency's
+  `satisfies` list**, matching `throwIfNotSatisfied()` and the web UI.
+  `satisfied()` and `installedVersionSatisfied()` compared only the installed
+  version against the declared range, ignoring the versions that release stands
+  in for. This matters most for a flavor, which is incomparable to an unflavored
+  version: a `#knots` Bitcoin or a `#quantum` File Browser read as unsatisfied
+  while the throwing surface passed
+
+- **A dependency release is matched against `versionRange` as one set of declared versions.**
+  One installed or aliased version must satisfy a complete conjunction. `!=`
+  and negated ranges exclude the release when a declared version satisfies the
+  complete excluded range. `VersionRange.satisfiedByRelease` is the evaluator
+  behind the SDK, dependency warnings and marketplace, and `normalize()`
+  preserves the same answer. Numeric
+  prerelease identifiers retain exact ordering and serialization beyond
+  JavaScript's safe-integer limit
+
+- **`checkDependencies(...)`'s `satisfied()` takes an optional package id, and
+  `healthCheckSatisfied()`'s is optional.** Both were declared narrower than the
+  functions behind them, so `deps.satisfied('bitcoind')` was a compile error for
+  a call that has always worked, and the only way to check one dependency was to
+  reimplement the predicate
+
+- **A prerelease segment may mix letters, digits and hyphens**, matching the
+  grammar StartOS parses. `1.0.0-rc1:0` and `1.0.0-alpha-1:0` threw a parse error
+  out of `ExtendedVersion.parse` where the OS accepted them, so a dependency
+  published on such a version crashed a dependent's `checkDependencies`. A
+  numeric segment with a leading zero is rejected, as it already was on the OS
+  side
 
 ### Security
 

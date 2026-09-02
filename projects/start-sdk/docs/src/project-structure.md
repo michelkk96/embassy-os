@@ -48,6 +48,7 @@ my-service-startos/
 ├── Makefile                # Project config (includes the SDK's s9pk.mk from node_modules)
 ├── package.json
 ├── package-lock.json
+├── .prettierrc             # One line pointing at the SDK's Prettier config
 ├── README.md               # Service documentation (see Writing READMEs)
 ├── tsconfig.json
 ├── UPDATING.md             # Per-package upstream-version tracking
@@ -86,7 +87,8 @@ These files typically require minimal modification:
 - `.gitignore`
 - `.dockerignore` - Docker does not read `.gitignore`, so a package that builds from source needs this to keep `node_modules`, `.git`, and built `.s9pk`s out of the build context that `s9pk pack` uploads on every arch
 - `Makefile` - Includes the SDK's `s9pk.mk` from `node_modules` (see [Makefile](./makefile.md))
-- `package.json` / `package-lock.json`
+- `package.json` / `package-lock.json` - the SDK is the only dependency; it supplies TypeScript, Prettier, ESLint and ncc
+- `.prettierrc` - one line naming the SDK's shared Prettier config, so editors format the way the build gate checks
 - `tsconfig.json`
 
 ### .github/workflows/

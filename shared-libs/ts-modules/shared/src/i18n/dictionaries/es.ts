@@ -820,4 +820,11 @@ export default {
   927: 'Vista de cuadrícula',
   928: 'Ascendente',
   929: 'Descendente',
+  930: 'Agregar un registro',
+  931: 'Start9 no opera estos registros ni ofrece soporte para los servicios que distribuyen.',
+  932: 'Registros conocidos',
+  933: 'Este registro no presenta el nombre y el icono que Start9 publicó para él. Start9 no ha validado que sea lo que afirma ser.',
+  934: 'Registro personalizado',
+  935: 'Selecciona un registro',
+  936: 'Start9 no opera este registro ni ofrece soporte para los servicios que distribuye.',
 } satisfies i18n

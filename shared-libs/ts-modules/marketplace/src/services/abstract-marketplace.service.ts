@@ -1,3 +1,4 @@
+import { T } from '@start9labs/start-core'
 import { Observable } from 'rxjs'
 
 import { MarketplacePkg, StoreDataWithUrl, StoreIdentity } from '../types'
@@ -9,6 +10,11 @@ import { MarketplacePkg, StoreDataWithUrl, StoreIdentity } from '../types'
  * localStorage and hits registries' RPC directly.
  */
 export abstract class AbstractMarketplaceService {
+  /** Icons fetched from registry info. */
+  abstract readonly registryIcons$: Observable<
+    { url: string; icon: string | null }[]
+  >
+
   /** The registry currently being browsed (info + packages + url). */
   abstract readonly currentRegistry$: Observable<StoreDataWithUrl>
 
@@ -17,6 +23,9 @@ export abstract class AbstractMarketplaceService {
 
   /** All registries known to this app (start9, community, then customs). */
   abstract readonly registries$: Observable<StoreIdentity[]>
+
+  /** Start9's curated registries, with their pinned name and icon. */
+  abstract readonly knownRegistries$: Observable<T.KnownRegistry[]>
 
   /** Resolve one package. version/flavor/registryUrl are optional. */
   abstract getPackage$(

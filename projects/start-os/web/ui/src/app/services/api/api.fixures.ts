@@ -223,6 +223,39 @@ export namespace Mock {
     },
   }
 
+  export const KnownRegistries: T.KnownRegistry[] = [
+    {
+      url: 'https://registry.example.com/',
+      name: 'Example Registry',
+      icon: REGISTRY_ICON,
+    },
+    {
+      url: 'https://renamed.example.com/',
+      name: 'Renamed Registry',
+      icon: REGISTRY_ICON,
+    },
+    {
+      url: 'https://restyled.example.com/',
+      name: 'Restyled Registry',
+      icon: REGISTRY_ICON,
+    },
+  ]
+
+  /** Live identities that no longer match their pin. */
+  export const DriftedRegistries: Record<
+    string,
+    Pick<T.RegistryInfo, 'name' | 'icon'>
+  > = {
+    'https://renamed.example.com/': {
+      name: 'Renamed Registry v2',
+      icon: REGISTRY_ICON,
+    },
+    'https://restyled.example.com/': {
+      name: 'Restyled Registry',
+      icon: PROXY_ICON,
+    },
+  }
+
   export const MockManifestBitcoind: T.Manifest = {
     id: 'bitcoind',
     title: 'Bitcoin Core',

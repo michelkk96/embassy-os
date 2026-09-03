@@ -4,6 +4,7 @@ import {
   AbstractMarketplaceService,
   GetPackageRes,
   MarketplacePkg,
+  resolveIdentity,
   StoreDataWithUrl,
   StoreIdentity,
 } from '@start9labs/marketplace'
@@ -32,6 +33,7 @@ import {
   filter,
   map,
   shareReplay,
+  startWith,
   switchMap,
   tap,
 } from 'rxjs/operators'
@@ -69,13 +71,23 @@ export class MarketplaceService extends AbstractMarketplaceService {
     this.read<Record<string, string | null>>(CUSTOM_KEY) || {},
   )
 
-  readonly registries$: Observable<StoreIdentity[]> = this.custom$.pipe(
-    map(custom => [
-      { url: start9, name: 'Start9 Registry' },
-      { url: community, name: 'Community Registry' },
+  readonly knownRegistries$: Observable<T.KnownRegistry[]> = from(
+    this.api.getKnownRegistries(),
+  ).pipe(
+    catchError(() => of<T.KnownRegistry[]>([])),
+    shareReplay(1),
+  )
+
+  readonly registries$: Observable<StoreIdentity[]> = combineLatest([
+    this.custom$,
+    this.knownRegistries$.pipe(startWith<T.KnownRegistry[]>([])),
+  ]).pipe(
+    map(([custom, known]) => [
+      resolveIdentity(start9, null, known),
+      resolveIdentity(community, null, known),
       ...Object.entries(custom)
         .filter(([u]) => !sameUrl(u, start9) && !sameUrl(u, community))
-        .map(([url, name]) => ({ url, name: name || url })),
+        .map(([url, name]) => resolveIdentity(url, name, known)),
     ]),
     shareReplay(1),
   )
@@ -92,6 +104,10 @@ export class MarketplaceService extends AbstractMarketplaceService {
       tap(reg => this.cacheName(reg.url, reg.info.name)),
       shareReplay(1),
     )
+
+  readonly registryIcons$ = this.currentRegistry$.pipe(
+    map(registry => [{ url: registry.url, icon: registry.info.icon }]),
+  )
 
   getPackage$(
     id: string,
@@ -140,8 +156,8 @@ export class MarketplaceService extends AbstractMarketplaceService {
     }
 
     // validates the registry is reachable and provides a display name
-    const { name } = await firstValueFrom(this.fetchInfo$(url))
-    this.setCustom({ ...this.custom$.value, [url]: name })
+    const info = await firstValueFrom(this.fetchInfo$(url))
+    this.setCustom({ ...this.custom$.value, [url]: info.name })
 
     return url
   }

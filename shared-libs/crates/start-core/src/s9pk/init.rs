@@ -55,6 +55,10 @@ const DOCS_URL: &str = "https://docs.start9.com/packaging/environment-setup.html
 const MONOREPO_URL: &str = "https://github.com/Start9Labs/start-technologies.git";
 /// Workspace-relative path to the monorepo checkout that carries the guide.
 const MONOREPO_DIR: &str = "start-technologies";
+/// Branch the workspace tracks: what every product has published. master carries the
+/// SDK that has not shipped, whose guide and template describe a version npm cannot
+/// resolve.
+const MONOREPO_BRANCH: &str = "live-docs";
 /// Symlink target for the workspace `AGENTS.md` — the guide's canonical copy, so
 /// a sync keeps the workspace context current with no extra step. It is also a page
 /// of the published guide, so packagers can read it without scaffolding a workspace.
@@ -66,6 +70,9 @@ const AGENTS_SYMLINK_TARGET: &str =
 const LEGACY_AGENTS_SYMLINK_TARGET: &str = "start-technologies/projects/start-sdk/docs/AGENTS.md";
 /// Path to the package template inside the cloned guide (joined onto MONOREPO_DIR).
 const TEMPLATE_SUBPATH: &str = "projects/start-sdk/docs/package-template";
+/// Manifest naming the published `start-cli` (joined onto MONOREPO_DIR). The checkout
+/// tracks releases, so this is the version a packager should be running.
+const CLI_MANIFEST_SUBPATH: &str = "projects/start-cli/Cargo.toml";
 
 /// Claude Code does not auto-read `AGENTS.md`, so the workspace `CLAUDE.md`
 /// imports both it and the user's local prefs.
@@ -137,7 +144,7 @@ pub async fn init_workspace(
             .arg("clone")
             .arg("--filter=blob:none")
             .arg("--branch")
-            .arg("master")
+            .arg(MONOREPO_BRANCH)
             .arg(MONOREPO_URL)
             .arg(&docs)
             .capture(false)
@@ -234,6 +241,8 @@ pub async fn init_package(
         ));
     }
 
+    warn_if_start_cli_outdated(&root);
+
     let template = root.join(MONOREPO_DIR).join(TEMPLATE_SUBPATH);
     if !template.exists() {
         return Err(Error::new(
@@ -276,6 +285,51 @@ pub async fn init_package(
         )
     );
     Ok(())
+}
+
+/// Warn when the workspace names a newer `start-cli` than the one running. `start-cli`
+/// installs outside the workspace, so nothing else would ever say so: on Debian apt
+/// carries it forward, and everywhere else the installer is the only update path.
+///
+/// Best-effort, and at most once per process — a stale binary is worth a line, never an
+/// error, so every unreadable or unparseable case is silent.
+pub fn warn_if_start_cli_outdated(workspace: &Path) {
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    WARNED.call_once(|| {
+        let Ok(manifest) =
+            std::fs::read_to_string(workspace.join(MONOREPO_DIR).join(CLI_MANIFEST_SUBPATH))
+        else {
+            return;
+        };
+        let published = serde_toml::from_str::<serde_toml::Table>(&manifest)
+            .ok()
+            .and_then(|manifest| {
+                semver::Version::parse(
+                    manifest
+                        .get("package")?
+                        .as_table()?
+                        .get("version")?
+                        .as_str()?,
+                )
+                .ok()
+            });
+        let (Some(published), Ok(running)) = (
+            published,
+            semver::Version::parse(crate::bins::cli_version()),
+        ) else {
+            return;
+        };
+        if published > running {
+            eprintln!(
+                "{}",
+                t!(
+                    "s9pk.init.start-cli-outdated",
+                    running = running.to_string(),
+                    published = published.to_string()
+                )
+            );
+        }
+    });
 }
 
 /// Walk up from `start` (inclusive) for the nearest workspace — a directory whose

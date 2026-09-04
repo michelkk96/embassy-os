@@ -2,7 +2,11 @@
 
 All notable changes to `start-registry` (the Start Registry server) are documented here. This project is versioned **independently** (starting at `1.0.0`); its version lives in `Cargo.toml`. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [1.0.2]
+## [1.1.0]
+
+- **A registry can declare a description.** `info set-description` stores markdown (a
+  `LocaleString`, so it can carry translations), `info` returns it, and the marketplace shows it
+  above the registry's services while that registry is selected.
 
 - **A client can follow the package index over a websocket instead of re-fetching it.** `db.subscribe`
   returns the index as it stands plus a continuation id; connecting to `/ws/rpc/<id>` then streams a

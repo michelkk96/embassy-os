@@ -24,7 +24,6 @@ import {
 } from 'rxjs'
 
 import { AbstractMarketplaceService } from '../services/abstract-marketplace.service'
-import { ADD_REGISTRY } from './add-registry.component'
 import { StoreIconDirective } from './store-icon.directive'
 
 @Component({
@@ -201,14 +200,16 @@ export class MarketplaceRegistrySelectComponent {
   async add(): Promise<void> {
     this.open = false
 
-    const saved = await firstValueFrom(this.marketplace.registries$)
     const rawUrl = await firstValueFrom(
       this.dialog
-        .openComponent<string>(ADD_REGISTRY, {
-          label: 'Add a Registry',
-          data: (
-            await firstValueFrom(this.marketplace.knownRegistries$)
-          ).filter(k => !saved.some(s => sameUrl(s.url, k.url))),
+        .openPrompt<string>({
+          label: 'Add Custom Registry',
+          data: {
+            message: 'The domain or URL of the custom registry',
+            label: 'URL',
+            placeholder: 'e.g. registry.example.com',
+            buttonText: 'Save',
+          },
         })
         .pipe(defaultIfEmpty('')),
     )

@@ -13,9 +13,12 @@ import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { WA_IS_MOBILE } from '@ng-web-apis/platform'
 import {
+  i18nKey,
   i18nPipe,
-  knownRegistries as start9Registries,
+  knownRegistries,
   LocalizePipe,
+  MarkdownPipe,
+  SafeLinksDirective,
   sameUrl,
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
@@ -31,6 +34,7 @@ import {
   TuiScrollbar,
   TuiTitle,
 } from '@taiga-ui/core'
+import { NgDompurifyPipe } from '@taiga-ui/dompurify'
 import {
   TuiAvatar,
   TuiButtonSelect,
@@ -39,7 +43,6 @@ import {
 } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiHeader, TuiNavigation } from '@taiga-ui/layout'
 
-import { findKnown, identityMatches } from '../identity'
 import { filterPackages } from '../pipes/filter-packages.pipe'
 import { AbstractMarketplaceService } from '../services/abstract-marketplace.service'
 import { StoreDataWithUrl } from '../types'
@@ -100,26 +103,22 @@ const ICONS: Record<string, string> = {
       </footer>
     </aside>
     <div class="content">
-      @if (thirdParty()) {
-        <div tuiNotification appearance="warning">
-          {{
-            'Start9 does not operate this registry or support the services it distributes.'
-              | i18n
-          }}
-        </div>
+      @if (current()?.info?.description; as description) {
+        <div
+          tuiNotification
+          appearance="info"
+          class="g-markdown"
+          safeLinks
+          [innerHTML]="description | localize | markdown | dompurify"
+        ></div>
       }
-      @if (drifted()) {
-        <div tuiNotification appearance="negative">
-          {{
-            'This registry does not present the name and icon Start9 published for it. Start9 has not validated that it is what it claims to be.'
-              | i18n
-          }}
-        </div>
+      @if (warning(); as warning) {
+        <div tuiNotification appearance="warning">{{ warning | i18n }}</div>
       }
       <header tuiHeader="h4">
         <hgroup tuiTitle>
           <h2>
-            @if (registry()) {
+            @if (current()) {
               {{ name() | localize }}
             }
           </h2>
@@ -145,7 +144,7 @@ const ICONS: Record<string, string> = {
       </header>
       <tui-scrollbar>
         <section>
-          @if (registry()) {
+          @if (current()) {
             @for ($implicit of packages(); track $index) {
               <ng-container
                 *ngTemplateOutlet="template(); context: { $implicit }"
@@ -261,6 +260,9 @@ const ICONS: Record<string, string> = {
     NgTemplateOutlet,
     KeyValuePipe,
     LocalizePipe,
+    MarkdownPipe,
+    NgDompurifyPipe,
+    SafeLinksDirective,
     FormsModule,
     i18nPipe,
   ],
@@ -277,31 +279,32 @@ export class MarketplaceComponent {
   protected readonly icons = ICONS
   protected readonly asIs = () => 0
   protected readonly open = signal(!inject(WA_IS_MOBILE))
-  private readonly known = toSignal(
-    inject(AbstractMarketplaceService).knownRegistries$,
-    { initialValue: [] },
+  private readonly selected = toSignal(
+    inject(AbstractMarketplaceService).currentRegistryUrl$,
   )
 
-  protected readonly thirdParty = computed(() => {
-    const url = this.registry()?.url
-
-    return !!url && !Object.values(start9Registries).some(u => sameUrl(u, url))
-  })
-
-  protected readonly drifted = computed(() => {
+  protected readonly current = computed(() => {
     const registry = this.registry()
-    const pin = registry && findKnown(registry.url, this.known())
 
-    return !!pin && !identityMatches(pin, registry.info)
+    return registry && sameUrl(registry.url, this.selected())
+      ? registry
+      : undefined
   })
+
+  protected readonly warning = computed(() => {
+    const url = this.selected()
+
+    return url ? registryWarning(url) : null
+  })
+
   // Only categories that have at least one package are shown; 'all' is the
   // always-present pseudo-category injected by each app's service.
   protected readonly categories = computed(() => {
-    const info = this.registry()?.info?.categories
+    const info = this.current()?.info?.categories
     if (!info) return undefined
 
     const used = new Set(
-      (this.registry()?.packages || []).flatMap(p => p.categories || []),
+      (this.current()?.packages || []).flatMap(p => p.categories || []),
     )
 
     return Object.fromEntries(
@@ -319,12 +322,12 @@ export class MarketplaceComponent {
 
   protected readonly name = computed(
     (c = this.effectiveCategory()) =>
-      this.registry()?.info?.categories?.[c]?.name || c,
+      this.current()?.info?.categories?.[c]?.name || c,
   )
 
   protected readonly packages = computed(() =>
     filterPackages(
-      this.registry()?.packages || [],
+      this.current()?.packages || [],
       this.query(),
       this.effectiveCategory(),
       this.sort(),
@@ -357,4 +360,27 @@ export class MarketplaceComponent {
       sort === 'a' ? 'Alphabetical' : 'Recently updated',
     )
   }
+}
+
+function registryWarning(url: string): i18nKey | null {
+  const { start9, community, start9Beta, communityBeta, start9Alpha } =
+    knownRegistries
+
+  if (sameUrl(url, start9) || sameUrl(url, community)) {
+    return null
+  }
+
+  if (sameUrl(url, communityBeta)) {
+    return 'Services from this registry are packaged and maintained by members of the Start9 community and are undergoing beta testing. Bugs are expected. Install at your own risk. If you experience an issue or have a question related to a service in this marketplace, please reach out to the package developer for assistance.'
+  }
+
+  if (sameUrl(url, start9Beta)) {
+    return 'Services from this registry are undergoing beta testing. Bugs are expected. Install at your own risk.'
+  }
+
+  if (sameUrl(url, start9Alpha)) {
+    return 'Services from this registry are undergoing alpha testing. They are expected to contain bugs and could damage your system. Install at your own risk.'
+  }
+
+  return 'This is a Custom Registry. Start9 cannot verify the integrity or functionality of services from this registry, and they could damage your system. Install at your own risk.'
 }

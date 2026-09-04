@@ -4,7 +4,6 @@ import {
   AbstractMarketplaceService,
   GetPackageRes,
   MarketplacePkg,
-  resolveIdentity,
   StoreDataWithUrl,
   StoreIdentity,
 } from '@start9labs/marketplace'
@@ -15,6 +14,7 @@ import {
   i18nService,
   registryUrl,
   sameUrl,
+  toUrl,
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
@@ -71,42 +71,43 @@ export class MarketplaceService extends AbstractMarketplaceService {
     this.read<Record<string, string | null>>(CUSTOM_KEY) || {},
   )
 
-  readonly knownRegistries$: Observable<T.KnownRegistry[]> = from(
-    this.api.getKnownRegistries(),
-  ).pipe(
-    catchError(() => of<T.KnownRegistry[]>([])),
-    shareReplay(1),
-  )
-
-  readonly registries$: Observable<StoreIdentity[]> = combineLatest([
-    this.custom$,
-    this.knownRegistries$.pipe(startWith<T.KnownRegistry[]>([])),
-  ]).pipe(
-    map(([custom, known]) => [
-      resolveIdentity(start9, null, known),
-      resolveIdentity(community, null, known),
+  readonly registries$: Observable<StoreIdentity[]> = this.custom$.pipe(
+    map(custom => [
+      { url: start9, name: 'Start9 Registry' },
+      { url: community, name: 'Community Registry' },
       ...Object.entries(custom)
         .filter(([u]) => !sameUrl(u, start9) && !sameUrl(u, community))
-        .map(([url, name]) => resolveIdentity(url, name, known)),
+        .map(([url, name]) => ({ url, name: name || url })),
     ]),
     shareReplay(1),
   )
 
   readonly currentRegistryUrl$ = new ReplaySubject<string>(1)
 
-  // Fetches ANY url — saved or arbitrary — so deep links to unsaved registries
-  // load directly. On success, caches the registry's name for the picker.
+  private readonly fetched = new Map<string, StoreDataWithUrl>()
+
+  // Fetches any url, saved or not, so a deep link to an unsaved registry loads.
   readonly currentRegistry$: Observable<StoreDataWithUrl> =
     this.currentRegistryUrl$.pipe(
       distinctUntilChanged((a: string, b: string) => sameUrl(a, b)),
-      switchMap(url => this.fetchRegistry$(url)),
+      switchMap(url =>
+        this.fetchRegistry$(url).pipe(startWith(this.fetched.get(toUrl(url)))),
+      ),
       filter((r): r is StoreDataWithUrl => !!r),
-      tap(reg => this.cacheName(reg.url, reg.info.name)),
+      tap(reg => {
+        this.fetched.set(toUrl(reg.url), reg)
+        this.cacheName(reg.url, reg.info.name)
+      }),
       shareReplay(1),
     )
 
   readonly registryIcons$ = this.currentRegistry$.pipe(
-    map(registry => [{ url: registry.url, icon: registry.info.icon }]),
+    map(() =>
+      [...this.fetched.values()].map(({ url, info }) => ({
+        url,
+        icon: info.icon,
+      })),
+    ),
   )
 
   getPackage$(

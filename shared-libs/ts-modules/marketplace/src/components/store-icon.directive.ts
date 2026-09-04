@@ -1,11 +1,16 @@
 import { computed, Directive, inject, input, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
-import { sameUrl } from '@start9labs/shared'
-import { T } from '@start9labs/start-core'
+import { knownRegistries, sameUrl } from '@start9labs/shared'
 import { of } from 'rxjs'
 
-import { pinnedIcon, resolveIcon } from '../identity'
 import { AbstractMarketplaceService } from '../services/abstract-marketplace.service'
+
+const FALLBACKS: Record<string, string> = {
+  [knownRegistries.start9]: 'assets/img/icon_transparent.png',
+  [knownRegistries.community]: 'assets/img/community-icon.png',
+  [knownRegistries.start9Alpha]: 'assets/img/icon_alpha.png',
+  [knownRegistries.start9Beta]: 'assets/img/icon_beta.png',
+}
 
 @Directive({
   selector: 'img[storeIcon]',
@@ -16,15 +21,9 @@ import { AbstractMarketplaceService } from '../services/abstract-marketplace.ser
   },
 })
 export class StoreIconDirective {
-  private readonly marketplace = inject(AbstractMarketplaceService, {
-    optional: true,
-  })
-  private readonly known = toSignal(
-    this.marketplace?.knownRegistries$ || of<T.KnownRegistry[]>([]),
-  )
-
   private readonly registryIcons = toSignal(
-    this.marketplace?.registryIcons$ || of([]),
+    inject(AbstractMarketplaceService, { optional: true })?.registryIcons$ ||
+      of([]),
     { initialValue: [] },
   )
 
@@ -34,17 +33,16 @@ export class StoreIconDirective {
 
   protected readonly icon = computed(() => {
     const url = this.storeIcon() || ''
-    const known = this.known()
     const live = this.registryIcons().find(entry => sameUrl(entry.url, url))
-    const fallback = pinnedIcon(url, known || [])
     const generic = 'assets/img/storefront-outline.png'
-    const candidates = [
-      known ? resolveIcon(url, live?.icon, known) : null,
-      fallback,
-      generic,
-    ]
 
-    return candidates.find(icon => icon && !this.failed().has(icon)) || generic
+    return (
+      [
+        live?.icon?.startsWith('data:image/') ? live.icon : null,
+        Object.entries(FALLBACKS).find(([u]) => sameUrl(u, url))?.[1],
+        generic,
+      ].find(icon => icon && !this.failed().has(icon)) || generic
+    )
   })
 
   protected onError(): void {

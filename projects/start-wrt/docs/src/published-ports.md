@@ -58,6 +58,17 @@ Each published port rule shows a status indicator in the table:
 
 The status reflects the rule and the device's addresses on your LAN — it does not test whether traffic actually arrives from the Internet.
 
+## Reaching a Published Port from Your Own Network
+
+A device on your own network can reach a published port at the router's public address — or at a domain name that points there — instead of at the target device's LAN address. The router recognizes those connections and sends them on to the published device, so one address works from both sides of your Internet connection. This matters for anything configured with a single address, such as a phone app or a bookmarked domain name. (This is commonly called NAT loopback, or hairpinning.) It applies to addresses actually on the router's WAN interface — behind [CGNAT](cgnat.md) or another upstream router, your public IP is not one of them, and connections to it from inside your network will not loop back.
+
+A published port is a public resource, so this works from every [Security Profile](security-profiles.md) that could reach it from the Internet, and from every profile whose **Access** setting already includes the target device's profile. A profile could reach it from the Internet when its **WAN Access** is **All**, or **Blacklist** without the router's public address among the blocked entries, or **Whitelist** with the router's public address (or a range holding it) among the allowed entries — in each case outside any [blackout window](security-profiles.md#wan-blackout). A profile with neither ground — for instance **WAN Access** set to **None**, and no Access to the device — is not given this route: for its connections to the router's public address, the router answers instead of the device. The device's global IPv6 address is its public address, and is reachable on the published port from the same profiles; for it, a Whitelist or Blacklist entry counts when it holds the device's address rather than the router's. Ports opened through [automatic port forwarding](#automatic-port-forwarding) are served the same way.
+
+Only the published port is opened this way. A profile without Access to the device still cannot reach it at its LAN IPv4 address, or on any other port.
+
+> [!NOTE]
+> A rule whose **Source** is restricted to specific addresses is never served this way. That route cannot distinguish one local device from another, so serving the rule over it would let any device on your network past the restriction. Reach a restricted rule from inside your network at the device's own LAN address instead.
+
 ## Automatic Port Forwarding
 
 Some devices can configure port forwarding for themselves using the standard UPnP and PCP protocols instead of you creating rules by hand — StartOS servers do this automatically, and game consoles and torrent clients commonly support it too.

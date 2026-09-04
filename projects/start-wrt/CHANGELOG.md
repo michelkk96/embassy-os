@@ -296,6 +296,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   WAN setting independently, so one failure can no longer blank out the
   endpoint list.
 
+- **A published port is now reachable from your other Security Profiles at the
+  router's public address.** Reaching a published port by the router's public
+  address — or a domain name pointing at it — rather than the device's LAN
+  address only worked from the target device's own profile. From any other
+  profile the router answered instead of the published service, so an app or
+  bookmark holding a public address worked on one network and not another. A
+  published port is a public resource, so those connections are now delivered
+  to the device from every profile that could reach it from the Internet and
+  from every profile with Access to the device's profile — and from those only.
+  A profile could reach it from the Internet when its WAN Access is All, a
+  Blacklist that does not block the router's public address, or a Whitelist
+  that includes it, outside any blackout window. The routes follow your
+  Security Profile settings and your public address as they change, apply to
+  the device's global IPv6 address as well (where a Whitelist or Blacklist
+  entry counts by the device's address), and cover ports opened through
+  automatic port forwarding (UPnP/PCP) the same way. Nothing else on the device
+  is opened: a profile without Access still cannot reach it at its LAN address
+  or on any other port.
+
+### Security
+
+- **A published port restricted by Source is no longer reachable from your own
+  network at the router's public address.** The restriction applied to
+  connections arriving from the Internet, but a device on your own network
+  could reach the port through the router's public address regardless of it.
+  Restricted rules are no longer served that way; reach them from inside your
+  network at the device's own LAN address.
+
 ## [1.0.1]
 
 ### Added

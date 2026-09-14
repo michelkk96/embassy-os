@@ -320,11 +320,17 @@ backup/
 └── Backups.ts      — Volume selection and rsync options
 ```
 
-Three builder patterns:
+Builder patterns:
 
 - `Backups.ofVolumes('main', 'data')` — Back up entire volumes
 - `Backups.ofSyncs([{ dataPath, backupPath }])` — Custom sync pairs
 - `Backups.withOptions({ exclude: ['cache/'] })` — Rsync options
+- `Backups.withPgDump({ ... })` — PostgreSQL logical dump and restore
+- `Backups.withMysqlDump({ ... })` — MySQL logical dump and restore
+- `Backups.withMariadbDump({ ... })` — MariaDB logical dump and restore
+
+The package also exports these as the `backup` namespace (`Backups`,
+`mountBackupTarget`, `setupBackups`).
 
 ### File Helpers (`lib/util/fileHelper.ts`)
 

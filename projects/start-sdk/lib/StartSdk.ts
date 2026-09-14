@@ -896,12 +896,10 @@ export class StartSdk<Manifest extends T.SDKManifest> {
          * additional volumes in the backup.
          */
         withPgDump: Backups.withPgDump<Manifest>,
-        /**
-         * Create a Backups configuration that uses mysqldump/mysql instead of
-         * rsyncing the raw MySQL/MariaDB data directory. Chain `.addVolume()` to
-         * include additional volumes in the backup.
-         */
+        /** Back up and restore a MySQL database through a logical dump. */
         withMysqlDump: Backups.withMysqlDump<Manifest>,
+        /** Back up and restore a MariaDB database through a logical dump. */
+        withMariadbDump: Backups.withMariadbDump<Manifest>,
       },
       InputSpec: {
         /**

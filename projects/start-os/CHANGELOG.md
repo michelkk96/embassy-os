@@ -490,6 +490,12 @@ for the detail behind its highlights.
 - **The Refresh Needed dialog offers a Refresh button in browser tabs.** Select
   it to open the updated interface.
 
+- **A TLS passthrough added with `start-cli net vhost add-passthrough` answers
+  on every public IPv6 address of its gateway.** It answered on the addresses
+  the gateway held at the moment the passthrough was registered — at boot, often
+  not all of them — and refused the rest with a TLS `unrecognized name` error
+  while IPv4 kept working.
+
 ### Security
 
 - **Service mount paths are validated and confined to their intended

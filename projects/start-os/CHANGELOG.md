@@ -487,6 +487,9 @@ for the detail behind its highlights.
 - **A service that mounts a dependency's files read-write fails to start when
   that dependency is not installed**, naming the missing volume.
 
+- **The Refresh Needed dialog offers a Refresh button in browser tabs.** Select
+  it to open the updated interface.
+
 ### Security
 
 - **Service mount paths are validated and confined to their intended

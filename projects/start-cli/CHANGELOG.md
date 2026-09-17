@@ -19,6 +19,12 @@ or the CLI's externally observable behavior.
   checkout is on a branch other than `live-docs`.** The notice names the checkout and the branch
   and says how to replace it.
 
+### Changed
+
+- **`setup install-os` takes the stable disk paths that `setup disk list` reports as `stablePath`.**
+  A kernel device name such as `/dev/sda` is rejected, so the selected drive stays the installation
+  target when Linux reorders disk names.
+
 ### Fixed
 
 - **The notice that `start-cli` is behind the published release is given only when the workspace's

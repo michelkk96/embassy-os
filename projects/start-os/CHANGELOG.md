@@ -411,6 +411,11 @@ for the detail behind its highlights.
 - **The copy taken before an update is now made with the service stopped**, so it can
   no longer capture a database mid-write.
 
+- **A service's outbound gateway takes precedence over the system-wide
+  default.** You can keep one gateway pinned under **System > Gateways >
+  Outbound Traffic** while sending selected services through another gateway
+  with **Set Outbound Gateway**.
+
 - **A service reached over IPv6 through a tunnel now answers.** StartOS sends a
   reply back out the interface its connection arrived on by restoring a
   connection mark, but the kernel routes the reply that _opens_ a connection
@@ -531,6 +536,12 @@ for the detail behind its highlights.
 - **Outbound IPv6 uses an address assigned to the selected gateway.** Traffic
   through a gateway that has an IPv6 router but no IPv6 address of its own
   fails immediately.
+
+- **A service's outbound gateway carries its IPv6 as well as its IPv4.** A
+  service sent through its own gateway with **Set Outbound Gateway** kept using
+  the system-wide default for IPv6, so those connections left under a different
+  address than the one you chose. When the service's gateway can't carry IPv6,
+  the service's IPv6 is dropped.
 
 ## [0.4.0.1]
 

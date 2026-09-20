@@ -159,6 +159,11 @@ for the detail behind its highlights.
 
 - **Requested restarts and shutdowns complete when concurrent service teardown has already removed a mountpoint.**
 
+- **A service migrated from 0.3.5.1 keeps its data when an install or update
+  fails.** A failed update rolls back to the data it started with, which
+  previously took a reboot after the upgrade, and a failed install leaves
+  existing data in place.
+
 - **Nextcloud (Legacy) and other migrated 0.3.5.1 services with a
   package-managed certificate start when the server has a public IP or uses
   StartTunnel.**

@@ -100,6 +100,14 @@ for the detail behind its highlights.
 
 ### Changed
 
+- **A service's `.local` address has its own switch, and its LAN IP addresses
+  follow it.** A LAN IP you switch yourself keeps that setting. Every other one,
+  including an address your server is assigned later, is on while `.local` is on
+  and off while it is off. On an interface served without TLS, switching on a
+  LAN IP switches `.local` on, and switching `.local` off switches its LAN IPs
+  off. There, a `.local` address left on beside a gateway's IP addresses, all
+  of them off, shows a warning.
+
 - **ZRAM compressed swap is now off by default, and updating turns it off on
   your server.** With it on, services under heavy memory load could take the RAM
   StartOS reserves for itself and leave the server unreachable. A server that
@@ -142,6 +150,15 @@ for the detail behind its highlights.
   driver still provides display output without GPU compute.
 
 ### Fixed
+
+- **Switching off a service's LAN IP address closes it.** The address kept
+  answering for as long as the service's `.local` address was on. On an
+  interface served over TLS, `.local` and the service's domains still answer
+  there by name.
+
+- **A service keeps its `.local` address while your server has no LAN address.**
+  The address left the service's list whenever the network dropped, and a
+  service that checks the URL you chose for it could stop and ask for it again.
 
 - **Services start once StartOS has detected the network, and an interface
   that loses its connection drops its addresses right away.** A service

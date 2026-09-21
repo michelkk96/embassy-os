@@ -4,6 +4,12 @@
 
 ### Changed
 
+- **Breaking — a filled address lists the server's `.local` name whenever the
+  user has it enabled, and `utils.mdnsResolvable` is removed.** `.local` was
+  left out while no LAN IP on its gateways was enabled, which dropped it
+  whenever the network did and made a stored URL compare as removed. The
+  Interfaces tab and a filled address now agree on every address.
+
 - **Minimum StartOS version is now `0.4.0.2`**, which is what a package built
   with this SDK writes as its manifest `osVersion`
 
@@ -88,6 +94,9 @@
   than a `README.md`
 
 ### Added
+
+- **`utils.isAddressEnabled(addresses, hostname)`** reports whether the user's
+  overrides leave one of a binding's addresses on
 
 - **Scaffolded packages get a fourth workflow, `syncNext.yml`**, which keeps the
   `next` iteration branch in step with the base branch it stacks on. A repo with

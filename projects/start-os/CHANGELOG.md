@@ -149,6 +149,12 @@ for the detail behind its highlights.
   runtime.** StartOS bounds the fallback shutdown waits so it can release the
   container's network routes and continue teardown.
 
+- **A service keeps reacting to changes after several land at once.** A burst of
+  changes to a value a service watches, such as its addresses, a dependency's
+  status, or its outbound gateway, could permanently stop StartOS from notifying
+  it. Its generated files, certificates, and registrations then stayed stale
+  until the container was rebuilt.
+
 - **Services keep resolving domain names when the network provides no separate
   DNS server.** StartOS uses its built-in Cloudflare fallback instead of leaving
   service containers without a working resolver.

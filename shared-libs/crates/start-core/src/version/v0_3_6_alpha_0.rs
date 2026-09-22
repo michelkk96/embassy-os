@@ -308,7 +308,7 @@ impl VersionT for Version {
                     );
                     tor_migration.push_back(json!({
                         "hostname": &onion_addr,
-                        "packageId": package_id,
+                        "packageId": migrated_id_str(package_id),
                         "hostId": host_id,
                         "key": &encoded_key,
                     }));
@@ -660,18 +660,20 @@ impl VersionT for Version {
     }
 }
 
-/// Mirrors the id rewrites `s9pk::v2::compat` applies during the v1→v2
-/// conversion — the installed package lands under the new id, not the one the
-/// 0.3.5.1 archive directory is named after.
 fn migrated_id(id: &PackageId) -> Result<PackageId, Error> {
-    Ok(match &**id {
-        "nostr" => "nostr-rs-relay".parse()?,
-        "ghost" => "ghost-legacy".parse()?,
-        "synapse" => "synapse-legacy".parse()?,
-        "monerod" => "monerod-legacy".parse()?,
-        "fedimintd" => "fedimint-guardian".parse()?,
-        _ => id.clone(),
-    })
+    Ok(migrated_id_str(id).parse()?)
+}
+
+/// Mirrors the renames `s9pk::v2::compat` applies.
+pub(super) fn migrated_id_str(id: &str) -> &str {
+    match id {
+        "nostr" => "nostr-rs-relay",
+        "ghost" => "ghost-legacy",
+        "synapse" => "synapse-legacy",
+        "monerod" => "monerod-legacy",
+        "fedimintd" => "fedimint-guardian",
+        _ => id,
+    }
 }
 
 #[tracing::instrument(skip_all)]

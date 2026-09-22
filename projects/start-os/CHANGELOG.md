@@ -160,6 +160,11 @@ for the detail behind its highlights.
   The address left the service's list whenever the network dropped, and a
   service that checks the URL you chose for it could stop and ask for it again.
 
+- **Services the 0.3.5.1 update renames keep their onion addresses.** Nostr,
+  Ghost, Synapse, Monero and Fedimint addresses carry over under the services'
+  new package ids. A server that already updated recovers them on its next
+  start.
+
 - **Services start once StartOS has detected the network, and an interface
   that loses its connection drops its addresses right away.** A service
   reading its own addresses as it starts sees the server's LAN addresses.

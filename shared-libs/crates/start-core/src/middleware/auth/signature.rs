@@ -223,7 +223,12 @@ impl SignatureAuthContext for RpcContext {
             .map_ok(|a| {
                 a.enabled()
                     .into_iter()
-                    .map(|a| a.hostname.clone())
+                    .map(|a| match a.metadata {
+                        crate::net::service_interface::HostnameMetadata::Ipv6 { .. } => {
+                            InternedString::from_display(&lazy_format!("[{}]", a.hostname))
+                        }
+                        _ => a.hostname.clone(),
+                    })
                     .collect::<BTreeSet<_>>()
             })
             .flatten_ok()

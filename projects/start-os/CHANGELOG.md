@@ -12,6 +12,11 @@ for the detail behind its highlights.
 
 ### Fixed
 
+- **Services start from images without `/etc/passwd` or `/etc/group`.**
+
+- **A service command set to run as a user or group its image does not define
+  fails instead of running as root.**
+
 - **Upgrades from 0.3.5.1 succeed on nearly full data drives.** StartOS skips
   the optional filesystem optimization when a drive lacks room for it.
 

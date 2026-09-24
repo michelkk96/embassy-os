@@ -12,6 +12,9 @@ for the detail behind its highlights.
 
 ### Fixed
 
+- **Upgrades from 0.3.5.1 succeed on nearly full data drives.** StartOS skips
+  the optional filesystem optimization when a drive lacks room for it.
+
 - **Services log at the level their package sets.** A service process no
   longer inherits the container runtime's environment, including its
   `RUST_LOG`, when its package passes no environment variables. Every service

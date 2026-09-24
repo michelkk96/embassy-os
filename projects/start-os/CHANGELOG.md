@@ -12,6 +12,12 @@ for the detail behind its highlights.
 
 ### Fixed
 
+- **Services log at the level their package sets.** A service process no
+  longer inherits the container runtime's environment, including its
+  `RUST_LOG`, when its package passes no environment variables. Every service
+  process receives the server's language as `LANG` unless its package sets
+  one.
+
 - **IPv4 public domains work on servers with IPv6 disabled.** StartOS sets up
   the IPv4 reply path for source-preserving TLS routing on those servers.
 

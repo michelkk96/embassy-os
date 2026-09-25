@@ -108,6 +108,8 @@
 
 ### Added
 
+- **`preDownloadAlert` in `setupManifest()`** displays a localized Markdown confirmation before downloading an update from an installed version matching `when.sourceVersion`.
+
 - **An `env` variable set to `undefined` is removed from the process**,
   including one the image or StartOS would otherwise supply, such as `LANG`.
 

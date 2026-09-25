@@ -41,6 +41,11 @@ for the detail behind its highlights.
 
 ### Added
 
+- **Administrators can add a custom CA root to the host trust store with
+  `start-cli server trust-ca`.** The root takes effect immediately and persists
+  across reboots and OS updates. Services keep the trust store their package
+  provides.
+
 - **Packages can show a localized pre-download alert before an update.** A matching installed version prompts for confirmation in the Marketplace and Updates tab before StartOS fetches the package. The alert supports Markdown formatting.
 
 - **UEFI installations carry a standard fallback bootloader.** StartOS remains

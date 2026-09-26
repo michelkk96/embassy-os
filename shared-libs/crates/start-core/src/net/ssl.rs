@@ -343,6 +343,21 @@ pub fn gen_nistp256() -> Result<PKey<Private>, Error> {
     Ok(PKey::from_ec_key(EcKey::generate(EC_GROUP.as_ref())?)?)
 }
 
+/// Appends a hashed `subjectKeyIdentifier` and an `authorityKeyIdentifier` carrying
+/// only that key identifier, the form CA/B Forum BR 7.1.2.1.3 requires on a root.
+fn append_self_signed_key_identifiers(
+    builder: &mut X509Builder,
+    cfg: &conf::ConfRef,
+) -> Result<(), ErrorStack> {
+    let subject_key_identifier =
+        SubjectKeyIdentifier::new().build(&builder.x509v3_context(None, Some(cfg)))?;
+    builder.append_extension(subject_key_identifier)?;
+    let authority_key_identifier = AuthorityKeyIdentifier::new()
+        .keyid(true)
+        .build(&builder.x509v3_context(None, Some(cfg)))?;
+    builder.append_extension(authority_key_identifier)
+}
+
 #[instrument(skip_all)]
 pub fn make_root_cert(
     root_key: &PKey<Private>,
@@ -375,15 +390,8 @@ pub fn make_root_cert(
 
     // Extensions
     let cfg = conf::Conf::new(conf::ConfMethod::default())?;
-    let ctx = builder.x509v3_context(None, Some(&cfg));
-    // subjectKeyIdentifier = hash
-    let subject_key_identifier = SubjectKeyIdentifier::new().build(&ctx)?;
-    // authorityKeyIdentifier = keyid,issuer:always
-    let authority_key_identifier = AuthorityKeyIdentifier::new()
-        .keyid(false)
-        .issuer(true)
-        .build(&ctx)?;
-    // basicConstraints = critical, CA:true, pathlen:0
+    append_self_signed_key_identifiers(&mut builder, &cfg)?;
+    // basicConstraints = critical, CA:true
     let basic_constraints = BasicConstraints::new().critical().ca().build()?;
     // keyUsage = critical, digitalSignature, cRLSign, keyCertSign
     let key_usage = KeyUsage::new()
@@ -392,8 +400,6 @@ pub fn make_root_cert(
         .crl_sign()
         .key_cert_sign()
         .build()?;
-    builder.append_extension(subject_key_identifier)?;
-    builder.append_extension(authority_key_identifier)?;
     builder.append_extension(basic_constraints)?;
     builder.append_extension(key_usage)?;
     builder.sign(&root_key, MessageDigest::sha256())?;
@@ -436,7 +442,7 @@ pub fn make_int_cert(
         .keyid(true)
         .issuer(true)
         .build(&ctx)?;
-    // basicConstraints = critical, CA:true, pathlen:0
+    // basicConstraints = critical, CA:true
     let basic_constraints = BasicConstraints::new().critical().ca().pathlen(0).build()?;
     // keyUsage = critical, digitalSignature, cRLSign, keyCertSign
     let key_usage = KeyUsage::new()
@@ -632,13 +638,8 @@ pub fn make_self_signed(
 
     // Extensions
     let cfg = conf::Conf::new(conf::ConfMethod::default())?;
+    append_self_signed_key_identifiers(&mut builder, &cfg)?;
     let ctx = builder.x509v3_context(None, Some(&cfg));
-
-    let subject_key_identifier = SubjectKeyIdentifier::new().build(&ctx)?;
-    let authority_key_identifier = AuthorityKeyIdentifier::new()
-        .keyid(false)
-        .issuer(true)
-        .build(&ctx)?;
     let subject_alt_name = applicant.1.x509_extension().build(&ctx)?;
     let basic_constraints = BasicConstraints::new().build()?;
     let key_usage = KeyUsage::new()
@@ -647,8 +648,6 @@ pub fn make_self_signed(
         .key_encipherment()
         .build()?;
 
-    builder.append_extension(subject_key_identifier)?;
-    builder.append_extension(authority_key_identifier)?;
     builder.append_extension(subject_alt_name)?;
     builder.append_extension(basic_constraints)?;
     builder.append_extension(key_usage)?;
@@ -860,6 +859,45 @@ mod fingerprint_tests {
     #[test]
     fn fingerprint_bytes_are_uppercase_zero_padded_and_colon_separated() {
         assert_eq!(format_x509_fingerprint(&[0, 1, 10, 255]), "00:01:0A:FF");
+    }
+}
+
+#[cfg(test)]
+mod self_signed_cert_tests {
+    use super::*;
+
+    fn assert_self_signed_identifiers(cert: &X509, key: &PKey<Private>) {
+        assert!(cert.verify(key).unwrap());
+        assert_eq!(
+            cert.authority_key_id().unwrap().as_slice(),
+            cert.subject_key_id().unwrap().as_slice()
+        );
+        assert!(cert.authority_issuer().is_none());
+        assert!(cert.authority_serial().is_none());
+    }
+
+    #[test]
+    fn root_ca_authority_key_identifier_is_its_key_id() {
+        let key = gen_nistp256().unwrap();
+        let branding = CertBranding::start_os("test");
+        let root = make_root_cert(&key, &branding, SystemTime::now()).unwrap();
+        assert_self_signed_identifiers(&root, &key);
+
+        let intermediate_key = gen_nistp256().unwrap();
+        let intermediate = make_int_cert((&key, &root), &intermediate_key, &branding).unwrap();
+        assert_eq!(
+            intermediate.authority_key_id().unwrap().as_slice(),
+            root.subject_key_id().unwrap().as_slice()
+        );
+        assert!(intermediate.verify(&key).unwrap());
+    }
+
+    #[test]
+    fn self_signed_leaf_authority_key_identifier_is_its_key_id() {
+        let key = gen_nistp256().unwrap();
+        let san = SANInfo::new(&BTreeSet::from([InternedString::intern("example.local")]));
+        let leaf = make_self_signed((&key, &san), &CertBranding::start_os("test")).unwrap();
+        assert_self_signed_identifiers(&leaf, &key);
     }
 }
 

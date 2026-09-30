@@ -14,6 +14,11 @@ for the detail behind its highlights.
 
 - **Starting a StartOS update from the UI installs the release whose notes it shows.** It previously installed whatever version the registry listed last.
 
+- **Forwarded IPv4 UDP ports retain their outbound mapping.** UDP traffic a
+  service starts from a forwarded port leaves through that forward's gateway
+  with its external address and port, keeping peer-to-peer services such as
+  HyperDHT directly reachable under load.
+
 - **Required service dependencies appear from the package manifest during initialization.** StartOS shows their base version and health requirements even if the service has not reported runtime dependencies; active runtime requirements can tighten the base, including for optional dependencies. While a service is not using an optional dependency, its tasks for that dependency are hidden and do not prevent it from starting.
 
 - **Freshly generated Root CAs carry an Authority Key Identifier conforming to RFC 5280 and the CA/Browser Forum Baseline Requirements.** Existing servers retain their trusted Root CA when updated.
